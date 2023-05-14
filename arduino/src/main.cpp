@@ -12,9 +12,9 @@ int sensor2Value = 0;
 
 const int debounceTime = 50;            //milliseconds
 const float sensorDistance = 160.0f;       //millimeters
-const float maxSpeedKmH = 15;           //km/h
+const float maxSpeedKmH = 2;           //km/h
 const long measuringInterval = 2500;    //milliseconds
-const int flashTime = 1000;              //milliseconds
+const int flashTime = 200;              //milliseconds
       long timer1 = 0;
       long timer2 = 0;
       float passing_time = 0.0f;
@@ -43,6 +43,12 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
+
+if(Serial.readString() == "5") {
+            digitalWrite(flashPin, HIGH);
+            delay(flashTime);
+            digitalWrite(flashPin, LOW);
+          }
 
 
   if(digitalRead(sensor1) == HIGH && digitalRead(sensor2) == LOW) {

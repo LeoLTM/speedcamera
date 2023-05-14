@@ -246,7 +246,7 @@ def write_read(x):
 
 
 # port that the arduino is connected to
-PORT = 'COM6'
+PORT = 'COM3'
 
 
 connected_ports = [tuple(p) for p in list(serial.tools.list_ports.comports())]
@@ -281,7 +281,7 @@ while True:
     print(status)
     if status == '2':
         print("nicht ausgelöst...")
-    result, frame = cam.read()
+   #  result, frame = cam.read()
     k = cv2.waitKey(1)
     if k % 256 == 2:  # Exit the program if the ESC key is pressed
         # ESC pressed
@@ -294,6 +294,7 @@ while True:
         # write_read(str(1))
         arduino.write(bytes('5', 'utf-8'))
         time.sleep(0.2)
+        result, frame = cam.read()
         result, frame = cam.read()
         print("Image taken!")
         cv2.imwrite(img_name, frame)

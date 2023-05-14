@@ -307,7 +307,7 @@ cv2.destroyAllWindows()
 
 
 
-
+# lol
 # https://www.reddit.com/r/computervision/comments/eoos6m/speeding_up_frame_capture_in_opencv/
 # https://stackoverflow.com/questions/39716271/how-to-log-and-save-file-with-date-and-timestamp-in-python
 # https://forums.developer.nvidia.com/t/how-to-increase-the-speed-of-opencv-capture-frame/51485

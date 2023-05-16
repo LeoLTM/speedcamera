@@ -246,30 +246,40 @@ def write_read(x):
 
 
 # port that the arduino is connected to
-PORT = 'COM3'
+ARD_PORT = 'COM6'
+# CAM port
+CAM_PORT = 0
+# dev settings
+skipExitOnSetupErr = 0
+skipSerialSetup = 0
+skipCamSetup = 0
+disableFlash = 0
 
-
+# list all available ports
 connected_ports = [tuple(p) for p in list(serial.tools.list_ports.comports())]
 print("Connected ports: " + str(connected_ports))
 if len(connected_ports) == 0:
     print("No ports available!")
-    sys.exit()
-matching_ports = [port for port in connected_ports if PORT in port]
+    if skipExitOnSetupErr == 1:
+        sys.exit()
+# list all ports matching the defined PORT
+matching_ports = [port for port in connected_ports if ARD_PORT in port]
 if len(matching_ports) == 0:
-    print("Specified port (" + PORT + ") not connected!")
-    sys.exit()
+    print("Specified port (" + ARD_PORT + ") not connected!")
+    if skipExitOnSetupErr == 1:
+        sys.exit()
 
-arduino = serial.Serial(PORT, 115200, timeout=0.1, write_timeout=0.25)
-cam_port = 0
-W, H = 640, 480
-cam = cv2.VideoCapture(cam_port, cv2.CAP_DSHOW)
-cam.set(cv2.CAP_PROP_FRAME_WIDTH, W)
-cam.set(cv2.CAP_PROP_FRAME_HEIGHT, H)
-cam.set(cv2.CAP_PROP_FPS, 30)
-# cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
-
-if not (cam.isOpened()):
-    print("Could not open video device.")
+if skipSerialSetup != 1:
+    arduino = serial.Serial(ARD_PORT, 115200, timeout=0.1, write_timeout=0.25)
+if skipCamSetup != 1:
+    W, H = 640, 480
+    cam = cv2.VideoCapture(CAM_PORT, cv2.CAP_DSHOW)
+    cam.set(cv2.CAP_PROP_FRAME_WIDTH, W)
+    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, H)
+    cam.set(cv2.CAP_PROP_FPS, 30)
+    # cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
+    if not (cam.isOpened()):
+        print("Could not open video device.")
 
 cv2.namedWindow("alla")
 img_counter = 0
@@ -278,21 +288,25 @@ img_counter = 0
 while True:
     time.sleep(0.05)
     status = arduino.readline().decode('utf-8').rstrip()  # Write something on serial to Arduino, save current HC-SR04 value to "status"
-    print(status)
+    print(status)                                         # Print Arduino Serial status to terminal
     if status == '2':
         print("nicht ausgelöst...")
    #  result, frame = cam.read()
     k = cv2.waitKey(1)
     if k % 256 == 2:  # Exit the program if the ESC key is pressed
         # ESC pressed
-        print("Escape hit, exiting program...")
+        print("ESC key pressed, exiting program...")
         break
     elif (k % 256 == 32) or (status == "3"):  # Make a picture if the space bar is pressed or the Arduino sends a signal over serial ("2")
         print("ZU SCHNELL")
+        # Build the image name strings
         img_name = "opencv_frame_{}.png".format(img_counter)
         img_name_enhanced = "opencv_frame_{}_enhanced.png".format(img_counter)
         # write_read(str(1))
-        arduino.write(bytes('5', 'utf-8'))
+
+        # Send '5' to the Arduino to trigger the flash
+        if disableFlash == 1:
+            arduino.write(bytes('5', 'utf-8'))
         time.sleep(0.2)
         result, frame = cam.read()
         result, frame = cam.read()
@@ -308,7 +322,7 @@ cv2.destroyAllWindows()
 
 
 
-# lol
+
 # https://www.reddit.com/r/computervision/comments/eoos6m/speeding_up_frame_capture_in_opencv/
 # https://stackoverflow.com/questions/39716271/how-to-log-and-save-file-with-date-and-timestamp-in-python
 # https://forums.developer.nvidia.com/t/how-to-increase-the-speed-of-opencv-capture-frame/51485

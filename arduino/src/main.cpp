@@ -11,7 +11,7 @@ int sensor2Value = 0;
 */
 
 const int debounceTime = 50;            //milliseconds
-const float sensorDistance = 160.0f;       //millimeters
+const float sensorDistance = 345.0f;       //millimeters
 const float maxSpeedKmH = 2;           //km/h
 const long measuringInterval = 2500;    //milliseconds
 const int flashTime = 200;              //milliseconds

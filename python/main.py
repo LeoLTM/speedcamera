@@ -356,6 +356,8 @@ cv2.destroyAllWindows()
 # https://forums.developer.nvidia.com/t/how-to-increase-the-speed-of-opencv-capture-frame/51485
 # https://stackoverflow.com/questions/59726776/how-to-make-cv2-videocapture-read-faster
 # https://stackoverflow.com/questions/7622549/better-performance-in-lower-light-conditions-opencv
+# https://stackoverflow.com/questions/55698070/sending-json-over-serial-in-python-to-arduino
+# https://github.com/harunkurtme/arduino-json-python-serial/
 
 # cap_times = []
 # for i in range(50):

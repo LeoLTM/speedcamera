@@ -248,6 +248,7 @@ def write_read(x):
 
 # port that the arduino is connected to
 ARD_PORT = 'COM5'
+ARD_BAUD_RATE = 115200
 # CAM port
 CAM_PORT = 0
 # CV window properties
@@ -285,7 +286,7 @@ if len(matching_ports) == 0:
         sys.exit()
 
 if skipSerialSetup != 1:
-    arduino = serial.Serial(ARD_PORT, 115200, timeout=0.1, write_timeout=0.25)
+    arduino = serial.Serial(ARD_PORT, ARD_BAUD_RATE, timeout=0.1, write_timeout=0.25)
 if skipCamSetup != 1:
     W, H = 640, 480
     cam = cv2.VideoCapture(CAM_PORT, cv2.CAP_DSHOW)

@@ -1,4 +1,5 @@
 # program to capture single image from webcam in python
+import os
 import sys
 
 # importing OpenCV library
@@ -246,14 +247,28 @@ def write_read(x):
 
 
 # port that the arduino is connected to
-ARD_PORT = 'COM6'
+ARD_PORT = 'COM5'
 # CAM port
 CAM_PORT = 0
+# CV window properties
+imgWindowResolutions = 1280, 720
+# picture path for saving
+imgPath = os.path.join(os.path.dirname(__file__), "images")
+enhancedImgPath = os.path.join(os.path.dirname(__file__), "enhanced")
 # dev settings
 skipExitOnSetupErr = 0
 skipSerialSetup = 0
 skipCamSetup = 0
 disableFlash = 0
+enableEnhancer = 0
+
+# check if the image path exists
+if not os.path.exists(imgPath):
+    print("Creating image folder: " + imgPath + "")
+    os.makedirs(imgPath, exist_ok=True)
+if not os.path.exists(enhancedImgPath):
+    print("Creating enhanced image folder: " + enhancedImgPath + "")
+    os.makedirs(enhancedImgPath, exist_ok=True)
 
 # list all available ports
 connected_ports = [tuple(p) for p in list(serial.tools.list_ports.comports())]
@@ -281,7 +296,8 @@ if skipCamSetup != 1:
     if not (cam.isOpened()):
         print("Could not open video device.")
 
-cv2.namedWindow("alla")
+cv2.namedWindow("SpeedCam", cv2.WINDOW_NORMAL)
+cv2.resizeWindow("SpeedCam", imgWindowResolutions[0], imgWindowResolutions[1])
 img_counter = 0
 
 # reading the input using the camera
@@ -305,16 +321,28 @@ while True:
         # write_read(str(1))
 
         # Send '5' to the Arduino to trigger the flash
-        if disableFlash == 1:
+        if disableFlash != 1:
             arduino.write(bytes('5', 'utf-8'))
         time.sleep(0.2)
+        # Read frames from the camera
         result, frame = cam.read()
         result, frame = cam.read()
         print("Image taken!")
-        cv2.imwrite(img_name, frame)
-        #enhanced_img = dehaze(frame)
-        #cv2.imwrite(img_name_enhanced, enhanced_img)
+        cv2.putText(frame, str(50.00), (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+        # Save the image
+        print(os.path.join(imgPath, img_name))
+        cv2.imwrite(os.path.join(imgPath, img_name), frame)
+
+        if enableEnhancer == 1:
+            # Enhance the image
+            enhanced_img = dehaze(frame)
+            # Save the enhanced image
+            cv2.imwrite(os.path.join(enhancedImgPath, img_name_enhanced), enhanced_img)
+
         print("{} written!".format(img_name))
+        # Show the image
+        cv2.imshow("SpeedCam", frame)
+
         img_counter += 1
 
 cam.release()

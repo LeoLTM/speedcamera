@@ -1,111 +1,90 @@
 #include <Arduino.h>
 
-const int sensor1 = 16; //GPIO 16, D0
-const int sensor2 = 12; //GPIO 12, D6
-const int flashPin = 13; //GPIO 13, D7
+const int sensor1 = 16; // GPIO 16, D0
+const int sensor2 = 12; // GPIO 12, D6
+const int flashPin = 13; // GPIO 13, D7
 
+const int debounceTime = 50;           // Milliseconds for debounce
+const float sensorDistance = 345.0f;  // Millimeters
+const float maxSpeedKmH = 2;          // Speed limit in km/h
+const long measuringInterval = 2500;  // Maximum time for measurement (ms)
+const int flashTime = 100;            // Flash duration (ms)
 
-/*
-int sensor1Value = 0;
-int sensor2Value = 0;
-*/
+unsigned long lastSensor1Time = 0;
+unsigned long lastSensor2Time = 0;
+float speedInKmH = 0.0f;
+bool hasFlashed = false;
 
-const int debounceTime = 50;            //milliseconds
-const float sensorDistance = 345.0f;       //millimeters
-const float maxSpeedKmH = 2;           //km/h
-const long measuringInterval = 2500;    //milliseconds
-const int flashTime = 200;              //milliseconds
-      long timer1 = 0;
-      long timer2 = 0;
-      float passing_time = 0.0f;
-      float speedInKmH = 0;
-      long wait = 0;
-      bool hasFlashed = false;
-
+void handleSerial();
+void flashLED();
+void waitForFlash();
 
 void setup() {
-  // put your setup code here, to run once:
-  
   Serial.begin(115200);
-  Serial.setTimeout(10);
   pinMode(sensor1, INPUT_PULLUP);
   pinMode(sensor2, INPUT_PULLUP);
   pinMode(flashPin, OUTPUT);
-  // Serial.println("Setup done.");
-
-
-/*  pinMode(flashPin, OUTPUT);
-  pinMode(sensor1, INPUT);
-  pinMode(sensor2, INPUT);
-  */
-  
+  Serial.println("Setup done.");
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  // Check for incoming serial commands
+  handleSerial();
 
-if(Serial.readString() == "5") {
-            digitalWrite(flashPin, HIGH);
-            delay(flashTime);
-            digitalWrite(flashPin, LOW);
-          }
+  // Sensor 1 triggered
+  if (digitalRead(sensor1) == HIGH && (millis() - lastSensor1Time > debounceTime)) {
+    lastSensor1Time = millis();
+    unsigned long timer1 = lastSensor1Time;
 
+    Serial.println("1"); // Start measurement
 
-  if(digitalRead(sensor1) == HIGH && digitalRead(sensor2) == LOW) {
-    // Start timer1
-    timer1 = millis();
+    while (millis() - timer1 < measuringInterval) {
+      // Check if Sensor 2 is triggered
+      if (digitalRead(sensor2) == HIGH && (millis() - lastSensor2Time > debounceTime)) {
+        lastSensor2Time = millis();
+        float passingTime = lastSensor2Time - timer1; // Time in ms
+        speedInKmH = (sensorDistance / passingTime) * 3.6f;
+        String speedStr = String(speedInKmH, 1);
 
-    // Serial.println("Messung gestartet!");
-    // Send 1 to indicate start of measurement
-    Serial.println("1");
-  
-    // For xxx milliseconds, check
-    while((measuringInterval > millis()-timer1) && (!hasFlashed)) {
-      // Serial.println("Messung läuft...");
-      // If sensor2 gets triggered
-      if(digitalRead(sensor2) == HIGH ) {
-        timer2 = millis();
-        // Serial.println("Messung abgeschlossen!");
-
-        passing_time = timer2 - timer1; //time in milliseconds
-        // Serial.print("Passing time: ");
-        // Serial.println(passing_time);
-        // Serial.print("Geschwindigkeit: ");
-        speedInKmH = ( (sensorDistance / passing_time)*3.6f);
-        // Serial.println(speedInKmH);
-
-        // If speed is higher than maxSpeedKmH
-        if(speedInKmH > maxSpeedKmH){
-          // Flash the LEDs
-          // Serial.println("BLITZ!");
-          hasFlashed = true;
-          // Send 3 to indicate flash
-          Serial.println("3");
-
-          while(Serial.available() == 0) {
-            // Wait for serial input
-          }
-          if(Serial.readString() == "5") {
-            digitalWrite(flashPin, HIGH);
-            delay(flashTime);
-            digitalWrite(flashPin, LOW);
-          }
-        } else{
-          // Send 2 to indicate no flash
-          Serial.println("2");
+        if (speedInKmH > maxSpeedKmH) {
+          Serial.println("3" + speedStr); // Trigger flash command
+          waitForFlash();
+        } else {
+          Serial.println("2"); // No flash needed
         }
-        break;
+        return;
       }
     }
-    // Send 0 to indicate idle state
-    Serial.println("0");
-    hasFlashed = false;
 
+    // Timeout, no valid measurement
+    Serial.println("0"); // Back to idle
   }
+}
+
+// Handle incoming serial commands
+void handleSerial() {
+  if (Serial.available() > 0) {
+    char command = Serial.read();
+    if (command == '5') {
+      flashLED();
+    }
   }
+}
 
+// Trigger the flash
+void flashLED() {
+  digitalWrite(flashPin, HIGH);
+  delay(flashTime);
+  digitalWrite(flashPin, LOW);
+}
 
-
-
-
-  /// DSJKABFKHAWBFQABWLFbqwlhkf
+// Wait for confirmation to trigger the flash
+void waitForFlash() {
+  while (!Serial.available()) {
+    // Wait for "5" response
+  }
+  if (Serial.read() == '5') {
+    delay(400);
+    flashLED();
+  }
+}

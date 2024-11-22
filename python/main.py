@@ -15,6 +15,20 @@ import serial
 import serial.tools.list_ports
 
 
+def list_cameras():
+    index = 0
+    arr = []
+    while True:
+        cap = cv2.VideoCapture(index)
+        if not cap.read()[0]:
+            break
+        else:
+            arr.append(index)
+        cap.release()
+        index += 1
+    return arr
+
+
 def leos_enhancer(I):
     img_imported = cv2.imread("opencv_frame_5.png")
     img_to_enhance = cv2.cvtColor(img_imported, cv2.COLOR_BGR2GRAY)
@@ -247,7 +261,7 @@ def write_read(x):
 
 
 # port that the arduino is connected to
-ARD_PORT = 'COM5'
+ARD_PORT = '/dev/ttyUSB0'
 ARD_BAUD_RATE = 115200
 # CAM port
 CAM_PORT = 0
@@ -285,11 +299,19 @@ if len(matching_ports) == 0:
     if skipExitOnSetupErr == 1:
         sys.exit()
 
+available_cameras = list_cameras()
+print("Available cameras: " + str(available_cameras))
+
 if skipSerialSetup != 1:
     arduino = serial.Serial(ARD_PORT, ARD_BAUD_RATE, timeout=0.1, write_timeout=0.25)
 if skipCamSetup != 1:
     W, H = 640, 480
-    cam = cv2.VideoCapture(CAM_PORT, cv2.CAP_DSHOW)
+    # If Platform is Windows:
+    if os.name == 'nt':
+        cam = cv2.VideoCapture(CAM_PORT, cv2.CAP_DSHOW)
+    # If Platform is Linux:
+    else:
+        cam = cv2.VideoCapture(CAM_PORT)
     cam.set(cv2.CAP_PROP_FRAME_WIDTH, W)
     cam.set(cv2.CAP_PROP_FRAME_HEIGHT, H)
     cam.set(cv2.CAP_PROP_FPS, 30)
@@ -305,7 +327,8 @@ img_counter = 0
 while True:
     time.sleep(0.05)
     status = arduino.readline().decode('utf-8').rstrip()  # Write something on serial to Arduino, save current HC-SR04 value to "status"
-    print(status)                                         # Print Arduino Serial status to terminal
+    if len(status)  > 0:
+        print(status)                                         # Print Arduino Serial status to terminal
     if status == '2':
         print("nicht ausgelöst...")
    #  result, frame = cam.read()
@@ -314,8 +337,13 @@ while True:
         # ESC pressed
         print("ESC key pressed, exiting program...")
         break
-    elif (k % 256 == 32) or (status == "3"):  # Make a picture if the space bar is pressed or the Arduino sends a signal over serial ("2")
+    elif (k % 256 == 32) or (len(status) > 0) and (status[0] == "3"):  # Make a picture if the space bar is pressed or the Arduino sends a signal over serial ("2")
         print("ZU SCHNELL")
+        if len(status) > 0:
+            speed = status[1:(len(status))]
+            print("Speed: " + speed)
+        else:
+            speed = "Manual Trigger"
         # Build the image name strings
         img_name = "opencv_frame_{}.png".format(img_counter)
         img_name_enhanced = "opencv_frame_{}_enhanced.png".format(img_counter)
@@ -324,12 +352,12 @@ while True:
         # Send '5' to the Arduino to trigger the flash
         if disableFlash != 1:
             arduino.write(bytes('5', 'utf-8'))
-        time.sleep(0.2)
+        time.sleep(0.1)
         # Read frames from the camera
         result, frame = cam.read()
-        result, frame = cam.read()
+        # result, frame = cam.read()
         print("Image taken!")
-        cv2.putText(frame, str(50.00), (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+        cv2.putText(frame, str(speed), (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
         # Save the image
         print(os.path.join(imgPath, img_name))
         cv2.imwrite(os.path.join(imgPath, img_name), frame)

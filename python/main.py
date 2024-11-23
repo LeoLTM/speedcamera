@@ -9,6 +9,7 @@ from statistics import mean
 from itertools import combinations_with_replacement
 from collections import defaultdict
 from numpy.linalg import inv
+import threading
 
 import numpy as np
 import serial
@@ -260,145 +261,119 @@ def write_read(x):
 # variable according to that
 
 
-# port that the arduino is connected to
+# Einstellungen und Initialisierungen
 ARD_PORT = '/dev/ttyUSB0'
 ARD_BAUD_RATE = 115200
-# CAM port
 CAM_PORT = 0
-# CV window properties
-imgWindowResolutions = 1280, 720
-# picture path for saving
+imgWindowResolutions = 640, 480
 imgPath = os.path.join(os.path.dirname(__file__), "images")
 enhancedImgPath = os.path.join(os.path.dirname(__file__), "enhanced")
-# dev settings
 skipExitOnSetupErr = 0
-skipSerialSetup = 0
-skipCamSetup = 0
 disableFlash = 0
 enableEnhancer = 0
 
-# check if the image path exists
 if not os.path.exists(imgPath):
-    print("Creating image folder: " + imgPath + "")
     os.makedirs(imgPath, exist_ok=True)
 if not os.path.exists(enhancedImgPath):
-    print("Creating enhanced image folder: " + enhancedImgPath + "")
     os.makedirs(enhancedImgPath, exist_ok=True)
 
-# list all available ports
 connected_ports = [tuple(p) for p in list(serial.tools.list_ports.comports())]
-print("Connected ports: " + str(connected_ports))
-if len(connected_ports) == 0:
-    print("No ports available!")
-    if skipExitOnSetupErr == 1:
-        sys.exit()
-# list all ports matching the defined PORT
 matching_ports = [port for port in connected_ports if ARD_PORT in port]
-if len(matching_ports) == 0:
-    print("Specified port (" + ARD_PORT + ") not connected!")
-    if skipExitOnSetupErr == 1:
-        sys.exit()
+if len(matching_ports) == 0 and not skipExitOnSetupErr:
+    sys.exit("Specified port not connected!")
 
-available_cameras = list_cameras()
-print("Available cameras: " + str(available_cameras))
+arduino = serial.Serial(ARD_PORT, ARD_BAUD_RATE, timeout=0.1, write_timeout=0.25)
 
-if skipSerialSetup != 1:
-    arduino = serial.Serial(ARD_PORT, ARD_BAUD_RATE, timeout=0.1, write_timeout=0.25)
-if skipCamSetup != 1:
-    W, H = 640, 480
-    # If Platform is Windows:
-    if os.name == 'nt':
-        cam = cv2.VideoCapture(CAM_PORT, cv2.CAP_DSHOW)
-    # If Platform is Linux:
-    else:
-        cam = cv2.VideoCapture(CAM_PORT)
-    cam.set(cv2.CAP_PROP_FRAME_WIDTH, W)
-    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, H)
-    cam.set(cv2.CAP_PROP_FPS, 30)
-    # cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
-    if not (cam.isOpened()):
-        print("Could not open video device.")
+# Kamera-Setup
+W, H = 640, 480
+cam = cv2.VideoCapture(CAM_PORT, cv2.CAP_DSHOW if os.name == 'nt' else cv2.CAP_ANY)
+cam.set(cv2.CAP_PROP_AUTOFOCUS, 0)  # Disable auto-focus if supported
+cam.set(cv2.CAP_PROP_FRAME_WIDTH, W)
+cam.set(cv2.CAP_PROP_FRAME_HEIGHT, H)
+cam.set(cv2.CAP_PROP_FPS, 30)
+
+if not cam.isOpened():
+    sys.exit("Could not open video device.")
 
 cv2.namedWindow("SpeedCam", cv2.WINDOW_NORMAL)
 cv2.resizeWindow("SpeedCam", imgWindowResolutions[0], imgWindowResolutions[1])
+
+# Thread für das Speichern und Verarbeiten der Bilder
+class FrameSaver(threading.Thread):
+    def __init__(self):
+        super().__init__()
+        self.frames_queue = []
+        self.lock = threading.Lock()
+        self.running = True
+
+    def add_frame(self, frame, speed, img_counter):
+        with self.lock:
+            self.frames_queue.append((frame, speed, img_counter))
+
+    def run(self):
+        while self.running or len(self.frames_queue) > 0:
+            with self.lock:
+                if len(self.frames_queue) > 0:
+                    frame, speed, img_counter = self.frames_queue.pop(0)
+                else:
+                    continue
+
+            # Bild verarbeiten und speichern
+            img_name = f"opencv_frame_{img_counter}.png"
+            img_name_enhanced = f"opencv_frame_{img_counter}_enhanced.png"
+            cv2.putText(frame, str(speed), (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.imwrite(os.path.join(imgPath, img_name), frame)
+
+            if enableEnhancer:
+                enhanced_img = dehaze(frame)
+                cv2.imwrite(os.path.join(enhancedImgPath, img_name_enhanced), enhanced_img)
+
+            print(f"Saved {img_name} with speed: {speed}")
+
+    def stop(self):
+        self.running = False
+
+frame_saver = FrameSaver()
+frame_saver.start()
+
 img_counter = 0
 
-# reading the input using the camera
-while True:
-    time.sleep(0.05)
-    status = arduino.readline().decode('utf-8').rstrip()  # Write something on serial to Arduino, save current HC-SR04 value to "status"
-    if len(status)  > 0:
-        print(status)                                         # Print Arduino Serial status to terminal
-    if status == '2':
-        print("nicht ausgelöst...")
-   #  result, frame = cam.read()
-    k = cv2.waitKey(1)
-    if k % 256 == 2:  # Exit the program if the ESC key is pressed
-        # ESC pressed
-        print("ESC key pressed, exiting program...")
-        break
-    elif (k % 256 == 32) or (len(status) > 0) and (status[0] == "3"):  # Make a picture if the space bar is pressed or the Arduino sends a signal over serial ("2")
-        print("ZU SCHNELL")
-        if len(status) > 0:
-            speed = status[1:(len(status))]
-            print("Speed: " + speed)
-        else:
-            speed = "Manual Trigger"
-        # Build the image name strings
-        img_name = "opencv_frame_{}.png".format(img_counter)
-        img_name_enhanced = "opencv_frame_{}_enhanced.png".format(img_counter)
-        # write_read(str(1))
+# Haupt-Loop: Frames grabben und verarbeiten
+try:
+    while True:
+        time.sleep(0.05)
+        status = arduino.readline().decode('utf-8').rstrip()
+        if status:
+            print(status)
 
-        # Send '5' to the Arduino to trigger the flash
-        if disableFlash != 1:
-            arduino.write(bytes('5', 'utf-8'))
-        time.sleep(0.1)
-        # Read frames from the camera
-        result, frame = cam.read()
-        # result, frame = cam.read()
-        print("Image taken!")
-        cv2.putText(frame, str(speed), (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-        # Save the image
-        print(os.path.join(imgPath, img_name))
-        cv2.imwrite(os.path.join(imgPath, img_name), frame)
+        if status == '2':  # Nicht ausgelöst
+            print("Nicht ausgelöst...")
+            cam.grab()
+        elif status.startswith('3') or cv2.waitKey(1) % 256 == 32:  # Auslösung
+            print("ZU SCHNELL!")
+            speed = status[1:] if len(status) > 1 else "Manual Trigger"
 
-        if enableEnhancer == 1:
-            # Enhance the image
-            enhanced_img = dehaze(frame)
-            # Save the enhanced image
-            cv2.imwrite(os.path.join(enhancedImgPath, img_name_enhanced), enhanced_img)
+            if disableFlash != 1:
+                arduino.write(b'5')
+            time.sleep(0.1)
 
-        print("{} written!".format(img_name))
-        # Show the image
-        cv2.imshow("SpeedCam", frame)
+            # Clear the buffer and capture the latest frame
+            for _ in range(5):  # Adjust the number of frames to flush the buffer
+                cam.grab()
+            _, frame = cam.retrieve()  # Decode the most recent frame
 
-        img_counter += 1
+            frame_saver.add_frame(frame, speed, img_counter)  
+            cv2.imshow("SpeedCam", frame)
+            img_counter += 1
 
-cam.release()
-cv2.destroyAllWindows()
-
-
-
-
-# https://www.reddit.com/r/computervision/comments/eoos6m/speeding_up_frame_capture_in_opencv/
-# https://stackoverflow.com/questions/39716271/how-to-log-and-save-file-with-date-and-timestamp-in-python
-# https://forums.developer.nvidia.com/t/how-to-increase-the-speed-of-opencv-capture-frame/51485
-# https://stackoverflow.com/questions/59726776/how-to-make-cv2-videocapture-read-faster
-# https://stackoverflow.com/questions/7622549/better-performance-in-lower-light-conditions-opencv
-# https://stackoverflow.com/questions/55698070/sending-json-over-serial-in-python-to-arduino
-# https://github.com/harunkurtme/arduino-json-python-serial/
-
-# cap_times = []
-# for i in range(50):
-#     loop_start = time()
-#     _, frame = cam.read()
-#     elapsed = time() - loop_start
-#     cap_times.append(elapsed)
-# average = mean(cap_times)
-# fps = 1/average
-# print('Avg cap time: {}'.format(average))
-# print('FPS: {}'.format(fps))
-
+        if cv2.waitKey(1) % 256 == 27:  # ESC zum Beenden
+            print("ESC pressed, exiting...")
+            break
+finally:
+    frame_saver.stop()
+    frame_saver.join()
+    cam.release()
+    cv2.destroyAllWindows()
 
 
 

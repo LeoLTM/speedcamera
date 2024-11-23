@@ -4,11 +4,13 @@ const int sensor1 = 16; // GPIO 16, D0
 const int sensor2 = 12; // GPIO 12, D6
 const int flashPin = 13; // GPIO 13, D7
 
-const int debounceTime = 50;           // Milliseconds for debounce
-const float sensorDistance = 345.0f;  // Millimeters
+const int debounceTime = 1000;           // Milliseconds for debounce per sensor
+const int cooldownAfterMeasurement = 500; // Milliseconds to wait after a measurement
+const float sensorDistance = 325.0f;  // Millimeters
 const float maxSpeedKmH = 2;          // Speed limit in km/h
 const long measuringInterval = 2500;  // Maximum time for measurement (ms)
-const int flashTime = 100;            // Flash duration (ms)
+const int flashTime = 50;            // Flash duration (ms)
+const int waitBeforeFlash = 100;      // Wait time before flash (ms) to sync with the camera
 
 unsigned long lastSensor1Time = 0;
 unsigned long lastSensor2Time = 0;
@@ -32,7 +34,11 @@ void loop() {
   handleSerial();
 
   // Sensor 1 triggered
-  if (digitalRead(sensor1) == HIGH && (millis() - lastSensor1Time > debounceTime)) {
+  if (
+        digitalRead(sensor1) == HIGH 
+        && (millis() - lastSensor1Time > debounceTime) 
+        && (millis() - lastSensor2Time > cooldownAfterMeasurement)
+        ) {
     lastSensor1Time = millis();
     unsigned long timer1 = lastSensor1Time;
 
@@ -46,7 +52,7 @@ void loop() {
         speedInKmH = (sensorDistance / passingTime) * 3.6f;
         String speedStr = String(speedInKmH, 1);
 
-        if (speedInKmH > maxSpeedKmH) {
+        if ((speedInKmH > maxSpeedKmH) && (speedInKmH > 0.0f)) {
           Serial.println("3" + speedStr); // Trigger flash command
           waitForFlash();
         } else {
@@ -54,6 +60,7 @@ void loop() {
         }
         return;
       }
+      yield(); // Feed the watchdog
     }
 
     // Timeout, no valid measurement
@@ -80,11 +87,12 @@ void flashLED() {
 
 // Wait for confirmation to trigger the flash
 void waitForFlash() {
-  while (!Serial.available()) {
-    // Wait for "5" response
-  }
-  if (Serial.read() == '5') {
-    delay(400);
-    flashLED();
-  }
+    unsigned long startTime = millis();
+    while (!Serial.available() && millis() - startTime < 500) { // Wait up to 500ms
+        yield(); // Feed the watchdog
+    }
+    if (Serial.available() && Serial.read() == '5') {
+        delay(waitBeforeFlash);
+        flashLED();
+    }
 }

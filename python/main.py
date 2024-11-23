@@ -351,7 +351,7 @@ try:
             cam.grab()
         elif status.startswith('3') or cv2.waitKey(1) % 256 == 32:  # Auslösung
             print("ZU SCHNELL!")
-            speed = status[1:] if len(status) > 1 else "Manual Trigger"
+            speed = status[2:] if len(status) > 1 else "Manual Trigger"
 
             if disableFlash != 1:
                 arduino.write(b'5')

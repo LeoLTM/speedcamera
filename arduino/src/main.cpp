@@ -11,6 +11,7 @@ const float maxSpeedKmH = 2;          // Speed limit in km/h
 const long measuringInterval = 2500;  // Maximum time for measurement (ms)
 const int flashTime = 50;            // Flash duration (ms)
 const int waitBeforeFlash = 100;      // Wait time before flash (ms) to sync with the camera
+const int maxSpeed = 200;             // Maximum speed in km/h
 
 unsigned long lastSensor1Time = 0;
 unsigned long lastSensor2Time = 0;
@@ -52,8 +53,8 @@ void loop() {
         speedInKmH = (sensorDistance / passingTime) * 3.6f;
         String speedStr = String(speedInKmH, 1);
 
-        if ((speedInKmH > maxSpeedKmH) && (speedInKmH > 0.0f)) {
-          Serial.println("3" + speedStr); // Trigger flash command
+        if ((speedInKmH > maxSpeedKmH) && (speedInKmH > 0.0f) && (speedInKmH < maxSpeed)) {
+          Serial.println("3|" + speedStr); // Trigger flash command
           waitForFlash();
         } else {
           Serial.println("2"); // No flash needed

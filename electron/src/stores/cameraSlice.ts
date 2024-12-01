@@ -1,10 +1,14 @@
+import { RefObject } from 'react';
+import Webcam from 'react-webcam';
 import { StateCreator } from 'zustand';
 
 export interface CameraSlice {
     availableCameras: MediaDeviceInfo[];
     selectedCamera: MediaDeviceInfo | null;
+    selectedCameraRef: RefObject<Webcam> | null;
     setAvailableCameras: (cameras: MediaDeviceInfo[]) => void;
     setSelectedCamera: (camera: MediaDeviceInfo | undefined) => void;
+    setSelectedCameraRef: (camera: RefObject<Webcam> | null) => void;
 }
 
 export const createCameraSlice: StateCreator<
@@ -15,6 +19,7 @@ export const createCameraSlice: StateCreator<
 > = (set) => ({
     availableCameras: [],
     selectedCamera: null,
+    selectedCameraRef: { current: null },
     setAvailableCameras: (cameras: MediaDeviceInfo[]) => {
         set({ availableCameras: cameras });
     },
@@ -25,4 +30,7 @@ export const createCameraSlice: StateCreator<
         }
         set({ selectedCamera: camera });
     },
+    setSelectedCameraRef: (camera: RefObject<Webcam> | null) => {
+        set({ selectedCameraRef: camera });
+    }
 })

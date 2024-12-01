@@ -7,10 +7,12 @@ import {
     SelectValue,
   } from "@/components/ui/select"
 import { useStore } from '@/stores/useStore';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 
 export default function CameraSelector() {
 
-    const { availableCameras, selectedCamera } = useStore();
+    const { availableCameras, selectedCamera, selectedCameraRef } = useStore();
     const { setAvailableCameras, setSelectedCamera } = useStore();
 
     function getAvailableCameras(): Promise<MediaDeviceInfo[]> {
@@ -26,7 +28,7 @@ export default function CameraSelector() {
         const cameras = getAvailableCameras();
         cameras.then(cameras => {
             console.log("Available cameras: ", cameras);
-            setAvailableCameras(cameras);
+            setAvailableCameras(cameras);        
         });
         return () => {
             console.log("CameraSelector unmounted");
@@ -35,11 +37,29 @@ export default function CameraSelector() {
 
     return (
         <div>
+            {   (selectedCamera && selectedCameraRef) &&
+                <Button
+                    onClick={() => {
+                        console.log("Taking picture...");
+                        const imgEncoded: string | null | undefined = selectedCameraRef.current?.getScreenshot();
+                        console.log(`${selectedCameraRef.current}`)
+                        if(!imgEncoded) {
+                            console.error("Error taking picture");
+                            return;
+                        }
+                        window.camera.savePicture(imgEncoded);
+
+                    }}
+                >
+                    Take Picture
+                </Button>
+            }
             <Select 
                 onValueChange={
                     (c) => {
                         const camera: MediaDeviceInfo | undefined = availableCameras.find(camera => camera.deviceId === c);
-                        setSelectedCamera(camera)
+                        setSelectedCamera(camera);
+                        toast("Selected camera: " + camera?.label);
                     }
                 }>
             <SelectTrigger className="w-[360px]">

@@ -24,16 +24,12 @@ export default function CameraSelector() {
     }
 
     useEffect(() => {
-        console.log("CameraSelector mounted");
         console.log("Getting available cameras...");
         const cameras = getAvailableCameras();
         cameras.then(cameras => {
             console.log("Available cameras: ", cameras);
             setAvailableCameras(cameras);        
         });
-        return () => {
-            console.log("CameraSelector unmounted");
-        };
     }, []);
 
     return (
@@ -82,6 +78,7 @@ export default function CameraSelector() {
                     });
                 }}
             >
+                Refresh Cameras
                 <RefreshCcw />
             </Button>
         </div>

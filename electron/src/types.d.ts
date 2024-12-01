@@ -4,6 +4,20 @@
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
+// Custom namespace for serial port because
+// the .d.ts file does not allow regular "import" statements
+declare namespace SerialPort {
+    interface PortInfo {
+        path: string;
+        manufacturer: string | undefined;
+        serialNumber: string | undefined;
+        pnpId: string | undefined;
+        locationId: string | undefined;
+        productId: string | undefined;
+        vendorId: string | undefined;
+    }
+  }
+
 // Preload types
 interface ThemeModeContext {
     toggle: () => Promise<boolean>;
@@ -18,6 +32,10 @@ interface ElectronWindow {
     close: () => Promise<void>;
 }
 
+interface SerialContext {
+    listPorts: () => Promise<SerialPort.PortInfo[]>;
+}
+
 interface CameraContext {
     savePicture: (imgEncoded: string) => Promise<void>;
 }
@@ -26,4 +44,5 @@ declare interface Window {
     themeMode: ThemeModeContext;
     electronWindow: ElectronWindow;
     camera: CameraContext;
+    serial: SerialContext;
 }

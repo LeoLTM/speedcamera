@@ -3,6 +3,7 @@ import ToggleTheme from "@/components/ToggleTheme";
 import LangToggle from "@/components/LangToggle";
 import CameraComponent from "@/components/CameraComponent";
 import CameraSelector from "@/components/CameraSelector";
+import BoardSelector from "@/components/BoardSelector";
 
 
 export default function HomePage() {
@@ -14,6 +15,7 @@ export default function HomePage() {
                 </h1>
                 <ToggleTheme />
                 <CameraSelector />
+                <BoardSelector />
                 <CameraComponent />
             </div>
         </>

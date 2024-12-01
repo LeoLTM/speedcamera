@@ -18,7 +18,12 @@ interface ElectronWindow {
     close: () => Promise<void>;
 }
 
+interface CameraContext {
+    savePicture: (imgEncoded: string) => Promise<void>;
+}
+
 declare interface Window {
     themeMode: ThemeModeContext;
     electronWindow: ElectronWindow;
+    camera: CameraContext;
 }

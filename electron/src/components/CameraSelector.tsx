@@ -9,6 +9,7 @@ import {
 import { useStore } from '@/stores/useStore';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { RefreshCcw } from 'lucide-react';
 
 export default function CameraSelector() {
 
@@ -71,6 +72,18 @@ export default function CameraSelector() {
                 ))}
             </SelectContent>
             </Select>
+            <Button
+                onClick={() => {
+                    console.log("Refreshing cameras...");
+                    const cameras = getAvailableCameras();
+                    cameras.then(cameras => {
+                        console.log("Available cameras: ", cameras);
+                        setAvailableCameras(cameras);        
+                    });
+                }}
+            >
+                <RefreshCcw />
+            </Button>
         </div>
     )
 }

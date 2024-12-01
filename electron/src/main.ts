@@ -12,7 +12,7 @@ function createWindow() {
         width: 800,
         height: 600,
         webPreferences: {
-            devTools: inDevelopment,
+            devTools: true,
             contextIsolation: true,
             nodeIntegration: true,
             nodeIntegrationInSubFrames: false,
@@ -30,6 +30,7 @@ function createWindow() {
             path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)
         );
     }
+    inDevelopment ? mainWindow.webContents.openDevTools() : null;
 }
 
 app.whenReady().then(createWindow);

@@ -14,7 +14,7 @@ export function addSerialEventListeners() {
             throw error;
         }
     });
-    ipcMain.handle(SERIAL_OPEN_PORT, (event, portPath: string) => {
+    ipcMain.handle(SERIAL_OPEN_PORT, (event, portPath: string): boolean => {
         console.log(`Opening serial port: ${portPath}`);
         const portOptions = {
             baudRate: 115200,
@@ -26,16 +26,19 @@ export function addSerialEventListeners() {
             serialPort.open((error) => {
                 if (error) {
                     console.error("Error opening serial port: ", error);
-                    throw error;
+                    return false;
                 }
             });
             serialPort.on("data", (data) => {
                 console.log(`[${portPath}] Data received: `, data);
-            })
-            return serialPort;
+            });
+            serialPort.on("error", (error) => {
+                console.error(`[${portPath}] Error: `, error);
+            });
+            return true;
         } catch (error) {
             console.error("Error opening serial port: ", error);
-            throw error;
+            return false;
         }
     });
 }

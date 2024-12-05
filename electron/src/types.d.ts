@@ -34,6 +34,7 @@ interface ElectronWindow {
 
 interface SerialContext {
     listPorts: () => Promise<SerialPort.PortInfo[]>;
+    openPort: (portPath: string) => Promise<boolean>;
 }
 
 interface CameraContext {

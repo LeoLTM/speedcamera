@@ -33,6 +33,19 @@ export default function BoardSelector() {
         return ports;
     }
 
+    async function connectToBoard(portPath: string) {
+        console.log("Connecting to board: ", portPath);
+        try {
+            if(await window.serial.openPort(portPath)) {
+                console.log("Connected to board: ", portPath);
+                toast("Connected to board: " + portPath);
+            }
+        } catch (e) {
+            console.error("Failed to connect to board: ", e);
+            toast("Failed to connect to board: " + portPath);
+        }
+    }
+
     return (
         <div>
             <Select
@@ -62,8 +75,12 @@ export default function BoardSelector() {
                 <RefreshCcw />
             </Button>
             <Button
-                onClick={() => {
-                    // TODO: Connect to selected board         
+                onClick={async () => {
+                    if (!selectedPort) {
+                        toast("Please select a port first.");
+                        return;
+                    }
+                    await connectToBoard(selectedPort);
                 }}
                 disabled={!selectedPort}
             >

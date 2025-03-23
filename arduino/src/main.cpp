@@ -8,7 +8,7 @@ const int flashPin = 13; // GPIO 13, D7
 const int debounceTime = 1000;           // Milliseconds for debounce per sensor
 const int cooldownAfterMeasurement = 500; // Milliseconds to wait after a measurement
 const float sensorDistance = 325.0f;  // Millimeters
-const float maxSpeedKmH = 2;          // Speed limit in km/h
+      float maxSpeedKmH = 2;          // Speed limit in km/h
 const long measuringInterval = 2500;  // Maximum time for measurement (ms)
 const int flashTime = 50;            // Flash duration (ms)
 const int waitBeforeFlash = 100;      // Wait time before flash (ms) to sync with the camera
@@ -24,26 +24,11 @@ String inputString = "";              // A string to hold the incoming data
 
 void handleSerial();
 void decodeJson(String inputString);
+void handleCommand(String command, JsonDocument doc);
 void sendJsonStatus(String status);
+void sendJsonStatus(String status, float value);
 void flashLED();
 void waitForFlash();
-
-// Meaning of command numbers:
-// 0: Idle
-// 1: Start measurement
-// 2: No flash needed
-// 3: Flash needed
-// 5: Trigger flash
-
-// Meaning of JSON status:
-// measuring: Start measurement
-// legal: No flash needed
-// speeding: Flash needed
-// timeout: No valid measurement
-// jsonError: JSON parsing error
-
-// Meaning of JSON command:
-// flash: Trigger flash
 
 void setup() {
   Serial.begin(115200);
@@ -81,10 +66,10 @@ void loop() {
         String speedStr = String(speedInKmH, 1);
 
         if ((speedInKmH > maxSpeedKmH) && (speedInKmH > 0.0f) && (speedInKmH < maxSpeed)) {
-          sendJsonStatus("speeding"); // Trigger flash command
+          sendJsonStatus("speeding", speedInKmH); // Trigger flash command
           waitForFlash();
         } else {
-          sendJsonStatus("legal"); // No flash needed
+          sendJsonStatus("legal", speedInKmH); // No flash needed
         }
         return;
       }
@@ -112,7 +97,7 @@ void handleSerial() {
 
 void decodeJson(String inputString) {
   // Parse JSON
-  DynamicJsonDocument doc(1024);
+  JsonDocument doc;
   DeserializationError error = deserializeJson(doc, inputString);
 
   // Check for errors
@@ -122,26 +107,51 @@ void decodeJson(String inputString) {
     Serial.println(error.c_str());
     return;
   }
-
   String command = doc["command"];
 
   // Handle the command
-  if (command == "flash") {
-    delay(waitBeforeFlash);
-    flashLED();
-  }
+  handleCommand(command, doc);
   
   // Clear the string
   inputString = "";
   stringComplete = false;
 }
 
+void handleCommand(String command, JsonDocument doc) {
+  if (command == "flash") {
+    delay(waitBeforeFlash);
+    flashLED();
+  } else if(command == "setMaxSpeed") {
+    maxSpeedKmH = doc["value"];
+    sendJsonStatus("config", maxSpeedKmH);
+  }
+}
+
 void sendJsonStatus(String status) {
-  DynamicJsonDocument doc(1024);
+  JsonDocument doc;
   doc["status"] = status;
   String output;
   serializeJson(doc, output);
-  Serial.println(output);
+  // Add a newline to the end of the message
+  output += "\n";
+  
+  // Use a single write operation for the entire message
+  Serial.write(output.c_str(), output.length());
+  Serial.flush();
+}
+
+void sendJsonStatus(String status, float value) {
+  JsonDocument doc;
+  doc["status"] = status;
+  doc["value"] = round(value * 10) / 10.0;
+  String output;
+  serializeJson(doc, output);
+  // Add a newline to the end of the message
+  output += "\n";
+  
+  // Use a single write operation for the entire message
+  Serial.write(output.c_str(), output.length());
+  Serial.flush();
 }
 
 // Trigger the flash
@@ -167,3 +177,22 @@ void waitForFlash() {
   }
   // Note: The actual flash trigger now happens in decodeJson when command="flash"
 }
+
+// Meaning of command numbers:
+// 0: Idle
+// 1: Start measurement
+// 2: No flash needed
+// 3: Flash needed
+// 5: Trigger flash
+
+// Meaning of JSON status:
+// measuring: Start measurement
+// legal: No flash needed
+// speeding: Flash needed
+// timeout: No valid measurement
+// jsonError: JSON parsing error
+// config: Configuration received
+
+// Meaning of JSON command:
+// flash: Trigger flash
+// setMaxSpeed: Set maximum speed limit

@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow } from "electron";
 import { SERIAL_CLOSE_PORT, SERIAL_LIST_PORTS, SERIAL_ON_STATUS, SERIAL_OPEN_PORT, SERIAL_SEND_COMMAND } from "./serial-channels";
-import { SerialPort, SerialPortOpenOptions } from "serialport";
+import { SerialPort, ReadlineParser } from "serialport";
 
 let ESP32: SerialPort | null = null;
 
@@ -25,13 +25,14 @@ export function addSerialEventListeners(mainWindow: BrowserWindow) {
         };
         try {
             const serialPort = new SerialPort(portOptions);
+            const parser = serialPort.pipe(new ReadlineParser({ delimiter: "\n" }));
             serialPort.open((error) => {
                 if (error) {
                     console.error("Error opening serial port: ", error);
                     return false;
                 }
             });
-            serialPort.on("data", (data) => {
+            parser.on("data", (data) => {
                 console.log(`[${portPath}] Data received: `, data.toString());
                 mainWindow.webContents.send(SERIAL_ON_STATUS, data.toString());
             });

@@ -9,12 +9,13 @@ import {
     CardHeader,
     CardTitle,
   } from "@/components/ui/card"
-import { last } from "@tanstack/react-router/dist/esm/utils";
-import { Button } from "./ui/button";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input"
 import { Status, StatusMessage } from "@/types/status";
+import { SerialCommand, SerialCommands } from "@/types/commands";
   
 
-export default function MeasurementData() {
+export default function Measurements() {
 
     const { lastMeasurement, maxSpeed } = useStore();
     const { setLastMeasurement, setMaxSpeed } = useStore();
@@ -37,7 +38,22 @@ export default function MeasurementData() {
                     break;
             }
         })
-    })
+    });
+
+    function handleSetMaxSpeed(maxSpeed: number) {
+        // Check if maxSpeed is a number and between 1 and 199
+        if(isNaN(maxSpeed) || maxSpeed < 1 || maxSpeed > 199) {
+            toast("Max speed must be a number between 1 and 199");
+            return;
+        }
+        const serialCommand: SerialCommand = {
+            command: SerialCommands.SET_MAX_SPEED,
+            value: maxSpeed,
+        };
+        window.serial.sendCommand(JSON.stringify(serialCommand));
+        setMaxSpeed(maxSpeed);
+    }
+
 
     return (
         <>
@@ -64,6 +80,7 @@ export default function MeasurementData() {
                 >
                     Generate Measurement
                 </Button>
+                <Input type="number" defaultValue={maxSpeed} min={1} max={199} onChange={(v) => handleSetMaxSpeed(Number(v.target.value))} />
             </CardContent>
         </Card>
         </>

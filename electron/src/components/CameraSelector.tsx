@@ -33,24 +33,7 @@ export default function CameraSelector() {
     }, []);
 
     return (
-        <div>
-            {   (selectedCamera && selectedCameraRef) &&
-                <Button
-                    onClick={() => {
-                        console.log("Taking picture...");
-                        const imgEncoded: string | null | undefined = selectedCameraRef.current?.getScreenshot();
-                        console.log(`${selectedCameraRef.current}`)
-                        if(!imgEncoded) {
-                            console.error("Error taking picture");
-                            return;
-                        }
-                        window.camera.savePicture(imgEncoded);
-
-                    }}
-                >
-                    Take Picture
-                </Button>
-            }
+        <div className='flex flex-col gap-2'>
             <Select 
                 onValueChange={
                     (c) => {
@@ -68,19 +51,40 @@ export default function CameraSelector() {
                 ))}
             </SelectContent>
             </Select>
-            <Button
-                onClick={() => {
-                    console.log("Refreshing cameras...");
-                    const cameras = getAvailableCameras();
-                    cameras.then(cameras => {
-                        console.log("Available cameras: ", cameras);
-                        setAvailableCameras(cameras);        
-                    });
-                }}
-            >
-                Refresh Cameras
-                <RefreshCcw />
-            </Button>
+
+            <div className='flex flex-row gap-1'>
+                <Button
+                    onClick={() => {
+                        console.log("Refreshing cameras...");
+                        const cameras = getAvailableCameras();
+                        cameras.then(cameras => {
+                            console.log("Available cameras: ", cameras);
+                            setAvailableCameras(cameras);        
+                        });
+                    }}
+                >
+                    Refresh Cameras
+                    <RefreshCcw />
+                </Button>
+                {   (selectedCamera && selectedCameraRef) &&
+                    <Button
+                        disabled={!selectedCameraRef.current}
+                        onClick={() => {
+                            console.log("Taking picture...");
+                            const imgEncoded: string | null | undefined = selectedCameraRef.current?.getScreenshot();
+                            console.log(`${selectedCameraRef.current}`)
+                            if(!imgEncoded) {
+                                console.error("Error taking picture");
+                                return;
+                            }
+                            window.camera.savePicture(imgEncoded);
+
+                        }}
+                    >
+                        Take Picture
+                    </Button>
+                }
+            </div>
         </div>
     )
 }

@@ -97,54 +97,56 @@ export default function BoardSelector() {
                     ))}
                 </SelectContent>                
             </Select>
-            <Button
-                onClick={async () => {
-                    const boards = await getAvailableESPDevices();
-                    setAvailablePorts(boards);
-                }}
-            >
-                Refresh Boards
-                <RefreshCcw />
-            </Button>
-            { !initializedPort &&
+            <div className='flex flex-row gap-1'>
                 <Button
                     onClick={async () => {
-                        if (!selectedPort) {
-                            toast("Please select a port first.");
+                        const boards = await getAvailableESPDevices();
+                        setAvailablePorts(boards);
+                    }}
+                >
+                    Refresh Ports
+                    <RefreshCcw />
+                </Button>
+                { !initializedPort &&
+                    <Button
+                        onClick={async () => {
+                            if (!selectedPort) {
+                                toast("Please select a port first.");
+                                return;
+                            }
+                            await connectToBoard(selectedPort);
+                        }}
+                        disabled={!selectedPort}
+                    >
+                        Connect
+                    </Button>
+                }
+                {
+                    initializedPort &&
+                    <Button
+                        onClick={async () => {
+                            setInitializedPort(undefined);
+                            disconnectFromBoard();
+                            toast("Disconnected from board.");
+                        }}
+                    >
+                        Disconnect
+                    </Button>
+                }
+
+                <Button
+                    onClick={async () => {
+                        if (!initializedPort) {
+                            toast("Please connect to a board first.");
                             return;
                         }
-                        await connectToBoard(selectedPort);
+                        sendCommand(SerialCommands.FLASH);
                     }}
                     disabled={!selectedPort}
                 >
-                    Connect
+                    Test Flash
                 </Button>
-            }
-            {
-                initializedPort &&
-                <Button
-                    onClick={async () => {
-                        setInitializedPort(undefined);
-                        disconnectFromBoard();
-                        toast("Disconnected from board.");
-                    }}
-                >
-                    Disconnect
-                </Button>
-            }
-
-            <Button
-                onClick={async () => {
-                    if (!initializedPort) {
-                        toast("Please connect to a board first.");
-                        return;
-                    }
-                    sendCommand(SerialCommands.FLASH);
-                }}
-                disabled={!selectedPort}
-            >
-                Test Flash
-            </Button>
+            </div>
         </div>
     )
 }

@@ -6,8 +6,10 @@ export enum Status {
     SPEEDING = "speeding",
     TIMEOUT = "timeout",
     JSON_ERROR = "jsonError",
+    CONFIG = "config",
 };
 
 export type StatusMessage = {
     status: Status;
+    value?: number;
 };

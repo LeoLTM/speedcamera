@@ -2,8 +2,10 @@
 
 export enum SerialCommands {
     FLASH = "flash",
+    SET_MAX_SPEED = "set_max_speed",
 };
 
 export type SerialCommand = {
     command: SerialCommands;
+    value?: number;
 };

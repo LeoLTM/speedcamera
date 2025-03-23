@@ -10,6 +10,8 @@ import { useStore } from '@/stores/useStore';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { RefreshCcw } from 'lucide-react';
+import Webcam from 'react-webcam';
+import { SerialCommand, SerialCommands } from '@/types/commands';
 
 export default function CameraSelector() {
 
@@ -21,7 +23,32 @@ export default function CameraSelector() {
             .then(devices => {
                 return devices.filter(device => device.kind === "videoinput");
             });
+    };
+
+    function refreshCameras() {
+        console.log("Refreshing cameras...");
+        const cameras = getAvailableCameras();
+        cameras.then(cameras => {
+            console.log("Available cameras: ", cameras);
+            setAvailableCameras(cameras);        
+        });
     }
+
+    function takePicture(selectedCameraRef: React.RefObject<Webcam>) {
+        console.log("Taking picture...");
+        const imgEncoded: string | null | undefined = selectedCameraRef.current?.getScreenshot();
+        const serialCommand: SerialCommand = {
+            command: SerialCommands.FLASH,
+        };
+        window.serial.sendCommand(JSON.stringify(serialCommand));
+        console.log(`${selectedCameraRef.current}`)
+        if(!imgEncoded) {
+            console.error("Error taking picture");
+            return;
+        }
+        window.camera.savePicture(imgEncoded);
+    }
+
 
     useEffect(() => {
         console.log("Getting available cameras...");
@@ -54,14 +81,7 @@ export default function CameraSelector() {
 
             <div className='flex flex-row gap-1'>
                 <Button
-                    onClick={() => {
-                        console.log("Refreshing cameras...");
-                        const cameras = getAvailableCameras();
-                        cameras.then(cameras => {
-                            console.log("Available cameras: ", cameras);
-                            setAvailableCameras(cameras);        
-                        });
-                    }}
+                    onClick={refreshCameras}
                 >
                     Refresh Cameras
                     <RefreshCcw />
@@ -69,17 +89,7 @@ export default function CameraSelector() {
                 {   (selectedCamera && selectedCameraRef) &&
                     <Button
                         disabled={!selectedCameraRef.current}
-                        onClick={() => {
-                            console.log("Taking picture...");
-                            const imgEncoded: string | null | undefined = selectedCameraRef.current?.getScreenshot();
-                            console.log(`${selectedCameraRef.current}`)
-                            if(!imgEncoded) {
-                                console.error("Error taking picture");
-                                return;
-                            }
-                            window.camera.savePicture(imgEncoded);
-
-                        }}
+                        onClick={() => takePicture(selectedCameraRef)}
                     >
                         Take Picture
                     </Button>

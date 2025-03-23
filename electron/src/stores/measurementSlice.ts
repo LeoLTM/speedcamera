@@ -1,3 +1,4 @@
+import { playBeepSound } from '@/helpers/sound/audio';
 import { StateCreator } from 'zustand';
 
 export interface MeasurementSlice {
@@ -12,10 +13,14 @@ export const createMeasurementSlice: StateCreator<
     [],
     [],
     MeasurementSlice
-> = (set) => ({
+> = (set, get) => ({
     lastMeasurement: null,
     maxSpeed: 2,
     setLastMeasurement: (measurement: number) => {
+        const { maxSpeed } = get();
+        if (measurement > maxSpeed) {
+            playBeepSound();
+        }
         set({ lastMeasurement: measurement });
     },
     setMaxSpeed: (speed: number) => {

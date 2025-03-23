@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ArduinoJson.h>
 
 const int sensor1 = 16; // GPIO 16, D0
 const int sensor2 = 12; // GPIO 12, D6
@@ -18,9 +19,31 @@ unsigned long lastSensor2Time = 0;
 float speedInKmH = 0.0f;
 bool hasFlashed = false;
 
+bool stringComplete = false;          // Whether the string is complete
+String inputString = "";              // A string to hold the incoming data
+
 void handleSerial();
+void decodeJson(String inputString);
+void sendJsonStatus(String status);
 void flashLED();
 void waitForFlash();
+
+// Meaning of command numbers:
+// 0: Idle
+// 1: Start measurement
+// 2: No flash needed
+// 3: Flash needed
+// 5: Trigger flash
+
+// Meaning of JSON status:
+// measuring: Start measurement
+// legal: No flash needed
+// speeding: Flash needed
+// timeout: No valid measurement
+// jsonError: JSON parsing error
+
+// Meaning of JSON command:
+// flash: Trigger flash
 
 void setup() {
   Serial.begin(115200);
@@ -31,8 +54,12 @@ void setup() {
 }
 
 void loop() {
-  // Check for incoming serial commands
+  // Update serial input
   handleSerial();
+  // Check for JSON command
+  if (stringComplete) {
+    decodeJson(inputString);
+  }
 
   // Sensor 1 triggered
   if (
@@ -43,7 +70,7 @@ void loop() {
     lastSensor1Time = millis();
     unsigned long timer1 = lastSensor1Time;
 
-    Serial.println("1"); // Start measurement
+    sendJsonStatus("measuring"); // Start measurement
 
     while (millis() - timer1 < measuringInterval) {
       // Check if Sensor 2 is triggered
@@ -54,10 +81,10 @@ void loop() {
         String speedStr = String(speedInKmH, 1);
 
         if ((speedInKmH > maxSpeedKmH) && (speedInKmH > 0.0f) && (speedInKmH < maxSpeed)) {
-          Serial.println("3|" + speedStr); // Trigger flash command
+          sendJsonStatus("speeding"); // Trigger flash command
           waitForFlash();
         } else {
-          Serial.println("2"); // No flash needed
+          sendJsonStatus("legal"); // No flash needed
         }
         return;
       }
@@ -65,18 +92,56 @@ void loop() {
     }
 
     // Timeout, no valid measurement
-    Serial.println("0"); // Back to idle
+    sendJsonStatus("timeout"); // Back to idle
   }
 }
 
-// Handle incoming serial commands
 void handleSerial() {
-  if (Serial.available() > 0) {
-    char command = Serial.read();
-    if (command == '5') {
-      flashLED();
+  while(Serial.available()) {
+    // get the new byte:
+    char inChar = (char)Serial.read();
+    // add it to the inputString:
+    inputString += inChar;
+    // if the incoming character is a newline, set a flag
+    // so the main loop can do something about it:
+    if (inChar == '}') {
+      stringComplete = true;
     }
   }
+}
+
+void decodeJson(String inputString) {
+  // Parse JSON
+  DynamicJsonDocument doc(1024);
+  DeserializationError error = deserializeJson(doc, inputString);
+
+  // Check for errors
+  if (error) {
+    sendJsonStatus("jsonError");
+    Serial.print(F("deserializeJson() failed: "));
+    Serial.println(error.c_str());
+    return;
+  }
+
+  String command = doc["command"];
+
+  // Handle the command
+  if (command == "flash") {
+    delay(waitBeforeFlash);
+    flashLED();
+  }
+  
+  // Clear the string
+  inputString = "";
+  stringComplete = false;
+}
+
+void sendJsonStatus(String status) {
+  DynamicJsonDocument doc(1024);
+  doc["status"] = status;
+  String output;
+  serializeJson(doc, output);
+  Serial.println(output);
 }
 
 // Trigger the flash
@@ -88,12 +153,17 @@ void flashLED() {
 
 // Wait for confirmation to trigger the flash
 void waitForFlash() {
-    unsigned long startTime = millis();
-    while (!Serial.available() && millis() - startTime < 500) { // Wait up to 500ms
-        yield(); // Feed the watchdog
+  unsigned long startTime = millis();
+  // Wait for JSON response up to 500ms
+  while (millis() - startTime < 500) { 
+    handleSerial();
+    
+    // Check if we received a complete JSON message
+    if (stringComplete) {
+      decodeJson(inputString);
+      break;
     }
-    if (Serial.available() && Serial.read() == '5') {
-        delay(waitBeforeFlash);
-        flashLED();
-    }
+    yield(); // Feed the watchdog
+  }
+  // Note: The actual flash trigger now happens in decodeJson when command="flash"
 }

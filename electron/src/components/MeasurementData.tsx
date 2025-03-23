@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useStore } from "@/stores/useStore";
 import { toast } from "sonner";
 import {
@@ -11,12 +11,33 @@ import {
   } from "@/components/ui/card"
 import { last } from "@tanstack/react-router/dist/esm/utils";
 import { Button } from "./ui/button";
+import { Status, StatusMessage } from "@/types/status";
   
 
 export default function MeasurementData() {
 
     const { lastMeasurement, maxSpeed } = useStore();
     const { setLastMeasurement, setMaxSpeed } = useStore();
+
+    useEffect(() => {
+        window.serial.onStatus((jsonStatus) => {
+            const status: StatusMessage = JSON.parse(jsonStatus);
+            console.log(`Received status: ${status.status}`);
+            switch(status.status) {
+                case Status.LEGAL:
+                    if(status.value) setLastMeasurement(status.value);
+                    break;
+                case Status.SPEEDING:
+                    if(status.value) setLastMeasurement(status.value);
+                    break;
+                case Status.CONFIG:
+                    if(status.value) toast(`Updated max speed to ${status.value} km/h`);
+                    break;
+                default:
+                    break;
+            }
+        })
+    })
 
     return (
         <>

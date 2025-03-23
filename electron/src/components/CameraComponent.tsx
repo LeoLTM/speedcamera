@@ -15,7 +15,7 @@ export default function CameraComponent() {
     }, [setSelectedCameraRef]);
 
     return (
-        <div>
+        <div className='w-4/5 h-4/5'>
             <Webcam
                 audio={false}
                 ref={webcamRef}

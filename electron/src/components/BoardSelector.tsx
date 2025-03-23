@@ -11,11 +11,12 @@ import {
   } from "@/components/ui/select"
 import { RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
+import { SerialCommand, SerialCommands } from "@/types/commands";
 
 export default function BoardSelector() {
 
-    const { availablePorts, selectedPort } = useStore();
-    const { setAvailablePorts, setSelectedPort } = useStore();
+    const { availablePorts, selectedPort, initializedPort } = useStore();
+    const { setAvailablePorts, setSelectedPort, setInitializedPort } = useStore();
 
     useEffect(() => {
         console.log("Getting available boards...");
@@ -39,11 +40,42 @@ export default function BoardSelector() {
             if(await window.serial.openPort(portPath)) {
                 console.log("Connected to board: ", portPath);
                 toast("Connected to board: " + portPath);
+                setInitializedPort(portPath);
+            } else {
+                console.error("Failed to connect to board: ", portPath);
+                toast("Failed to connect to board: " + portPath);
+                setInitializedPort(undefined);
             }
         } catch (e) {
             console.error("Failed to connect to board: ", e);
             toast("Failed to connect to board: " + portPath);
+            setInitializedPort(undefined);
         }
+    }
+
+    function disconnectFromBoard() {
+        console.log("Disconnecting from board...");
+        try {
+            if(window.serial.closePort()) {
+                console.log("Disconnected from board.");
+                toast("Disconnected from board.");
+                setInitializedPort(undefined);
+            } else {
+                console.error("Failed to disconnect from board.");
+                toast("Failed to disconnect from board.");
+            }
+        } catch (e) {
+            console.error("Failed to disconnect from board: ", e);
+            toast("Failed to disconnect from board.");
+        }
+    }
+
+    function sendCommand(command: SerialCommands) {
+        console.log("Sending command: ", command);
+        const serialCommand: SerialCommand = {
+            command: command
+        };
+        window.serial.sendCommand(JSON.stringify(serialCommand));
     }
 
     return (
@@ -74,17 +106,44 @@ export default function BoardSelector() {
                 Refresh Boards
                 <RefreshCcw />
             </Button>
+            { !initializedPort &&
+                <Button
+                    onClick={async () => {
+                        if (!selectedPort) {
+                            toast("Please select a port first.");
+                            return;
+                        }
+                        await connectToBoard(selectedPort);
+                    }}
+                    disabled={!selectedPort}
+                >
+                    Connect
+                </Button>
+            }
+            {
+                initializedPort &&
+                <Button
+                    onClick={async () => {
+                        setInitializedPort(undefined);
+                        disconnectFromBoard();
+                        toast("Disconnected from board.");
+                    }}
+                >
+                    Disconnect
+                </Button>
+            }
+
             <Button
                 onClick={async () => {
-                    if (!selectedPort) {
-                        toast("Please select a port first.");
+                    if (!initializedPort) {
+                        toast("Please connect to a board first.");
                         return;
                     }
-                    await connectToBoard(selectedPort);
+                    sendCommand(SerialCommands.FLASH);
                 }}
                 disabled={!selectedPort}
             >
-                Connect
+                Test Flash
             </Button>
         </div>
     )

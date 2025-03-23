@@ -8,5 +8,5 @@ export default function registerListeners(mainWindow: BrowserWindow) {
     addWindowEventListeners(mainWindow);
     addThemeEventListeners();
     addCameraEventListeners();
-    addSerialEventListeners();
+    addSerialEventListeners(mainWindow);
 }

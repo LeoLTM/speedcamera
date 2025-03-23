@@ -4,6 +4,8 @@ import LangToggle from "@/components/LangToggle";
 import CameraComponent from "@/components/CameraComponent";
 import CameraSelector from "@/components/CameraSelector";
 import BoardSelector from "@/components/BoardSelector";
+import MeasurementData from "@/components/MeasurementData";
+import Devices from "@/components/Devices";
 
 
 export default function HomePage() {
@@ -14,8 +16,11 @@ export default function HomePage() {
                     SpeedCamera App
                 </h1>
                 <ToggleTheme />
-                <CameraSelector />
-                <BoardSelector />
+                <div className="flex flex-row gap-2">
+                    <Devices />
+                    <MeasurementData />
+                </div>
+
                 <CameraComponent />
             </div>
         </>

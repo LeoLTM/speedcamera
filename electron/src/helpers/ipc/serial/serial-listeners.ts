@@ -48,15 +48,15 @@ export function addSerialEventListeners(mainWindow: BrowserWindow) {
         }
     });
     ipcMain.handle(SERIAL_SEND_COMMAND, (event, jsonCommand: string): void => {
-        console.log(`Sending command: ${JSON.parse(jsonCommand).command}`);
+        console.log(`Sending command: ${jsonCommand}`);
 
         // Check if serial port is open
         if (!ESP32) {
             console.error("Serial port not open");
             return;
         } else {
-            // Send command to ESP32
-            ESP32.write(jsonCommand, (error) => {
+            // Send command to ESP32 with newline delimiter
+            ESP32.write(jsonCommand + '\n', (error) => {
                 if (error) {
                     console.error("Error sending command: ", error);
                 }

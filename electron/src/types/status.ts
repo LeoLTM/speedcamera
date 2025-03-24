@@ -7,6 +7,7 @@ export enum Status {
     TIMEOUT = "timeout",
     JSON_ERROR = "jsonError",
     CONFIG = "config",
+    FLASH = "flash",
 };
 
 export type StatusMessage = {

@@ -15,7 +15,7 @@ import { SerialCommand, SerialCommands } from '@/types/commands';
 
 export default function CameraSelector() {
 
-    const { availableCameras, selectedCamera, selectedCameraRef } = useStore();
+    const { availableCameras, selectedCamera, selectedCameraRef, pictureDelay } = useStore();
     const { setAvailableCameras, setSelectedCamera } = useStore();
 
     function getAvailableCameras(): Promise<MediaDeviceInfo[]> {
@@ -34,14 +34,17 @@ export default function CameraSelector() {
         });
     }
 
-    function takePicture(selectedCameraRef: React.RefObject<Webcam>) {
+    async function takePicture(selectedCameraRef: React.RefObject<Webcam>, delay: number) {
         console.log("Taking picture...");
-        const imgEncoded: string | null | undefined = selectedCameraRef.current?.getScreenshot();
         const serialCommand: SerialCommand = {
             command: SerialCommands.FLASH,
         };
         window.serial.sendCommand(JSON.stringify(serialCommand));
-        console.log(`${selectedCameraRef.current}`)
+        
+        // Wait for the specified delay
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        const imgEncoded: string | null | undefined = selectedCameraRef.current?.getScreenshot();
         if(!imgEncoded) {
             console.error("Error taking picture");
             return;
@@ -62,6 +65,7 @@ export default function CameraSelector() {
     return (
         <div className='flex flex-col gap-2'>
             <Select 
+            defaultValue={selectedCamera?.deviceId}
                 onValueChange={
                     (c) => {
                         const camera: MediaDeviceInfo | undefined = availableCameras.find(camera => camera.deviceId === c);
@@ -89,7 +93,7 @@ export default function CameraSelector() {
                 {   (selectedCamera && selectedCameraRef) &&
                     <Button
                         disabled={!selectedCameraRef.current}
-                        onClick={() => takePicture(selectedCameraRef)}
+                        onClick={() => takePicture(selectedCameraRef, pictureDelay)}
                     >
                         Take Picture
                     </Button>

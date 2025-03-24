@@ -10,8 +10,8 @@ const int cooldownAfterMeasurement = 500; // Milliseconds to wait after a measur
 const float sensorDistance = 325.0f;  // Millimeters
       float maxSpeedKmH = 2;          // Speed limit in km/h
 const long measuringInterval = 2500;  // Maximum time for measurement (ms)
-const int flashTime = 50;            // Flash duration (ms)
-const int waitBeforeFlash = 100;      // Wait time before flash (ms) to sync with the camera
+      int flashTime = 50;            // Flash duration (ms)
+      int waitBeforeFlash = 100;      // Wait time before flash (ms) to sync with the camera
 const int maxSpeed = 200;             // Maximum speed in km/h
 
 unsigned long lastSensor1Time = 0;
@@ -143,6 +143,16 @@ void handleCommand(JsonDocument doc) {
     maxSpeedKmH = newMaxSpeedKmH;
     sendJsonStatus("config", maxSpeedKmH);
   }
+  if(command.equals("setFlashDelay")) {
+    int newFlashDelay = doc["value"].as<int>();
+    waitBeforeFlash = newFlashDelay;
+    sendJsonStatus("config", waitBeforeFlash);
+  }
+  if(command.equals("setFlashDuration")) {
+    int newFlashDuration = doc["value"].as<int>();
+    flashTime = newFlashDuration;
+    sendJsonStatus("config", flashTime);
+  }
   if (command.equals("flash")) {
     delay(waitBeforeFlash);
     flashLED();
@@ -232,3 +242,5 @@ void waitForFlash() {
 // Meaning of JSON command:
 // flash: Trigger flash
 // setMaxSpeed: Set maximum speed limit
+// setFlashDelay: Set delay before flash
+// setFlashDuration: Set flash duration

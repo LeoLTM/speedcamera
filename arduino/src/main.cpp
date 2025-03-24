@@ -24,9 +24,10 @@ String inputString = "";              // A string to hold the incoming data
 
 void handleSerial();
 void decodeJson(String inputString);
-void handleCommand(String command, JsonDocument doc);
+void handleCommand(JsonDocument doc);
 void sendJsonStatus(String status);
 void sendJsonStatus(String status, float value);
+void sendDebug(String message);
 void flashLED();
 void waitForFlash();
 
@@ -82,20 +83,38 @@ void loop() {
 }
 
 void handleSerial() {
+  // If we're receiving a new command when a previous one hasn't been processed
+  // reset the input string to avoid concatenation
+  if (Serial.available() > 0 && Serial.peek() == '{' && inputString.length() > 0) {
+    inputString = "";
+  }
+
+
   while(Serial.available()) {
     // get the new byte:
     char inChar = (char)Serial.read();
-    // add it to the inputString:
+
+    // if we see the start of a new JSON object and already have data
+    // clear the string to start fresh
+    if (inChar == '{' && inputString.length() > 0) {
+      inputString = "";
+    }
+
+    // Add the character to the input string
     inputString += inChar;
-    // if the incoming character is a newline, set a flag
-    // so the main loop can do something about it:
+
+    // if the incoming character is the end of a JSON object
     if (inChar == '}') {
       stringComplete = true;
+      break; // Exit to process this complete JSON object
     }
   }
 }
 
 void decodeJson(String inputString) {
+  // Clear any whitespace characters
+  inputString.trim();
+
   // Parse JSON
   JsonDocument doc;
   DeserializationError error = deserializeJson(doc, inputString);
@@ -110,20 +129,23 @@ void decodeJson(String inputString) {
   String command = doc["command"];
 
   // Handle the command
-  handleCommand(command, doc);
+  handleCommand(doc);
   
   // Clear the string
   inputString = "";
   stringComplete = false;
 }
 
-void handleCommand(String command, JsonDocument doc) {
-  if (command == "flash") {
+void handleCommand(JsonDocument doc) {
+  String command = doc["command"];
+  if(command.equals("setMaxSpeed")) {
+    float newMaxSpeedKmH = doc["value"].as<float>();
+    maxSpeedKmH = newMaxSpeedKmH;
+    sendJsonStatus("config", maxSpeedKmH);
+  }
+  if (command.equals("flash")) {
     delay(waitBeforeFlash);
     flashLED();
-  } else if(command == "setMaxSpeed") {
-    maxSpeedKmH = doc["value"];
-    sendJsonStatus("config", maxSpeedKmH);
   }
 }
 
@@ -154,8 +176,22 @@ void sendJsonStatus(String status, float value) {
   Serial.flush();
 }
 
+void sendDebug(String message) {
+  JsonDocument doc;
+  doc["debug"] = message;
+  String output;
+  serializeJson(doc, output);
+  // Add a newline to the end of the message
+  output += "\n";
+
+  // Use a single write operation for the entire message
+  Serial.write(output.c_str(), output.length());
+  Serial.flush();
+}
+
 // Trigger the flash
 void flashLED() {
+  sendJsonStatus("flash");
   digitalWrite(flashPin, HIGH);
   delay(flashTime);
   digitalWrite(flashPin, LOW);

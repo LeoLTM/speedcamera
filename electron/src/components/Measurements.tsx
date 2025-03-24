@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input"
 import { Status, StatusMessage } from "@/types/status";
 import { SerialCommand, SerialCommands } from "@/types/commands";
+import SettingsDialog from "./Settings/SettingsDialog";
   
 
 export default function Measurements() {
@@ -57,6 +58,9 @@ export default function Measurements() {
                 </Button>
                 <Input type="number" defaultValue={maxSpeed} min={1} max={199} onChange={(v) => handleSetMaxSpeed(Number(v.target.value))} />
             </CardContent>
+            <CardFooter>
+                <SettingsDialog />
+            </CardFooter>
         </Card>
         </>
     )

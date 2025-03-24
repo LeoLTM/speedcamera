@@ -38,6 +38,7 @@ interface SerialContext {
     closePort: () => boolean;
     sendCommand: (jsonCommand: string) => void;
     onStatus: (callback: (jsonStatus: string) => void) => void;
+    offStatus: (callback: (jsonStatus: string) => void) => void;
 }
 
 interface CameraContext {

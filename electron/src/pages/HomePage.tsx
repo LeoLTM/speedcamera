@@ -39,7 +39,7 @@ export default function HomePage() {
         return () => { 
             window.serial.offStatus(handleStatus);
         }
-    }, []);
+    }, [setLastMeasurement]);
 
     return (
         <>

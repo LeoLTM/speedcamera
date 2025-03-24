@@ -1,6 +1,8 @@
 import { playBeepSound } from '@/helpers/sound/audio';
 import { SerialCommand, SerialCommands } from '@/types/commands';
 import { StateCreator } from 'zustand';
+import { CameraSlice } from './cameraSlice';
+import Webcam from 'react-webcam';
 
 export interface MeasurementSlice {
     lastMeasurement: number | null;
@@ -9,8 +11,26 @@ export interface MeasurementSlice {
     setMaxSpeed: (speed: number) => void;
 }
 
+async function takePicture(selectedCameraRef: React.RefObject<Webcam>, delay: number) {
+    console.log("Taking picture...");
+    const serialCommand: SerialCommand = {
+        command: SerialCommands.FLASH,
+    };
+    window.serial.sendCommand(JSON.stringify(serialCommand));
+    
+    // Wait for the specified delay
+    await new Promise(resolve => setTimeout(resolve, delay));
+    
+    const imgEncoded: string | null | undefined = selectedCameraRef.current?.getScreenshot();
+    if(!imgEncoded) {
+        console.error("Error taking picture");
+        return;
+    }
+    window.camera.savePicture(imgEncoded);
+}
+
 export const createMeasurementSlice: StateCreator<
-    MeasurementSlice,
+    MeasurementSlice & CameraSlice,
     [],
     [],
     MeasurementSlice
@@ -19,12 +39,12 @@ export const createMeasurementSlice: StateCreator<
     maxSpeed: 2,
     setLastMeasurement: (measurement: number) => {
         const { maxSpeed } = get();
+        const { selectedCameraRef, pictureDelay } = get();
+        // Check if the measurement is higher than the max speed
+        // and send a flash command to the ESP32
         if (measurement > maxSpeed) {   
-            playBeepSound();
-            const serialCommand: SerialCommand = {
-                command: SerialCommands.FLASH,
-            };
-            window.serial.sendCommand(JSON.stringify(serialCommand));
+            // playBeepSound();
+            takePicture(selectedCameraRef!, pictureDelay);
         }
         set({ lastMeasurement: measurement });
     },

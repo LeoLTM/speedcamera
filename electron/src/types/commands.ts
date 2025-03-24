@@ -3,6 +3,8 @@
 export enum SerialCommands {
     FLASH = "flash",
     SET_MAX_SPEED = "setMaxSpeed",
+    SET_FLASH_DELAY = "setFlashDelay",
+    SET_FLASH_DURATION = "setFlashDuration",
 };
 
 export type SerialCommand = {

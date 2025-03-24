@@ -71,7 +71,6 @@ export default function BoardSelector() {
     }
 
     function sendCommand(command: SerialCommands) {
-        console.log("Sending command: ", command);
         const serialCommand: SerialCommand = {
             command: command
         };

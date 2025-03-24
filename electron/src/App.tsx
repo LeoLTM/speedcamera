@@ -21,8 +21,12 @@ export default function App() {
 
 const root = createRoot(document.getElementById("app")!);
 root.render(
-    <React.StrictMode>
+    // Strict mode is disabled because it mounts the app twice
+    // and causes dual flashes on the camera and other issues
+    // <React.StrictMode>
+    <>
         <App />
         <Toaster />
-    </React.StrictMode>
+    </>
+    // </React.StrictMode>
 );

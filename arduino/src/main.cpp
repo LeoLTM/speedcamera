@@ -61,18 +61,25 @@ void loop() {
     while (millis() - timer1 < measuringInterval) {
       // Check if Sensor 2 is triggered
       if (digitalRead(sensor2) == HIGH && (millis() - lastSensor2Time > debounceTime)) {
-        lastSensor2Time = millis();
-        float passingTime = lastSensor2Time - timer1; // Time in ms
-        speedInKmH = (sensorDistance / passingTime) * 3.6f;
-        String speedStr = String(speedInKmH, 1);
+        unsigned long sensor2TriggerTime = millis();
+        
+        // Only calculate speed if sensor2 was triggered AFTER sensor1 in this measurement cycle
+        if (sensor2TriggerTime > timer1) {
+          lastSensor2Time = sensor2TriggerTime;
+          float passingTime = lastSensor2Time - timer1; // Time in ms
+          speedInKmH = (sensorDistance / passingTime) * 3.6f;
+          String speedStr = String(speedInKmH, 1);
 
-        if ((speedInKmH > maxSpeedKmH) && (speedInKmH > 0.0f) && (speedInKmH < maxSpeed)) {
-          sendJsonStatus("speeding", speedInKmH); // Trigger flash command
-          waitForFlash();
-        } else {
-          sendJsonStatus("legal", speedInKmH); // No flash needed
+          if ((speedInKmH > maxSpeedKmH) && (speedInKmH > 0.0f) && (speedInKmH < maxSpeed)) {
+            sendJsonStatus("speeding", speedInKmH); // Trigger flash command
+            waitForFlash();
+          } else {
+            sendJsonStatus("legal", speedInKmH); // No flash needed
+          }
+          return;
         }
-        return;
+        // If sensor2 was triggered before sensor1, update lastSensor2Time for debouncing but don't calculate speed
+        lastSensor2Time = sensor2TriggerTime;
       }
       yield(); // Feed the watchdog
     }

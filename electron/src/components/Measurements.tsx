@@ -1,35 +1,20 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { useStore } from "@/stores/useStore";
-import { toast } from "sonner";
 import {
     Card,
     CardContent,
-    CardDescription,
     CardFooter,
     CardHeader,
     CardTitle,
   } from "@/components/ui/card"
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input"
-import { Status, StatusMessage } from "@/types/status";
-import { SerialCommand, SerialCommands } from "@/types/commands";
 import SettingsDialog from "./Settings/SettingsDialog";
   
 
 export default function Measurements() {
 
     const { lastMeasurement, maxSpeed } = useStore();
-    const { setLastMeasurement, setMaxSpeed } = useStore();
-
-    function handleSetMaxSpeed(maxSpeed: number) {
-        // Check if maxSpeed is a number and between 1 and 199
-        if(isNaN(maxSpeed) || maxSpeed < 1 || maxSpeed > 199) {
-            toast("Max speed must be a number between 1 and 199");
-            return;
-        }
-        setMaxSpeed(maxSpeed);
-    }
-
+    const { setLastMeasurement } = useStore();
 
     return (
         <>
@@ -56,7 +41,6 @@ export default function Measurements() {
                 >
                     Generate Measurement
                 </Button>
-                <Input type="number" defaultValue={maxSpeed} min={1} max={199} onChange={(v) => handleSetMaxSpeed(Number(v.target.value))} />
             </CardContent>
             <CardFooter>
                 <SettingsDialog />

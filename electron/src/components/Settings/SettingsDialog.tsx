@@ -19,23 +19,27 @@ export default function SettingsDialog() {
         flashDelay, 
         flashDuration, 
         pictureDelay,
+        maxSpeed,
         initializedPort,
         setFlashDelay, 
         setFlashDuration, 
-        setPictureDelay 
+        setPictureDelay,
+        setMaxSpeed
     } = useStore();
 
     // Local state to track changes before saving
     const [newFlashDelay, setNewFlashDelay] = useState(flashDelay);
     const [newFlashDuration, setNewFlashDuration] = useState(flashDuration);
     const [newPictureDelay, setNewPictureDelay] = useState(pictureDelay);
+    const [newMaxSpeed, setNewMaxSpeed] = useState(maxSpeed);
     const [isOpen, setIsOpen] = useState(false);
     
     // Detect if any values have changed and if a serial port is open
     const hasChanges = 
         newFlashDelay !== flashDelay ||
         newFlashDuration !== flashDuration ||
-        newPictureDelay !== pictureDelay;
+        newPictureDelay !== pictureDelay ||
+        newMaxSpeed !== maxSpeed;
         
     // Check if a port is initialized
     const isPortOpen = initializedPort !== null;
@@ -46,8 +50,9 @@ export default function SettingsDialog() {
             setNewFlashDelay(flashDelay);
             setNewFlashDuration(flashDuration);
             setNewPictureDelay(pictureDelay);
+            setNewMaxSpeed(maxSpeed);
         }
-    }, [isOpen, flashDelay, flashDuration, pictureDelay]);
+    }, [isOpen, flashDelay, flashDuration, pictureDelay, maxSpeed]);
 
     function validateFlashDelay(value: number): boolean {
         if(isNaN(value) || value < 1 || value > 5000) {
@@ -73,6 +78,14 @@ export default function SettingsDialog() {
         return true;
     }
 
+    function validateMaxSpeed(value: number): boolean {
+        if(isNaN(value) || value < 1 || value > 199) {
+            toast.error("Max speed must be a number between 1 and 199");
+            return false;
+        }
+        return true;
+    }
+
     function handleSaveSettings() {
         // First check if a port is open
         if (!isPortOpen) {
@@ -86,12 +99,14 @@ export default function SettingsDialog() {
         if (!validateFlashDelay(newFlashDelay)) isValid = false;
         if (!validateFlashDuration(newFlashDuration)) isValid = false;
         if (!validatePictureDelay(newPictureDelay)) isValid = false;
+        if (!validateMaxSpeed(newMaxSpeed)) isValid = false;
         
         if (isValid) {
             // Save all values at once
             setFlashDelay(newFlashDelay);
             setFlashDuration(newFlashDuration);
             setPictureDelay(newPictureDelay);
+            setMaxSpeed(newMaxSpeed);
             toast.success("Settings saved successfully");
         }
     }
@@ -137,6 +152,16 @@ export default function SettingsDialog() {
                                 max={2500} 
                                 value={newPictureDelay}
                                 onChange={(v) => setNewPictureDelay(Number(v.target.value))} 
+                            />
+                        </div>
+                        <div className="flex flex-row gap-2 items-center">
+                            <p>Max Speed (km/h)</p>
+                            <Input 
+                                type="number" 
+                                min={1} 
+                                max={199} 
+                                value={newMaxSpeed}
+                                onChange={(v) => setNewMaxSpeed(Number(v.target.value))} 
                             />
                         </div>
                     </div>

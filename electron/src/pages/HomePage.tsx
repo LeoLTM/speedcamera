@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import ToggleTheme from "@/components/ToggleTheme";
-import CameraComponent from "@/components/CameraComponent";
+import LiveCameraDisplay from "@/components/LiveCameraDisplay";
+import LastViolationDisplay from "@/components/LastViolationDisplay";
 import Measurements from "@/components/Measurements";
 import Devices from "@/components/Devices";
 import { useStore } from "@/stores/useStore";
@@ -42,17 +43,26 @@ export default function HomePage() {
 
     return (
         <>
-            <div className="flex h-screen flex-col items-center justify-center gap-2">
-                <h1 className="text-4xl font-bold">
-                    SpeedCamera App
-                </h1>
-                <ToggleTheme />
-                <div className="flex flex-row gap-2">
-                    <Devices />
-                    <Measurements />
+            <div className="flex h-screen flex-col gap-4 p-4">
+                <div className="flex flex-col items-center gap-2">
+                    <h1 className="text-4xl font-bold">
+                        SpeedCamera App
+                    </h1>
+                    <ToggleTheme />
+                    <div className="flex flex-row gap-2">
+                        <Devices />
+                        <Measurements />
+                    </div>
                 </div>
 
-                <CameraComponent />
+                <div className="flex flex-1 gap-4">
+                    <div className="flex-1">
+                        <LiveCameraDisplay />
+                    </div>
+                    <div className="flex-1">
+                        <LastViolationDisplay />
+                    </div>
+                </div>
             </div>
         </>
     );

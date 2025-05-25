@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import DatabaseControls from '@/components/DatabaseControls';
 import { SpeedViolation } from '@/types/database';
 import React from 'react';
@@ -11,6 +12,7 @@ export default function ViolationsPage() {
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [imageCache, setImageCache] = useState<Record<string, string>>({}); // Cache for image data URLs
+  const [selectedImage, setSelectedImage] = useState<{ src: string; violationId: number } | null>(null);
 
   const loadViolations = async () => {
     try {
@@ -145,7 +147,11 @@ export default function ViolationsPage() {
                         <img
                           src={imageCache[violation.imagePath]}
                           alt={`Violation ${violation.id}`}
-                          className="max-w-full h-48 object-cover rounded border"
+                          className="max-w-full h-48 object-cover rounded border cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => setSelectedImage({ 
+                            src: imageCache[violation.imagePath], 
+                            violationId: violation.id 
+                          })}
                         />
                       ) : (
                         <div className="w-full h-48 bg-gray-200 rounded border flex items-center justify-center text-gray-500">
@@ -160,6 +166,27 @@ export default function ViolationsPage() {
           </div>
         </ScrollArea>
       )}
+
+      {/* Image Detail Modal */}
+      <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>
+              Violation #{selectedImage?.violationId} - Evidence Photo
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex justify-center items-center max-h-[80vh] overflow-hidden">
+            {selectedImage && (
+              <img
+                src={selectedImage.src}
+                alt={`Violation ${selectedImage.violationId} - Full Size`}
+                className="max-w-full max-h-full object-contain rounded"
+                style={{ maxHeight: '70vh' }}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

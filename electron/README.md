@@ -1,61 +1,15 @@
-# electron-shadcn
+# speedcamera
 
-Electron in all its glory. Everything you will need to develop your beautiful desktop application.
+This electron application serves as the companion software for the Arduino Speed Camera project.
+It allows users to control and configure the speed camera and its sensors.
+In addition, its possible to view and manage speed violations captured by the camera, providing a user-friendly interface for monitoring and reviewing speed data.
 
-![Demo GIF](https://github.com/LuanRoger/electron-shadcn/blob/main/images/demo.gif)
 
-## Libs and tools
+### Database 🗄️
 
-To develop a Electron app, you probably will need some UI, test, formatter, style or other kind of library or framework, so let me install and configure some of them to you.
+- [SQLite with better-sqlite3](https://github.com/WiseLibs/better-sqlite3) - Lightweight, embedded database for storing speed violations
+- See [DATABASE.md](docs/DATABASE.md) for detailed usage instructions
 
-### Core 🏍️
-
-- [Electron 32](https://www.electronjs.org)
-- [Vite 5](https://vitejs.dev)
-- [SWC](https://swc.rs)
-
-### DX 🛠️
-
-- [TypeScript 5](https://www.typescriptlang.org)
-- [Prettier](https://prettier.io)
-- [Zod](https://zod.dev)
-- [React Query (Tan Stack)](https://react-query.tanstack.com)
-
-### UI 🎨
-
-- [React](https://reactjs.org)
-- [Tailwind CSS](https://tailwindcss.com)
-- [Shadcn UI](https://ui.shadcn.com)
-- [Geist](https://vercel.com/font) as default font
-- [i18next](https://www.i18next.com)
-- [Lucide](https://lucide.dev)
-
-### Test 🧪
-
-- [Jest](https://jestjs.io)
-- [Playwright](https://playwright.dev)
-- [React Testing Library](https://testing-library.com/docs/react-testing-library/intro)
-
-### Packing and distribution 📦
-
-- [Electron Forge](https://www.electronforge.io)
-
-### Documentation 📚
-
-- [Storybook](https://storybook.js.org)
-
-### CI/CD 🚀
-
-- Pre-configured [GitHub Actions workflow](https://github.com/LuanRoger/electron-shadcn/blob/main/.github/workflows/playwright.yml), for test with Playwright
-
-### Project preferences 🎯
-
-- Use Context isolation
-- `titleBarStyle`: hidden (Using custom title bar)
-- Geist as default font
-- Some default styles was applied, check the [`styles`](https://github.com/LuanRoger/electron-shadcn/tree/main/src/styles) directory
-
-> If you don't know some of these libraries or tools, I recommend you to check their documentation to understand how they work and how to use them.
 
 ## Directory structure
 
@@ -110,6 +64,7 @@ npm run <script>
 - `test:unit`: Run the Jest tests
 - `test:e2e`: Run the Playwright tests
 - `test:all`: Run all tests (Jest and Playwright)
+- `db:generate`: Generate sample data for the SQLite database
 
 The test scripts involving Playwright require the app be builded before running the tests. So, before run the tests, run the `package`, `make` or `publish` script.
 
@@ -118,10 +73,8 @@ The test scripts involving Playwright require the app be builded before running 
 1. Clone this repository
 
 ```bash
-git clone https://github.com/LuanRoger/electron-shadcn.git
+git clone https://github.com/LeoLTM/speedcamera.git
 ```
-
-Or use it as a template on GitHub
 
 2. Install dependencies
 
@@ -129,19 +82,14 @@ Or use it as a template on GitHub
 npm install
 ```
 
-3. Run the app
+3. Generate sample data (optional, but recommended for testing)
+
+```bash
+npm run db:generate
+```
+
+4. Run the app
 
 ```bash
 npm run start
 ```
-
-## Used by
-
-- [yaste](https://github.com/LuanRoger/yaste) - yaste (Yet another super ₛᵢₘₚₗₑ text editor) is a text editor, that can be used as an alternative to the native text editor of your SO, maybe.
-- [eletric-drizzle](https://github.com/LuanRoger/electric-drizzle) - shadcn-ui and Drizzle ORM with Electron.
-
-> Does you've used this template in your project? Add it here and open a PR.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/LuanRoger/electron-shadcn/blob/main/LICENSE) file for details.

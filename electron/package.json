@@ -16,7 +16,10 @@
         "test:watch": "jest --watch",
         "test:unit": "jest",
         "test:e2e": "playwright test",
-        "test:all": "jest && playwright test"
+        "test:all": "jest && playwright test",
+        "db:generate": "ts-node src/scripts/generate-sample-data.ts",
+        "db:fill": "echo '⚠️  Use the app interface to import data. Run \"npm run db:generate\" first, then use the Import button in the Violations page.'",
+        "db:clear": "echo '⚠️  Use the app interface to clear data. Use the Clear button in the Violations page.'"
     },
     "devDependencies": {
         "@electron-forge/cli": "^7.5.0",
@@ -65,15 +68,18 @@
     },
     "dependencies": {
         "@radix-ui/react-dialog": "^1.1.6",
+        "@radix-ui/react-scroll-area": "^1.2.9",
         "@radix-ui/react-select": "^2.1.2",
         "@radix-ui/react-slot": "^1.0.2",
         "@radix-ui/react-toggle": "^1.1.0",
         "@radix-ui/react-toggle-group": "^1.1.0",
         "@tanstack/react-router": "^1.82.1",
         "@tanstack/router-devtools": "^1.82.0",
+        "@types/better-sqlite3": "^7.6.13",
         "@types/react-webcam": "^1.1.0",
         "@types/serialport": "^8.0.5",
         "@vitejs/plugin-react": "^4.3.3",
+        "better-sqlite3": "^11.10.0",
         "class-variance-authority": "^0.7.0",
         "clsx": "^2.1.1",
         "electron-squirrel-startup": "^1.0.1",

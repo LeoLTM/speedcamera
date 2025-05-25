@@ -92,7 +92,7 @@ export default function BoardSelector() {
                 </SelectTrigger>
                 <SelectContent>
                     {availablePorts.map(port => (
-                        <SelectItem key={port.locationId} value={port.path}>{port.path}</SelectItem>
+                        <SelectItem key={port.path} value={port.path}>{port.path}</SelectItem>
                     ))}
                 </SelectContent>                
             </Select>

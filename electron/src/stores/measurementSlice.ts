@@ -11,7 +11,7 @@ export interface MeasurementSlice {
     setMaxSpeed: (speed: number) => void;
 }
 
-async function takePicture(selectedCameraRef: React.RefObject<Webcam>, delay: number) {
+async function takePicture(selectedCameraRef: React.RefObject<Webcam>, delay: number, measuredSpeed: number, maxSpeed: number) {
     console.log("Taking picture...");
     const serialCommand: SerialCommand = {
         command: SerialCommands.FLASH,
@@ -26,7 +26,22 @@ async function takePicture(selectedCameraRef: React.RefObject<Webcam>, delay: nu
         console.error("Error taking picture");
         return;
     }
-    window.camera.savePicture(imgEncoded);
+    
+    try {
+        // Save picture and get the path
+        const imagePath = await window.camera.savePicture(imgEncoded);
+        
+        // Save violation to database
+        const violation = await window.database.addViolation({
+            measuredSpeed,
+            maxSpeed,
+            imagePath
+        });
+        
+        console.log("Speed violation saved:", violation);
+    } catch (error) {
+        console.error("Error saving violation:", error);
+    }
 }
 
 export const createMeasurementSlice: StateCreator<
@@ -44,7 +59,7 @@ export const createMeasurementSlice: StateCreator<
         // and send a flash command to the ESP32
         if (measurement > maxSpeed) {   
             // playBeepSound();
-            takePicture(selectedCameraRef!, pictureDelay);
+            takePicture(selectedCameraRef!, pictureDelay, measurement, maxSpeed);
         }
         set({ lastMeasurement: measurement });
     },

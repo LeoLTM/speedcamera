@@ -4,6 +4,24 @@
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
+// Database types (also exported from src/types/database.ts for component usage)
+interface SpeedViolation {
+  id: number;
+  timestamp: string; // ISO 8601 format
+  measuredSpeed: number;
+  maxSpeed: number;
+  imagePath: string;
+  createdAt: string; // ISO 8601 format
+}
+
+interface CreateSpeedViolation {
+  measuredSpeed: number;
+  maxSpeed: number;
+  imagePath: string;
+}
+
+
+
 // Custom namespace for serial port because
 // the .d.ts file does not allow regular "import" statements
 declare namespace SerialPort {
@@ -42,7 +60,16 @@ interface SerialContext {
 }
 
 interface CameraContext {
-    savePicture: (imgEncoded: string) => Promise<void>;
+    savePicture: (imgEncoded: string) => Promise<string>;
+}
+
+interface DatabaseContext {
+    addViolation: (violation: CreateSpeedViolation) => Promise<SpeedViolation>;
+    getViolations: (limit?: number, offset?: number) => Promise<SpeedViolation[]>;
+    getViolationById: (id: number) => Promise<SpeedViolation | undefined>;
+    getViolationsByDateRange: (startDate: string, endDate: string) => Promise<SpeedViolation[]>;
+    deleteViolation: (id: number) => Promise<boolean>;
+    getViolationCount: () => Promise<number>;
 }
 
 declare interface Window {
@@ -50,4 +77,5 @@ declare interface Window {
     electronWindow: ElectronWindow;
     camera: CameraContext;
     serial: SerialContext;
+    database: DatabaseContext;
 }

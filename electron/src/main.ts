@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from "electron";
 import registerListeners from "./helpers/ipc/listeners-register";
+import { closeDatabaseService } from "./database/database";
 // "electron-squirrel-startup" seems broken when packaging with vite
 //import started from "electron-squirrel-startup";
 import path from "path";
@@ -37,6 +38,7 @@ app.whenReady().then(createWindow);
 
 //osX only
 app.on("window-all-closed", () => {
+    closeDatabaseService();
     if (process.platform !== "darwin") {
         app.quit();
     }
@@ -46,5 +48,9 @@ app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
     }
+});
+
+app.on("before-quit", () => {
+    closeDatabaseService();
 });
 //osX only ends

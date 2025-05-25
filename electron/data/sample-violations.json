@@ -1,0 +1,62 @@
+[
+  {
+    "measuredSpeed": 65.2,
+    "maxSpeed": 50,
+    "imagePath": "savedImages/sample-violation-2025-05-25T17-55-39-229Z.png",
+    "timestamp": "2025-05-25T17:55:39.231Z"
+  },
+  {
+    "measuredSpeed": 78.5,
+    "maxSpeed": 60,
+    "imagePath": "savedImages/sample-violation-2025-05-24T17-55-39-230Z.png",
+    "timestamp": "2025-05-24T17:55:39.231Z"
+  },
+  {
+    "measuredSpeed": 92.1,
+    "maxSpeed": 80,
+    "imagePath": "savedImages/sample-violation-2025-05-23T17-55-39-230Z.png",
+    "timestamp": "2025-05-23T17:55:39.231Z"
+  },
+  {
+    "measuredSpeed": 55.7,
+    "maxSpeed": 40,
+    "imagePath": "savedImages/sample-violation-2025-05-22T17-55-39-230Z.png",
+    "timestamp": "2025-05-22T17:55:39.231Z"
+  },
+  {
+    "measuredSpeed": 71.3,
+    "maxSpeed": 50,
+    "imagePath": "savedImages/sample-violation-2025-05-21T17-55-39-230Z.png",
+    "timestamp": "2025-05-21T17:55:39.231Z"
+  },
+  {
+    "measuredSpeed": 45.8,
+    "maxSpeed": 30,
+    "imagePath": "savedImages/sample-violation-2025-05-20T17-55-39-230Z.png",
+    "timestamp": "2025-05-20T17:55:39.231Z"
+  },
+  {
+    "measuredSpeed": 88.9,
+    "maxSpeed": 70,
+    "imagePath": "savedImages/sample-violation-2025-05-19T17-55-39-230Z.png",
+    "timestamp": "2025-05-19T17:55:39.231Z"
+  },
+  {
+    "measuredSpeed": 67.4,
+    "maxSpeed": 50,
+    "imagePath": "savedImages/sample-violation-2025-05-18T17-55-39-230Z.png",
+    "timestamp": "2025-05-18T17:55:39.231Z"
+  },
+  {
+    "measuredSpeed": 101.2,
+    "maxSpeed": 90,
+    "imagePath": "savedImages/sample-violation-2025-05-17T17-55-39-230Z.png",
+    "timestamp": "2025-05-17T17:55:39.231Z"
+  },
+  {
+    "measuredSpeed": 52.6,
+    "maxSpeed": 40,
+    "imagePath": "savedImages/sample-violation-2025-05-16T17-55-39-230Z.png",
+    "timestamp": "2025-05-16T17:55:39.231Z"
+  }
+]

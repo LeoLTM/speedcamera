@@ -10,6 +10,7 @@ export default function ViolationsPage() {
   const [violations, setViolations] = useState<SpeedViolation[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
+  const [imageCache, setImageCache] = useState<Record<string, string>>({}); // Cache for image data URLs
 
   const loadViolations = async () => {
     try {
@@ -20,6 +21,26 @@ export default function ViolationsPage() {
       ]);
       setViolations(violationsList);
       setTotalCount(count);
+      
+      // Preload images
+      const imagePromises = violationsList.map(async (violation) => {
+        try {
+          const imageData = await window.camera.getImageData(violation.imagePath);
+          return { path: violation.imagePath, data: imageData };
+        } catch (error) {
+          console.error('Error loading image for violation', violation.id, error);
+          return { path: violation.imagePath, data: null };
+        }
+      });
+      
+      const images = await Promise.all(imagePromises);
+      const newImageCache: Record<string, string> = {};
+      images.forEach(({ path, data }) => {
+        if (data) {
+          newImageCache[path] = data;
+        }
+      });
+      setImageCache(newImageCache);
     } catch (error) {
       console.error('Error loading violations:', error);
     } finally {
@@ -120,14 +141,17 @@ export default function ViolationsPage() {
                     </div>
                     <div>
                       <div className="font-semibold mb-2">Evidence Photo:</div>
-                      <img
-                        src={`file://${violation.imagePath}`}
-                        alt={`Violation ${violation.id}`}
-                        className="max-w-full h-48 object-cover rounded border"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2YzZjRmNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5Y2EzYWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5JbWFnZSBub3QgZm91bmQ8L3RleHQ+PC9zdmc+';
-                        }}
-                      />
+                      {imageCache[violation.imagePath] ? (
+                        <img
+                          src={imageCache[violation.imagePath]}
+                          alt={`Violation ${violation.id}`}
+                          className="max-w-full h-48 object-cover rounded border"
+                        />
+                      ) : (
+                        <div className="w-full h-48 bg-gray-200 rounded border flex items-center justify-center text-gray-500">
+                          Image not available
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardContent>

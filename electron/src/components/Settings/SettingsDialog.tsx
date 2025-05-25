@@ -15,9 +15,15 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
 export default function SettingsDialog() {
-    const { flashDelay, flashDuration, pictureDelay } = useStore();
-    const { setFlashDelay, setFlashDuration, setPictureDelay } = useStore();
-    const { initializedPort } = useStore(); // Get the serialPort status
+    const { 
+        flashDelay, 
+        flashDuration, 
+        pictureDelay,
+        initializedPort,
+        setFlashDelay, 
+        setFlashDuration, 
+        setPictureDelay 
+    } = useStore();
 
     // Local state to track changes before saving
     const [newFlashDelay, setNewFlashDelay] = useState(flashDelay);

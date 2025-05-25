@@ -15,8 +15,14 @@ import { SerialCommand, SerialCommands } from '@/types/commands';
 
 export default function CameraSelector() {
 
-    const { availableCameras, selectedCamera, selectedCameraRef, pictureDelay } = useStore();
-    const { setAvailableCameras, setSelectedCamera } = useStore();
+    const { 
+        availableCameras, 
+        selectedCamera, 
+        selectedCameraRef, 
+        pictureDelay,
+        setAvailableCameras, 
+        setSelectedCamera 
+    } = useStore();
 
     function getAvailableCameras(): Promise<MediaDeviceInfo[]> {
         return navigator.mediaDevices.enumerateDevices()

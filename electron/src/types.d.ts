@@ -61,6 +61,7 @@ interface SerialContext {
 
 interface CameraContext {
     savePicture: (imgEncoded: string) => Promise<string>;
+    getImageData: (imagePath: string) => Promise<string | null>;
 }
 
 interface DatabaseContext {

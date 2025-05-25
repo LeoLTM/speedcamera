@@ -15,8 +15,14 @@ import { SerialCommand, SerialCommands } from "@/types/commands";
 
 export default function BoardSelector() {
 
-    const { availablePorts, selectedPort, initializedPort } = useStore();
-    const { setAvailablePorts, setSelectedPort, setInitializedPort } = useStore();
+    const { 
+        availablePorts, 
+        selectedPort, 
+        initializedPort,
+        setAvailablePorts, 
+        setSelectedPort, 
+        setInitializedPort 
+    } = useStore();
 
     useEffect(() => {
         console.log("Getting available boards...");

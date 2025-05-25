@@ -1,7 +1,8 @@
 import { ipcMain } from "electron";
-import { CAMERA_SAVE_PICTURE_CHANNEL } from "./camera-channels";
-// Import fs
+import { CAMERA_SAVE_PICTURE_CHANNEL, CAMERA_GET_IMAGE_DATA_CHANNEL } from "./camera-channels";
+// Import fs and path
 import fs from "fs";
+import path from "path";
 
 const pathToImageFolder = "savedImages/";
 
@@ -26,7 +27,7 @@ export function addCameraEventListeners() {
             // Generate unique filename with timestamp
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const filename = `speed-violation-${timestamp}.png`;
-            const fullPath = `${pathToImageFolder}${filename}`;
+            const fullPath = path.resolve(pathToImageFolder, filename);
 
             // Save the encoded image to a file
             fs.writeFile(fullPath, imgBuffer, (err) => {
@@ -38,6 +39,31 @@ export function addCameraEventListeners() {
                 console.log("Picture saved successfully!");
                 resolve(fullPath);
             });
+        });
+    });
+
+    // Handle getting image data as base64 for renderer
+    ipcMain.handle(CAMERA_GET_IMAGE_DATA_CHANNEL, (e, imagePath: string): Promise<string | null> => {
+        return new Promise((resolve) => {
+            try {
+                // Check if file exists
+                if (!fs.existsSync(imagePath)) {
+                    console.error('Image file not found:', imagePath);
+                    resolve(null);
+                    return;
+                }
+
+                // Read the file and convert to base64
+                const imageBuffer = fs.readFileSync(imagePath);
+                const base64Data = imageBuffer.toString('base64');
+                const mimeType = path.extname(imagePath).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg';
+                const dataUrl = `data:${mimeType};base64,${base64Data}`;
+                
+                resolve(dataUrl);
+            } catch (error) {
+                console.error('Error reading image file:', error);
+                resolve(null);
+            }
         });
     });
 }

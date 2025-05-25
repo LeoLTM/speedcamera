@@ -10,8 +10,7 @@ import { Status, StatusMessage } from "@/types/status";
 
 export default function HomePage() {
 
-    const { selectedCameraRef, lastMeasurement } = useStore();
-    const { setLastMeasurement } = useStore();
+    const { selectedCameraRef, lastMeasurement, setLastMeasurement } = useStore();
 
     useEffect(() => {
         const handleStatus = (jsonStatus: string) => {

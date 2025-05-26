@@ -13,4 +13,5 @@ export enum Status {
 export type StatusMessage = {
     status: Status;
     value?: number;
+    tolerance?: number;
 };

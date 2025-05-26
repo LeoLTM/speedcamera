@@ -18,6 +18,9 @@ unsigned long lastSensor1Time = 0;
 unsigned long lastSensor2Time = 0;
 float speedInKmH = 0.0f;
 bool hasFlashed = false;
+unsigned long sampleCount = 0;
+float samplingRate = 0.0f;
+float speedTolerance = 0.0f;
 
 bool stringComplete = false;          // Whether the string is complete
 String inputString = "";              // A string to hold the incoming data
@@ -27,6 +30,7 @@ void decodeJson(String inputString);
 void handleCommand(JsonDocument doc);
 void sendJsonStatus(String status);
 void sendJsonStatus(String status, float value);
+void sendJsonStatus(String status, float value, float tolerance);
 void sendDebug(String message);
 void flashLED();
 void waitForFlash();
@@ -54,32 +58,47 @@ void loop() {
         && (millis() - lastSensor2Time > cooldownAfterMeasurement)
         ) {
     lastSensor1Time = millis();
-    unsigned long timer1 = lastSensor1Time;
+    unsigned long timer1 = micros(); // Use micros for precise timing
+    sampleCount = 0; // Reset sample counter
 
     sendJsonStatus("measuring"); // Start measurement
 
-    while (millis() - timer1 < measuringInterval) {
+    while ((micros() - timer1) < (measuringInterval * 1000UL)) { // Convert ms to microseconds
+      sampleCount++; // Count each loop iteration as a sample
+      
       // Check if Sensor 2 is triggered
       if (digitalRead(sensor2) == HIGH && (millis() - lastSensor2Time > debounceTime)) {
-        unsigned long sensor2TriggerTime = millis();
+        unsigned long sensor2TriggerTime = micros(); // Use micros for precise timing
         
         // Only calculate speed if sensor2 was triggered AFTER sensor1 in this measurement cycle
         if (sensor2TriggerTime > timer1) {
-          lastSensor2Time = sensor2TriggerTime;
-          float passingTime = lastSensor2Time - timer1; // Time in ms
+          lastSensor2Time = millis(); // Keep millis for debounce timing
+          float passingTime = (sensor2TriggerTime - timer1) / 1000.0f; // Convert microseconds to milliseconds
           speedInKmH = (sensorDistance / passingTime) * 3.6f;
+          
+          // Calculate sampling rate (samples per second)
+          samplingRate = (float)sampleCount / (passingTime / 1000.0f);
+          
+          // Calculate speed tolerance based on sampling rate and sensor distance
+          // Formula: tolerance = (sensorDistance / samplingRate) * 3.6 / passingTime * 100
+          // This represents the uncertainty in speed measurement due to discrete sampling
+          speedTolerance = (sensorDistance / samplingRate) * 3.6f;
+          
+          // Send debug information about sampling
+          sendDebug("Samples: " + String(sampleCount) + ", Rate: " + String(samplingRate, 1) + " Hz, Tolerance: " + String(speedTolerance, 2) + " km/h, Time: " + String(passingTime, 3) + " ms");
+          
           String speedStr = String(speedInKmH, 1);
 
           if ((speedInKmH > maxSpeedKmH) && (speedInKmH > 0.0f) && (speedInKmH < maxSpeed)) {
-            sendJsonStatus("speeding", speedInKmH); // Trigger flash command
+            sendJsonStatus("speeding", speedInKmH, speedTolerance); // Trigger flash command with tolerance
             waitForFlash();
           } else {
-            sendJsonStatus("legal", speedInKmH); // No flash needed
+            sendJsonStatus("legal", speedInKmH, speedTolerance); // No flash needed, include tolerance
           }
           return;
         }
         // If sensor2 was triggered before sensor1, update lastSensor2Time for debouncing but don't calculate speed
-        lastSensor2Time = sensor2TriggerTime;
+        lastSensor2Time = millis(); // Keep millis for debounce timing
       }
       yield(); // Feed the watchdog
     }
@@ -183,6 +202,21 @@ void sendJsonStatus(String status, float value) {
   JsonDocument doc;
   doc["status"] = status;
   doc["value"] = round(value * 10) / 10.0;
+  String output;
+  serializeJson(doc, output);
+  // Add a newline to the end of the message
+  output += "\n";
+  
+  // Use a single write operation for the entire message
+  Serial.write(output.c_str(), output.length());
+  Serial.flush();
+}
+
+void sendJsonStatus(String status, float value, float tolerance) {
+  JsonDocument doc;
+  doc["status"] = status;
+  doc["value"] = round(value * 10) / 10.0;
+  doc["tolerance"] = round(tolerance * 10) / 10.0;;
   String output;
   serializeJson(doc, output);
   // Add a newline to the end of the message

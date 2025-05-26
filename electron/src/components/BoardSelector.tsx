@@ -92,6 +92,7 @@ export default function BoardSelector() {
                         toast("Selected port: " + p);
                     }
                 }
+                value={selectedPort ? selectedPort : undefined}
             >
                 <SelectTrigger className="w-[360px]">
                     <SelectValue placeholder="Select Port" />

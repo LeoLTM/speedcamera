@@ -7,7 +7,7 @@ const int flashPin = 13; // GPIO 13, D7
 
 const int debounceTime = 1000;           // Milliseconds for debounce per sensor
 const int cooldownAfterMeasurement = 500; // Milliseconds to wait after a measurement
-const float sensorDistance = 325.0f;  // Millimeters
+const float sensorDistance = 135.0f;  // Millimeters
       float maxSpeedKmH = 2;          // Speed limit in km/h
 const long measuringInterval = 2500;  // Maximum time for measurement (ms)
       int flashTime = 50;            // Flash duration (ms)

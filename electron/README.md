@@ -1,6 +1,6 @@
 # speedcamera
 
-This electron application serves as the companion software for the Arduino Speed Camera project.
+This electron application serves as the companion software for the speedcamera firmware on the ESP8266.
 It allows users to control and configure the speed camera and its sensors.
 In addition, its possible to view and manage speed violations captured by the camera, providing a user-friendly interface for monitoring and reviewing speed data.
 

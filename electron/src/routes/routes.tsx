@@ -3,6 +3,7 @@ import HomePage from "../pages/HomePage";
 import { RootRoute } from "./__root";
 import AboutPage from "@/pages/AboutPage";
 import ViolationsPage from "@/pages/ViolationsPage";
+import CameraSettingsPage from "@/pages/CameraSettingsPage";
 
 // TODO: Steps to add a new route:
 // 1. Create a new page component in the '../pages/' directory (e.g., NewPage.tsx)
@@ -41,4 +42,10 @@ export const ViolationsRoute = createRoute({
     component: ViolationsPage,
 });
 
-export const rootTree = RootRoute.addChildren([HomeRoute, AboutRoute, ViolationsRoute]);
+export const CameraSettingsRoute = createRoute({
+    getParentRoute: () => RootRoute,
+    path: "/camera-settings",
+    component: CameraSettingsPage,
+});
+
+export const rootTree = RootRoute.addChildren([HomeRoute, AboutRoute, ViolationsRoute, CameraSettingsRoute]);

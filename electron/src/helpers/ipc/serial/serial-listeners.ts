@@ -6,10 +6,8 @@ let ESP32: SerialPort | null = null;
 
 export function addSerialEventListeners(mainWindow: BrowserWindow) {
     ipcMain.handle(SERIAL_LIST_PORTS, async () => {
-        console.log("Listing available serial ports...");
         try {
             const ports = await SerialPort.list();
-            console.log("Available serial ports: ", ports);
             return ports;
         } catch (error) {
             console.error("Error listing serial ports: ", error);

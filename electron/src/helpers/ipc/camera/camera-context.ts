@@ -6,6 +6,7 @@ import {
     CAMERA_GET_HW_CONTROL_CHANNEL,
     CAMERA_SET_HW_CONTROL_CHANNEL,
     CAMERA_GET_AVAILABLE_CAMERAS_CHANNEL,
+    CAMERA_RESET_HW_CONTROLS_CHANNEL,
 } from "./camera-channels";
 
 export function exposeCameraContext() {
@@ -17,5 +18,6 @@ export function exposeCameraContext() {
         getAvailableHwControls: (cameraId: number) => ipcRenderer.invoke(CAMERA_GET_AVAILABLE_HW_CONTROLS_CHANNEL, cameraId),
         setHwControl: (cameraId: number, controlName: string, value: number) => ipcRenderer.invoke(CAMERA_SET_HW_CONTROL_CHANNEL, cameraId, controlName, value),
         getHwControl: (cameraId: number, controlName: string) => ipcRenderer.invoke(CAMERA_GET_HW_CONTROL_CHANNEL, cameraId, controlName),
+        resetHwControls: (cameraId: number) => ipcRenderer.invoke(CAMERA_RESET_HW_CONTROLS_CHANNEL, cameraId),
     });
 }

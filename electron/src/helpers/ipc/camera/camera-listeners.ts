@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { CAMERA_SAVE_PICTURE_CHANNEL, CAMERA_GET_IMAGE_DATA_CHANNEL, CAMERA_GET_AVAILABLE_HW_CONTROLS_CHANNEL, CAMERA_SET_HW_CONTROL_CHANNEL, CAMERA_GET_HW_CONTROL_CHANNEL, CAMERA_GET_AVAILABLE_CAMERAS_CHANNEL } from "./camera-channels";
+import { CAMERA_SAVE_PICTURE_CHANNEL, CAMERA_GET_IMAGE_DATA_CHANNEL, CAMERA_GET_AVAILABLE_HW_CONTROLS_CHANNEL, CAMERA_SET_HW_CONTROL_CHANNEL, CAMERA_GET_HW_CONTROL_CHANNEL, CAMERA_GET_AVAILABLE_CAMERAS_CHANNEL, CAMERA_RESET_HW_CONTROLS_CHANNEL } from "./camera-channels";
 // Import fs and path
 import fs from "fs";
 import path from "path";
@@ -152,6 +152,18 @@ export function addCameraEventListeners() {
                 }
             });
         });
+    });
+
+    ipcMain.handle(CAMERA_RESET_HW_CONTROLS_CHANNEL, async (e, cameraId: number): Promise<CameraHwControl[]> => {
+        const controls = await parseV4l2CtlDeviceControls(cameraId);
+        const setArgs = controls.map(c => `${c.name}=${c.default}`).join(",");
+        await new Promise<void>((resolve, reject) => {
+            execFile("v4l2-ctl", ["-d", String(cameraId), "-c", setArgs], (error, _stdout, stderr) => {
+                if (error) { console.error("Failed to reset controls:", stderr); reject(error); return; }
+                resolve();
+            });
+        });
+        return parseV4l2CtlDeviceControls(cameraId);
     });
 };
 

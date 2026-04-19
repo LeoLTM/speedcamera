@@ -49,7 +49,7 @@ In addition, its possible to view and manage speed violations captured by the ca
 To run any of those scripts:
 
 ```bash
-npm run <script>
+bun run <script>
 ```
 
 - `start`: Start the app in development mode
@@ -79,17 +79,17 @@ git clone https://github.com/LeoLTM/speedcamera.git
 2. Install dependencies
 
 ```bash
-npm install
+bun install
 ```
 
 3. Generate sample data (optional, but recommended for testing)
 
 ```bash
-npm run db:generate
+bun run db:generate
 ```
 
 4. Run the app
 
 ```bash
-npm run start
+bun run start
 ```

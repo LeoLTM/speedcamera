@@ -12,6 +12,9 @@ export default function NavigationMenu() {
                     <Link to="/violations">Violations</Link>
                 </li>
                 <li>
+                    <Link to="/camera-settings">Camera Settings</Link>
+                </li>
+                <li>
                     <Link to="/about">
                         About
                     </Link>

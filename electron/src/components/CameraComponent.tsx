@@ -30,11 +30,14 @@ export default function CameraComponent() {
     return (
         <div className='w-4/5 h-4/5'>
             <Webcam
+                key={selectedCamera?.deviceId ?? 'default'}
                 audio={false}
                 ref={webcamRef}
-                videoConstraints={{
-                    deviceId: selectedCamera?.deviceId
-                }}
+                videoConstraints={
+                    selectedCamera
+                        ? { deviceId: { exact: selectedCamera.deviceId } }
+                        : true
+                }
                 disablePictureInPicture={true}
                 forceScreenshotSourceSize={true}
                 onUserMediaError={(e) => {

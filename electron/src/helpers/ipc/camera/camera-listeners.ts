@@ -1,8 +1,10 @@
 import { ipcMain } from "electron";
-import { CAMERA_SAVE_PICTURE_CHANNEL, CAMERA_GET_IMAGE_DATA_CHANNEL } from "./camera-channels";
+import { CAMERA_SAVE_PICTURE_CHANNEL, CAMERA_GET_IMAGE_DATA_CHANNEL, CAMERA_GET_AVAILABLE_HW_CONTROLS_CHANNEL, CAMERA_SET_HW_CONTROL_CHANNEL, CAMERA_GET_HW_CONTROL_CHANNEL, CAMERA_GET_AVAILABLE_CAMERAS_CHANNEL, CAMERA_RESET_HW_CONTROLS_CHANNEL } from "./camera-channels";
 // Import fs and path
 import fs from "fs";
 import path from "path";
+import { execFile } from "child_process";
+import { CameraHwControl, parseV4l2CtlOutput } from "@/types/camera";
 
 const pathToImageFolder = "savedImages/";
 
@@ -66,4 +68,119 @@ export function addCameraEventListeners() {
             }
         });
     });
-}
+
+    ipcMain.handle(CAMERA_GET_AVAILABLE_CAMERAS_CHANNEL, async (): Promise<{ id: number; name: string }[]> => {
+        const stdout = await new Promise<string>((resolve, reject) => {
+            execFile("v4l2-ctl", ["--list-devices"], (error, stdout, stderr) => {
+                if (error) {
+                    console.error("v4l2-ctl error:", stderr);
+                    reject(error);
+                    return;
+                }
+                resolve(stdout);
+            });
+        });
+
+        const candidates: { id: number; name: string }[] = [];
+        const deviceBlocks = stdout.split("\n\n");
+        for (const block of deviceBlocks) {
+            const lines = block.split("\n").filter(line => line.trim() !== "");
+            if (lines.length > 0) {
+                const name = lines[0].trim();
+                const idMatch = lines[1]?.match(/\/dev\/video(\d+)/);
+                if (idMatch) {
+                    candidates.push({ id: Number(idMatch[1]), name });
+                }
+            }
+        }
+
+        const results = await Promise.allSettled(
+            candidates.map(async (cam) => {
+                const controls = await parseV4l2CtlDeviceControls(cam.id);
+                return controls.length > 0 ? cam : null;
+            })
+        );
+
+        return results
+            .filter((r): r is PromiseFulfilledResult<{ id: number; name: string }> =>
+                r.status === "fulfilled" && r.value !== null
+            )
+            .map(r => r.value);
+    });
+
+
+    // Handle getting available hardware controls for the selected camera
+    ipcMain.handle(CAMERA_GET_AVAILABLE_HW_CONTROLS_CHANNEL, async (e, cameraId: number): Promise<CameraHwControl[]> => {
+        console.log(`Fetching hardware controls for camera ID ${cameraId}...`);
+        const deviceControls: CameraHwControl[] = await parseV4l2CtlDeviceControls(cameraId);
+        console.log(`Found ${deviceControls.length} controls for camera ID ${cameraId}.`);
+        console.log("Controls:", deviceControls);
+        return deviceControls;
+    });
+
+    ipcMain.handle(CAMERA_SET_HW_CONTROL_CHANNEL, (e, cameraId: number, controlName: string, value: number): Promise<void> => {
+        return new Promise((resolve, reject) => {
+            execFile("v4l2-ctl", ["-d", String(cameraId), "-c", `${controlName}=${value}`], (error, stdout, stderr) => {
+                if (error) {
+                    console.error(`Failed to set control ${controlName}:`, stderr);
+                    reject(error);
+                    return;
+                }
+                console.log(`Control ${controlName} set to ${value} successfully.`);
+                resolve();
+            });
+        });
+    });
+
+    ipcMain.handle(CAMERA_GET_HW_CONTROL_CHANNEL, (e, cameraId: number, controlName: string): Promise<number> => {
+        return new Promise((resolve, reject) => {
+            execFile("v4l2-ctl", ["-d", String(cameraId), "-C", controlName], (error, stdout, stderr) => {
+                if (error) {
+                    console.error(`Failed to get control ${controlName}:`, stderr);
+                    reject(error);
+                    return;
+                }
+                const match = stdout.match(/Value:\s*(-?\d+)/);
+                if (match) {
+                    const value = Number(match[1]);
+                    console.log(`Control ${controlName} has value ${value}.`);
+                    resolve(value);
+                } else {
+                    const errorMsg = `Unexpected output when getting control ${controlName}: ${stdout}`;
+                    console.error(errorMsg);
+                    reject(new Error(errorMsg));
+                }
+            });
+        });
+    });
+
+    ipcMain.handle(CAMERA_RESET_HW_CONTROLS_CHANNEL, async (e, cameraId: number): Promise<CameraHwControl[]> => {
+        const controls = await parseV4l2CtlDeviceControls(cameraId);
+        const setArgs = controls.map(c => `${c.name}=${c.default}`).join(",");
+        await new Promise<void>((resolve, reject) => {
+            execFile("v4l2-ctl", ["-d", String(cameraId), "-c", setArgs], (error, _stdout, stderr) => {
+                if (error) { console.error("Failed to reset controls:", stderr); reject(error); return; }
+                resolve();
+            });
+        });
+        return parseV4l2CtlDeviceControls(cameraId);
+    });
+};
+
+function parseV4l2CtlDeviceControls(cameraId: number): Promise<CameraHwControl[]> {
+    return new Promise((resolve, reject) => {
+        execFile("v4l2-ctl", ["-d", String(cameraId), "-l"], (error, stdout, stderr) => {
+            if (error) {
+                console.error("v4l2-ctl error:", stderr);
+                reject(error);
+                return;
+            }
+            try {
+                resolve(parseV4l2CtlOutput(stdout));
+            } catch (parseError) {
+                console.error("Failed to parse v4l2-ctl output:", parseError);
+                reject(parseError);
+            }
+        });
+    });
+};

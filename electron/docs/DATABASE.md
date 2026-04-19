@@ -13,12 +13,12 @@ This application uses SQLite with better-sqlite3 to store speed violation record
 
 1. **Generate sample data first:**
    ```bash
-   npm run db:generate
+   bun run db:generate
    ```
 
 2. **Start the application:**
    ```bash
-   npm start
+   bun run start
    ```
 
 3. **Navigate to the Violations page** and click the **"Import Sample Data"** button.
@@ -83,4 +83,4 @@ Violation photos are stored in the `savedImages/` directory with timestamped fil
 
 **Node.js Version Issues**: The database scripts run within the Electron app context to avoid Node.js version conflicts with native modules. Use the app interface for database operations rather than external scripts.
 
-**Missing Sample Data**: If you see "Sample data file not found", run `npm run db:generate` first to create the sample data file.
+**Missing Sample Data**: If you see "Sample data file not found", run `bun run db:generate` first to create the sample data file.

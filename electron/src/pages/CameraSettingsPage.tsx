@@ -60,8 +60,9 @@ export default function CameraSettingsPage() {
             {selectedCameraId !== null && webcamDeviceId && (
                 <div className="w-full max-w-lg rounded-lg overflow-hidden border">
                     <Webcam
+                        key={webcamDeviceId}
                         audio={false}
-                        videoConstraints={{ deviceId: webcamDeviceId }}
+                        videoConstraints={{ deviceId: { exact: webcamDeviceId } }}
                         className="w-full"
                     />
                 </div>

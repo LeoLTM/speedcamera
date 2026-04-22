@@ -101,7 +101,9 @@ function DeviceTab() {
     setLoadingCameras(true);
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoCameras = devices.filter((d) => d.kind === "videoinput");
+      // Filter out entries with empty deviceId — these appear before the user
+      // grants camera permission and would crash <Select.Item value="">.
+      const videoCameras = devices.filter((d) => d.kind === "videoinput" && d.deviceId !== "");
       setAvailableCameras(videoCameras);
     } catch {
       toast.error("Failed to list cameras");
@@ -381,7 +383,7 @@ function CameraHwTab() {
     <div className="max-w-lg space-y-6">
       <div className="flex items-center gap-3">
         <Select
-          value={selectedCamId !== null ? String(selectedCamId) : ""}
+          value={selectedCamId !== null ? String(selectedCamId) : undefined}
           onValueChange={(v) => setSelectedCamId(Number(v))}
         >
           <SelectTrigger className="w-52">
@@ -513,6 +515,7 @@ const SPEED_CAMERA_FIELDS: Array<{
 
 function SpeedCameraTab() {
   const setMaxSpeedInStore = useAppStore((s) => s.setMaxSpeed);
+  const setPictureDelayInStore = useAppStore((s) => s.setPictureDelay);
   const [values, setValues] = useState<Partial<AppSettings>>({});
   const [saved, setSaved] = useState<Partial<AppSettings>>({});
   const [loading, setLoading] = useState(true);
@@ -533,6 +536,13 @@ function SpeedCameraTab() {
     ({ key }) => values[key] !== saved[key]
   );
 
+  // Serial commands to sync changed values to the ESP32
+  const SERIAL_SYNC: Partial<Record<keyof AppSettings, string>> = {
+    maxSpeed: "setMaxSpeed",
+    flashDelay: "setFlashDelay",
+    flashDuration: "setFlashDuration",
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -541,10 +551,21 @@ function SpeedCameraTab() {
           getRpc().request.saveSetting({ key, value: String(values[key]) })
         )
       );
+
+      // Sync changed values to the ESP32 over serial
+      await Promise.all(
+        SPEED_CAMERA_FIELDS
+          .filter(({ key }) => values[key] !== saved[key] && key in SERIAL_SYNC)
+          .map(({ key }) =>
+            getRpc().request.sendCommand({
+              json: JSON.stringify({ command: SERIAL_SYNC[key], value: values[key] }),
+            }).catch(() => {/* not connected — silently ignore */})
+          )
+      );
+
       setSaved({ ...values });
-      if (values.maxSpeed !== undefined) {
-        setMaxSpeedInStore(values.maxSpeed);
-      }
+      if (values.maxSpeed !== undefined) setMaxSpeedInStore(values.maxSpeed);
+      if (values.pictureDelay !== undefined) setPictureDelayInStore(values.pictureDelay);
       toast.success("Settings saved");
     } catch {
       toast.error("Failed to save settings");

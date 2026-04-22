@@ -29,18 +29,18 @@ import {
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
 
-async function getMainViewUrl(): Promise<string> {
+async function getMainViewUrl(): Promise<{ url: string; isDev: boolean }> {
   const channel = await Updater.localInfo.channel();
   if (channel === "dev") {
     try {
       await fetch(DEV_SERVER_URL, { method: "HEAD" });
       console.log(`[index] HMR enabled: Using Vite dev server at ${DEV_SERVER_URL}`);
-      return DEV_SERVER_URL;
+      return { url: DEV_SERVER_URL, isDev: true };
     } catch {
       console.log("[index] Vite dev server not running — using bundled view.");
     }
   }
-  return "views://mainview/index.html";
+  return { url: "views://mainview/index.html", isDev: false };
 }
 
 // ─── RPC definition ───────────────────────────────────────────────────────────
@@ -117,7 +117,7 @@ const rpc = BrowserView.defineRPC<SpeedcameraRPC>({
 
 // ─── Window creation ──────────────────────────────────────────────────────────
 
-const url = await getMainViewUrl();
+const { url, isDev } = await getMainViewUrl();
 
 const mainWindow = new BrowserWindow({
   title: "Speedcamera",
@@ -130,6 +130,10 @@ const mainWindow = new BrowserWindow({
   },
   rpc,
 });
+
+if (isDev) {
+  mainWindow.webview.openDevTools();
+}
 
 // ─── Serial push bridge ───────────────────────────────────────────────────────
 

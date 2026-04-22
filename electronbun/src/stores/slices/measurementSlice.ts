@@ -43,7 +43,7 @@ export const createMeasurementSlice: StateCreator<
       set({ lastSpeed: value });
 
       if (capturing) return;
-      const { webcamRef, maxSpeed } = get();
+      const { webcamRef, maxSpeed, pictureDelay } = get();
 
       if (!webcamRef?.current) {
         console.warn("[measurement] SPEEDING detected but no webcam ref available");
@@ -53,19 +53,24 @@ export const createMeasurementSlice: StateCreator<
       capturing = true;
       set({ isCapturing: true });
 
-      const screenshot = webcamRef.current.getScreenshot();
-      if (!screenshot) {
-        console.error("[measurement] Failed to capture webcam screenshot");
-        capturing = false;
-        set({ isCapturing: false });
-        return;
-      }
-
-      // Strip data-URL prefix — bun side adds it back when reading
-      const imageBase64 = screenshot.replace(/^data:image\/\w+;base64,/, "");
-
+      // 1. Tell the ESP32 to trigger the flash (it applies its own flashDelay + flashDuration).
+      // 2. Wait pictureDelay ms so the flash is illuminating the scene when we capture.
+      // 3. Take the screenshot and save the violation.
       getRpc()
-        .request.saveViolation({ imageBase64, measuredSpeed: value, maxSpeed })
+        .request.sendCommand({ json: JSON.stringify({ command: "flash" }) })
+        .catch((err: unknown) =>
+          console.error("[measurement] Failed to send flash command:", err)
+        )
+        .then(() => new Promise<void>((resolve) => setTimeout(resolve, pictureDelay)))
+        .then(() => {
+          const screenshot = webcamRef.current?.getScreenshot();
+          if (!screenshot) {
+            console.error("[measurement] Failed to capture webcam screenshot");
+            return Promise.reject(new Error("no screenshot"));
+          }
+          const imageBase64 = screenshot.replace(/^data:image\/\w+;base64,/, "");
+          return getRpc().request.saveViolation({ imageBase64, measuredSpeed: value, maxSpeed });
+        })
         .then((violation: Violation) => {
           set({ lastViolation: violation, isCapturing: false });
           playBeep();
@@ -74,7 +79,7 @@ export const createMeasurementSlice: StateCreator<
           });
         })
         .catch((err: unknown) => {
-          console.error("[measurement] saveViolation failed:", err);
+          console.error("[measurement] Capture/save failed:", err);
           toast.error("Failed to save violation");
           set({ isCapturing: false });
         })

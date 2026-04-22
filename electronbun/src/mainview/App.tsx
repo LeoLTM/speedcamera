@@ -1,8 +1,5 @@
-import { useEffect } from "react";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { Toaster } from "sonner";
-import { initElectroview } from "@/lib/rpc";
-import { useAppStore } from "@/stores/useAppStore";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { RootRoute } from "@/routes/__root";
 import { IndexRoute } from "@/routes/index";
@@ -32,15 +29,6 @@ declare module "@tanstack/react-router" {
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 function App() {
-  const handleSerialStatus = useAppStore((s) => s.handleSerialStatus);
-
-  useEffect(() => {
-    // Initialize Electroview once; wire serial status pushes to the store.
-    initElectroview((payload) => {
-      handleSerialStatus(payload);
-    });
-  }, [handleSerialStatus]);
-
   return (
     <ErrorBoundary>
       <RouterProvider router={router} />

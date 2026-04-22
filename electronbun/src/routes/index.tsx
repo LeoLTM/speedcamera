@@ -20,19 +20,21 @@ function HomePage() {
   const lastSpeed = useAppStore((s) => s.lastSpeed);
   const lastViolation = useAppStore((s) => s.lastViolation);
   const setMaxSpeed = useAppStore((s) => s.setMaxSpeed);
+  const setPictureDelay = useAppStore((s) => s.setPictureDelay);
 
   const serialStatus = connectedPort ? "connected" : "disconnected";
   const cameraStatus = selectedCameraDeviceId ? "connected" : "unknown";
 
-  // Load maxSpeed from settings on mount
+  // Load relevant settings into the store on mount
   useEffect(() => {
     getRpc()
       .request.getSettings({})
       .then((settings) => {
         setMaxSpeed(settings.maxSpeed);
+        setPictureDelay(settings.pictureDelay);
       })
       .catch(() => toast.error("Failed to load settings"));
-  }, [setMaxSpeed]);
+  }, [setMaxSpeed, setPictureDelay]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

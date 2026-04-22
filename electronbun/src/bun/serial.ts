@@ -1,4 +1,4 @@
-import { SerialPort, ReadlineParser } from "serialport";
+import { SerialPort, list, readlineParser } from "bun-serialport";
 import type { PortInfo, SerialStatusPayload } from "../shared/types";
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -19,7 +19,7 @@ export function initSerial(push: (payload: SerialStatusPayload) => void): void {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function listPorts(): Promise<PortInfo[]> {
-  return SerialPort.list();
+  return list();
 }
 
 export async function openPort(portPath: string): Promise<void> {
@@ -27,58 +27,40 @@ export async function openPort(portPath: string): Promise<void> {
     await closePort();
   }
 
-  return new Promise((resolve, reject) => {
-    const port = new SerialPort({
-      path: portPath,
-      baudRate: 115200,
-      autoOpen: false,
-    });
-
-    const parser = port.pipe(new ReadlineParser({ delimiter: "\n" }));
-
-    port.open((err) => {
-      if (err) {
-        reject(new Error(`Failed to open ${portPath}: ${err.message}`));
-        return;
-      }
-
-      activePort = port;
-      console.log(`[serial] Opened ${portPath}`);
-
-      pushToView?.({ status: "CONNECTED" });
-
-      resolve();
-    });
-
-    parser.on("data", (raw: string) => {
-      handleIncoming(raw.trim());
-    });
-
-    port.on("error", (err) => {
-      console.error(`[serial] Port error on ${portPath}:`, err);
-    });
-
-    port.on("close", () => {
-      console.log(`[serial] Port ${portPath} closed`);
-      activePort = null;
-      pushToView?.({ status: "DISCONNECTED" });
-    });
+  const port = new SerialPort({
+    path: portPath,
+    baudRate: 115200,
+    autoOpen: false,
   });
+
+  // Attach listeners before opening so no events are missed.
+  const parser = port.pipe(readlineParser());
+
+  parser.on("data", (line: string) => {
+    handleIncoming(line.trim());
+  });
+
+  port.on("error", (err: Error) => {
+    console.error(`[serial] Port error on ${portPath}:`, err);
+  });
+
+  port.on("close", () => {
+    console.log(`[serial] Port ${portPath} closed`);
+    activePort = null;
+    pushToView?.({ status: "DISCONNECTED" });
+  });
+
+  await port.open();
+
+  activePort = port;
+  console.log(`[serial] Opened ${portPath}`);
+  pushToView?.({ status: "CONNECTED" });
 }
 
 export async function closePort(): Promise<void> {
   if (!activePort) return;
-
-  return new Promise((resolve, reject) => {
-    activePort!.close((err) => {
-      if (err) {
-        reject(new Error(`Failed to close port: ${err.message}`));
-      } else {
-        activePort = null;
-        resolve();
-      }
-    });
-  });
+  // The 'close' event handler clears activePort and pushes DISCONNECTED.
+  await activePort.close();
 }
 
 export function sendCommand(json: string): void {
@@ -86,9 +68,10 @@ export function sendCommand(json: string): void {
     console.warn("[serial] sendCommand called but no port is open");
     return;
   }
-  activePort.write(json + "\n", (err) => {
-    if (err) console.error("[serial] Write error:", err);
+  activePort.write(json + "\n").catch((err: Error) => {
+    console.error("[serial] Write error:", err);
   });
+  console.debug("[serial] Sent command:", json);
 }
 
 export function isConnected(): boolean {

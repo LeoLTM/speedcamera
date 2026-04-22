@@ -1,39 +1,52 @@
-import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useEffect } from "react";
+import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
+import { Toaster } from "sonner";
+import { initElectroview } from "@/lib/rpc";
+import { useAppStore } from "@/stores/useAppStore";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { RootRoute } from "@/routes/__root";
+import { IndexRoute } from "@/routes/index";
+import { ViolationsRoute } from "@/routes/violations";
+import { SettingsRoute } from "@/routes/settings";
+import { AboutRoute } from "@/routes/about";
+
+// ─── Router ───────────────────────────────────────────────────────────────────
+
+const routeTree = RootRoute.addChildren([
+  IndexRoute,
+  ViolationsRoute,
+  SettingsRoute,
+  AboutRoute,
+]);
+
+const history = createMemoryHistory({ initialEntries: ["/"] });
+
+const router = createRouter({ routeTree, history });
+
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}
+
+// ─── App ─────────────────────────────────────────────────────────────────────
 
 function App() {
-	const [count, setCount] = useState(0);
+  const handleSerialStatus = useAppStore((s) => s.handleSerialStatus);
 
-	return (
-		<div className="min-h-screen bg-linear-to-br from-indigo-500 to-purple-600 text-gray-900">
-			<div className="container mx-auto px-4 py-10 max-w-3xl">
-				<div className="bg-white rounded-xl shadow-xl p-8 mb-8">
-					<h2 className="text-2xl font-semibold text-indigo-600 mb-4">
-						Interactive Counter
-					</h2>
-					<p className="mb-4 text-gray-600">
-						Click the button below to test React state. With HMR enabled, you
-						can edit this component and see changes instantly without losing
-						state.
-					</p>
-					<div className="flex items-center gap-4">
-						<Button
-							onClick={() => setCount((c) => c + 1)}
-							className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-md hover:shadow-lg"
-						>
-							Count: {count}
-						</Button>
-						<button
-							onClick={() => setCount(0)}
-							className="px-4 py-3 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition-colors"
-						>
-							Reset
-						</button>
-					</div>
-				</div>
-			</div>
-		</div>
-	);
+  useEffect(() => {
+    // Initialize Electroview once; wire serial status pushes to the store.
+    initElectroview((payload) => {
+      handleSerialStatus(payload);
+    });
+  }, [handleSerialStatus]);
+
+  return (
+    <ErrorBoundary>
+      <RouterProvider router={router} />
+      <Toaster richColors position="bottom-right" />
+    </ErrorBoundary>
+  );
 }
 
 export default App;

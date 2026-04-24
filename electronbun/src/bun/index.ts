@@ -8,6 +8,13 @@ import {
   exportCsv,
   getSettings,
   saveSetting,
+  createLapSession,
+  closeLapSession,
+  insertLap,
+  getLapSessions,
+  getLapSessionById,
+  deleteLapSession,
+  deleteLap,
 } from "./database";
 import { saveImage, readImageAsDataUrl, deleteImage } from "./filestore";
 import {
@@ -71,6 +78,43 @@ const rpc = BrowserView.defineRPC<SpeedcameraRPC>({
         const imagePath = await saveImage(raw);
         return insertViolation({ imageBase64: raw, imagePath, measuredSpeed, maxSpeed });
       },
+
+      // ── Lap Sessions ────────────────────────────────────────────────────────
+      createLapSession: ({ lapMode }) => createLapSession(lapMode),
+
+      closeLapSession: ({ id }) => {
+        closeLapSession(id);
+      },
+
+      saveLap: async ({
+        sessionId, lapNumber, startTimestamp, endTimestamp, durationMs,
+        speedAtStart, speedAtEnd, startImageBase64, endImageBase64,
+      }) => {
+        const startRaw = startImageBase64
+          ? startImageBase64.replace(/^data:image\/\w+;base64,/, "")
+          : null;
+        const endRaw = endImageBase64
+          ? endImageBase64.replace(/^data:image\/\w+;base64,/, "")
+          : null;
+        const startImagePath = startRaw ? await saveImage(startRaw) : null;
+        const endImagePath = endRaw ? await saveImage(endRaw) : null;
+        return insertLap({
+          sessionId, lapNumber, startTimestamp, endTimestamp, durationMs,
+          speedAtStart, speedAtEnd,
+          startImageBase64: null, // already saved to disk above; DB only uses the path
+          endImageBase64: null,   // already saved to disk above; DB only uses the path
+          startImagePath,
+          endImagePath,
+        });
+      },
+
+      getLapSessions: ({ page, limit }) => getLapSessions(page, limit),
+
+      getLapSessionById: ({ id }) => getLapSessionById(id),
+
+      deleteLapSession: ({ id }) => deleteLapSession(id),
+
+      deleteLap: ({ id }) => deleteLap(id),
 
       // ── Images ──────────────────────────────────────────────────────────────
       getImageData: async ({ imagePath }) => {

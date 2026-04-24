@@ -6,6 +6,7 @@ import { IndexRoute } from "@/routes/index";
 import { ViolationsRoute } from "@/routes/violations";
 import { SettingsRoute } from "@/routes/settings";
 import { AboutRoute } from "@/routes/about";
+import { LapsRoute } from "@/routes/laps";
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ const routeTree = RootRoute.addChildren([
   ViolationsRoute,
   SettingsRoute,
   AboutRoute,
+  LapsRoute,
 ]);
 
 const history = createMemoryHistory({ initialEntries: ["/"] });

@@ -6,6 +6,7 @@ import { LiveCamera } from "@/components/LiveCamera";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ViolationCard } from "@/components/ViolationCard";
 import { ArmingButton } from "@/components/ArmingButton";
+import { LapTimerDisplay } from "@/components/LapTimerDisplay";
 import { useAppStore } from "@/stores/useAppStore";
 import { getRpc } from "@/lib/rpc";
 
@@ -22,6 +23,8 @@ function HomePage() {
   const lastViolation = useAppStore((s) => s.lastViolation);
   const setMaxSpeed = useAppStore((s) => s.setMaxSpeed);
   const setPictureDelay = useAppStore((s) => s.setPictureDelay);
+  const appMode = useAppStore((s) => s.appMode);
+  const currentLaps = useAppStore((s) => s.currentLaps);
 
   const serialStatus = connectedPort ? "connected" : "disconnected";
   const cameraStatus = selectedCameraDeviceId ? "connected" : "unknown";
@@ -60,41 +63,53 @@ function HomePage() {
 
         {/* Side panel */}
         <div className="w-72 shrink-0 flex flex-col gap-4 p-4 border-l border-border overflow-y-auto">
-          {/* Arming control — most important element */}
-          <ArmingButton />
+          {appMode === "laptimer" ? (
+            /* ── Lap timer panel ── */
+            <LapTimerDisplay
+              compact
+              laps={currentLaps}
+              className="flex-1 py-6"
+            />
+          ) : (
+            /* ── Speed camera panel ── */
+            <>
+              {/* Arming control — most important element */}
+              <ArmingButton />
 
-          {/* Speed reading */}
-          <div className="rounded-xl border border-border bg-card p-4 text-center">
-            <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">
-              Current Speed
-            </p>
-            <p
-              className={
-                lastSpeed !== null
-                  ? "text-5xl font-bold tabular-nums"
-                  : "text-3xl font-medium text-muted-foreground/50"
-              }
-            >
-              {lastSpeed !== null ? lastSpeed : "—"}
-            </p>
-            {lastSpeed !== null && (
-              <p className="text-xs text-muted-foreground mt-1">km/h</p>
-            )}
-          </div>
-
-          {/* Last violation */}
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-widest mb-2 px-0.5">
-              Last Violation
-            </p>
-            {lastViolation ? (
-              <ViolationCard violation={lastViolation} />
-            ) : (
+              {/* Speed reading */}
               <div className="rounded-xl border border-border bg-card p-4 text-center">
-                <p className="text-sm text-muted-foreground">No violations yet</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">
+                  Current Speed
+                </p>
+                <p
+                  className={
+                    lastSpeed !== null
+                      ? "text-5xl font-bold tabular-nums"
+                      : "text-3xl font-medium text-muted-foreground/50"
+                  }
+                >
+                  {lastSpeed !== null ? lastSpeed : "—"}
+                </p>
+                {lastSpeed !== null && (
+                  <p className="text-xs text-muted-foreground mt-1">km/h</p>
+                )}
               </div>
-            )}
-          </div>
+
+              {/* Last violation */}
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-widest mb-2 px-0.5">
+                  Last Violation
+                </p>
+                {lastViolation ? (
+                  <ViolationCard violation={lastViolation} />
+                ) : (
+                  <div className="rounded-xl border border-border bg-card p-4 text-center">
+                    <p className="text-sm text-muted-foreground">No violations yet</p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

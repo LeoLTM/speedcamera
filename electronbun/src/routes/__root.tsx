@@ -1,8 +1,10 @@
+import { useEffect } from "react";
 import { Outlet, createRootRoute } from "@tanstack/react-router";
 import { NavigationMenu } from "@/components/NavigationMenu";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { GlobalWebcam } from "@/components/GlobalWebcam";
 import { useSystemStateSync } from "@/hooks/useSystemStateSync";
+import { useAppStore } from "@/stores/useAppStore";
 
 export const RootRoute = createRootRoute({
   component: Root,
@@ -10,6 +12,11 @@ export const RootRoute = createRootRoute({
 
 function Root() {
   useSystemStateSync();
+  const loadLapSettings = useAppStore((s) => s.loadLapSettings);
+
+  useEffect(() => {
+    void loadLapSettings();
+  }, [loadLapSettings]);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground">

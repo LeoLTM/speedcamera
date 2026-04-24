@@ -89,6 +89,7 @@ export function isConnected(): boolean {
  *   {"status":"jsonError"}
  */
 function handleIncoming(raw: string): void {
+  const timestamp = Date.now(); // capture as early as possible for timing precision
   console.log("[serial] Received:", raw);
 
   let msg: { status?: string; value?: number; tolerance?: number };
@@ -107,19 +108,21 @@ function handleIncoming(raw: string): void {
         status: "SPEEDING",
         value: msg.value ?? 0,
         tolerance: msg.tolerance ?? 0,
+        timestamp,
       });
       break;
 
     case "legal":
-    case "measuring":
       pushToView?.({
         status: "OK",
         value: msg.value ?? 0,
         tolerance: msg.tolerance ?? 0,
+        timestamp,
       });
       break;
 
-    // config, flash, jsonError, timeout — no view push needed
+    // measuring = sensor 1 triggered, waiting for sensor 2 — internal Arduino state,
+    // not a complete car pass; config, flash, jsonError, timeout — no view push needed
     default:
       break;
   }

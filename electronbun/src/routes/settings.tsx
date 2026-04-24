@@ -36,7 +36,7 @@ function SettingsPage() {
       <TabsPrimitive.Root defaultValue="device" className="flex flex-col h-full">
         {/* Tab list */}
         <TabsPrimitive.List className="flex shrink-0 border-b border-border px-4 gap-0.5">
-          {(["device", "camera-hw", "speed-camera"] as const).map((tab) => (
+          {(["device", "camera-hw", "speed-camera", "lap-timer"] as const).map((tab) => (
             <TabsPrimitive.Trigger
               key={tab}
               value={tab}
@@ -47,7 +47,13 @@ function SettingsPage() {
                 "data-[state=active]:text-foreground data-[state=active]:border-primary",
               )}
             >
-              {tab === "device" ? "Device" : tab === "camera-hw" ? "Camera HW" : "Speed Camera"}
+              {tab === "device"
+                ? "Device"
+                : tab === "camera-hw"
+                ? "Camera HW"
+                : tab === "speed-camera"
+                ? "Speed Camera"
+                : "Lap Timer"}
             </TabsPrimitive.Trigger>
           ))}
         </TabsPrimitive.List>
@@ -61,6 +67,9 @@ function SettingsPage() {
         </TabsPrimitive.Content>
         <TabsPrimitive.Content value="speed-camera" className="flex-1 overflow-y-auto p-6">
           <SpeedCameraTab />
+        </TabsPrimitive.Content>
+        <TabsPrimitive.Content value="lap-timer" className="flex-1 overflow-y-auto p-6">
+          <LapTimerTab />
         </TabsPrimitive.Content>
       </TabsPrimitive.Root>
     </div>
@@ -575,6 +584,114 @@ function SpeedCameraTab() {
           {saving ? "Saving…" : "Save Settings"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+// ─── Lap Timer Tab ────────────────────────────────────────────────────────────
+
+function LapTimerTab() {
+  const lapSettings = useAppStore((s) => s.lapSettings);
+  const updateLapSetting = useAppStore((s) => s.updateLapSetting);
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const handleUpdate = async (key: keyof AppSettings, value: string) => {
+    setSaving(key);
+    try {
+      await updateLapSetting(key, value);
+    } catch {
+      toast.error("Failed to save setting");
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <div className="max-w-lg space-y-8">
+      {/* Lap Mode */}
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold">Lap Mode</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Single: one lap per session cycle, resets to waiting after each lap.
+            Multi: continuous recording until stopped.
+          </p>
+        </div>
+        <Select
+          value={lapSettings.lapMode}
+          onValueChange={(v) => handleUpdate("lapMode", v)}
+          disabled={saving === "lapMode"}
+        >
+          <SelectTrigger className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="single">Single lap</SelectItem>
+            <SelectItem value="multi">Multi-lap</SelectItem>
+          </SelectContent>
+        </Select>
+      </section>
+
+      {/* Flash settings */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold">Flash</h2>
+        <ToggleSetting
+          label="Flash on session start (first car)"
+          description="Trigger the flash when the first car passes at the start of a lap."
+          checked={lapSettings.flashOnStart}
+          disabled={saving === "lapFlashOnStart"}
+          onChange={(v) => handleUpdate("lapFlashOnStart", v ? "true" : "false")}
+        />
+        <ToggleSetting
+          label="Flash on lap end"
+          description="Trigger the flash when a lap is completed."
+          checked={lapSettings.flashOnLapEnd}
+          disabled={saving === "lapFlashOnLapEnd"}
+          onChange={(v) => handleUpdate("lapFlashOnLapEnd", v ? "true" : "false")}
+        />
+      </section>
+
+      {/* Image capture */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold">Image Capture</h2>
+        <ToggleSetting
+          label="Save images"
+          description="Capture and save a photo at the start and end of each lap."
+          checked={lapSettings.saveImages}
+          disabled={saving === "lapSaveImages"}
+          onChange={(v) => handleUpdate("lapSaveImages", v ? "true" : "false")}
+        />
+      </section>
+    </div>
+  );
+}
+
+interface ToggleSettingProps {
+  label: string;
+  description?: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (value: boolean) => void;
+}
+
+function ToggleSetting({ label, description, checked, disabled, onChange }: ToggleSettingProps) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="flex-1 space-y-0.5">
+        <label className="text-sm font-medium">{label}</label>
+        {description && (
+          <p className="text-xs text-muted-foreground">{description}</p>
+        )}
+      </div>
+      <Button
+        variant={checked ? "default" : "outline"}
+        size="sm"
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className="shrink-0 w-12"
+      >
+        {checked ? "On" : "Off"}
+      </Button>
     </div>
   );
 }

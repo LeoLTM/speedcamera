@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 import type { SerialStatusPayload, Violation } from "@/shared/types";
 import type { CameraSlice } from "./cameraSlice";
 import type { SystemSlice } from "./systemSlice";
+import type { LapSlice } from "./lapSlice";
 import { getRpc } from "@/lib/rpc";
 import { playBeep } from "@/lib/sound";
 import { toast } from "sonner";
@@ -24,7 +25,7 @@ export interface MeasurementSlice {
 let capturing = false;
 
 export const createMeasurementSlice: StateCreator<
-  MeasurementSlice & CameraSlice & SystemSlice,
+  MeasurementSlice & CameraSlice & SystemSlice & LapSlice,
   [],
   [],
   MeasurementSlice
@@ -39,9 +40,15 @@ export const createMeasurementSlice: StateCreator<
   setLastViolation: (v) => set({ lastViolation: v }),
 
   handleSerialStatus: (payload) => {
-    const { systemState } = get();
+    const { systemState, appMode } = get();
     // In PASSIVE mode, ignore all serial measurements
     if (systemState === "PASSIVE") return;
+
+    // In lap timer mode, delegate entirely to the lap state machine
+    if (appMode === "laptimer") {
+      get().handleSerialStatusForLap(payload);
+      return;
+    }
 
     if (payload.status === "SPEEDING") {
       const { value } = payload;

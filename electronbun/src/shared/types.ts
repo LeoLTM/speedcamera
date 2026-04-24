@@ -24,6 +24,11 @@ export interface AppSettings {
   maxSpeed: number;         // km/h, default 30
   selectedPort: string;     // serial port path, default ""
   selectedCamera: string;   // webcam deviceId, default ""
+  // Lap timer settings
+  lapMode: string;          // "single" | "multi", default "single"
+  lapFlashOnStart: string;  // "true" | "false", default "true"
+  lapFlashOnLapEnd: string; // "true" | "false", default "true"
+  lapSaveImages: string;    // "true" | "false", default "true"
 }
 
 export interface PortInfo {
@@ -65,11 +70,50 @@ export interface ViolationPage {
   total: number;
 }
 
+// ─── Lap Timer Types ─────────────────────────────────────────────────────────
+
+export interface LapSession {
+  id: number;
+  startedAt: string;      // ISO 8601
+  endedAt: string | null; // ISO 8601, null while session is active
+  lapMode: string;        // "single" | "multi"
+  createdAt: string;      // ISO 8601
+}
+
+export interface Lap {
+  id: number;
+  sessionId: number;
+  lapNumber: number;
+  startTimestamp: number;       // ms (Date.now())
+  endTimestamp: number;         // ms (Date.now())
+  durationMs: number;
+  speedAtStart: number;
+  speedAtEnd: number;
+  startImagePath: string | null;
+  endImagePath: string | null;
+}
+
+export interface LapSessionWithLaps extends LapSession {
+  laps: Lap[];
+}
+
+export interface SaveLapInput {
+  sessionId: number;
+  lapNumber: number;
+  startTimestamp: number;
+  endTimestamp: number;
+  durationMs: number;
+  speedAtStart: number;
+  speedAtEnd: number;
+  startImageBase64: string | null; // raw base64, no data-URL prefix
+  endImageBase64: string | null;   // raw base64, no data-URL prefix
+}
+
 // ─── Serial Status Message ───────────────────────────────────────────────────
 
 export type SerialStatusPayload =
-  | { status: "SPEEDING"; value: number; tolerance: number }
-  | { status: "OK"; value: number; tolerance: number }
+  | { status: "SPEEDING"; value: number; tolerance: number; timestamp: number }
+  | { status: "OK"; value: number; tolerance: number; timestamp: number }
   | { status: "CONNECTED" }
   | { status: "DISCONNECTED" };
 
@@ -98,6 +142,36 @@ export type SpeedcameraRPC = {
       saveViolation: {
         params: SaveViolationInput;
         response: Violation;
+      };
+
+      // DB – lap sessions
+      createLapSession: {
+        params: { lapMode: string };
+        response: LapSession;
+      };
+      closeLapSession: {
+        params: { id: number };
+        response: void;
+      };
+      saveLap: {
+        params: SaveLapInput;
+        response: Lap;
+      };
+      getLapSessions: {
+        params: { page: number; limit: number };
+        response: { sessions: LapSessionWithLaps[]; total: number };
+      };
+      getLapSessionById: {
+        params: { id: number };
+        response: LapSessionWithLaps | null;
+      };
+      deleteLapSession: {
+        params: { id: number };
+        response: void;
+      };
+      deleteLap: {
+        params: { id: number };
+        response: void;
       };
 
       // DB – images

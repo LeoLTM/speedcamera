@@ -7,6 +7,10 @@ import type {
   AppSettings,
   ViolationQuery,
   ViolationPage,
+  Lap,
+  LapSession,
+  LapSessionWithLaps,
+  SaveLapInput,
 } from "../shared/types";
 
 // ─── Default settings ────────────────────────────────────────────────────────
@@ -18,6 +22,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   maxSpeed: 30,
   selectedPort: "",
   selectedCamera: "",
+  // Lap timer settings
+  lapMode: "single",
+  lapFlashOnStart: "true",
+  lapFlashOnLapEnd: "true",
+  lapSaveImages: "true",
 };
 
 // ─── Database setup (lazy) ───────────────────────────────────────────────────
@@ -55,6 +64,39 @@ function getDb(): Database {
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS lap_sessions (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      startedAt TEXT    NOT NULL,
+      endedAt   TEXT,
+      lapMode   TEXT    NOT NULL,
+      createdAt TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS laps (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      sessionId        INTEGER NOT NULL REFERENCES lap_sessions(id) ON DELETE CASCADE,
+      lapNumber        INTEGER NOT NULL,
+      startTimestamp   INTEGER NOT NULL,
+      endTimestamp     INTEGER NOT NULL,
+      durationMs       INTEGER NOT NULL,
+      speedAtStart     REAL    NOT NULL,
+      speedAtEnd       REAL    NOT NULL,
+      startImagePath   TEXT,
+      endImagePath     TEXT
+    )
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_laps_session ON laps(sessionId)
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_lap_sessions_started ON lap_sessions(startedAt)
   `);
 
   const insertDefault = db.prepare(
@@ -188,6 +230,10 @@ export function getSettings(): AppSettings {
     maxSpeed: Number(map.maxSpeed ?? DEFAULT_SETTINGS.maxSpeed),
     selectedPort: map.selectedPort ?? DEFAULT_SETTINGS.selectedPort,
     selectedCamera: map.selectedCamera ?? DEFAULT_SETTINGS.selectedCamera,
+    lapMode: map.lapMode ?? DEFAULT_SETTINGS.lapMode,
+    lapFlashOnStart: map.lapFlashOnStart ?? DEFAULT_SETTINGS.lapFlashOnStart,
+    lapFlashOnLapEnd: map.lapFlashOnLapEnd ?? DEFAULT_SETTINGS.lapFlashOnLapEnd,
+    lapSaveImages: map.lapSaveImages ?? DEFAULT_SETTINGS.lapSaveImages,
   };
 }
 
@@ -197,4 +243,141 @@ export function saveSetting(key: keyof AppSettings, value: string): void {
     key,
     value
   );
+}
+
+// ─── Lap session queries ───────────────────────────────────────────────────────
+
+export function createLapSession(lapMode: string): LapSession {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const result = db
+    .prepare(
+      "INSERT INTO lap_sessions (startedAt, endedAt, lapMode, createdAt) VALUES (?, NULL, ?, ?)"
+    )
+    .run(now, lapMode, now);
+  return {
+    id: result.lastInsertRowid as number,
+    startedAt: now,
+    endedAt: null,
+    lapMode,
+    createdAt: now,
+  };
+}
+
+export function closeLapSession(id: number): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.prepare("UPDATE lap_sessions SET endedAt = ? WHERE id = ?").run(now, id);
+}
+
+export function getLapSessions(
+  page: number,
+  limit: number
+): { sessions: LapSessionWithLaps[]; total: number } {
+  const db = getDb();
+  const countRow = db
+    .prepare("SELECT COUNT(*) as total FROM lap_sessions")
+    .get() as { total: number };
+
+  const offset = (page - 1) * limit;
+  const rows = db
+    .prepare(
+      "SELECT * FROM lap_sessions ORDER BY startedAt DESC LIMIT ? OFFSET ?"
+    )
+    .all(limit, offset) as LapSession[];
+
+  const sessions: LapSessionWithLaps[] = rows.map((session) => {
+    const laps = db
+      .prepare(
+        "SELECT * FROM laps WHERE sessionId = ? ORDER BY lapNumber ASC"
+      )
+      .all(session.id) as Lap[];
+    return { ...session, laps };
+  });
+
+  return { sessions, total: countRow.total };
+}
+
+export function getLapSessionById(id: number): LapSessionWithLaps | null {
+  const db = getDb();
+  const session = db
+    .prepare("SELECT * FROM lap_sessions WHERE id = ?")
+    .get(id) as LapSession | undefined;
+  if (!session) return null;
+
+  const laps = db
+    .prepare("SELECT * FROM laps WHERE sessionId = ? ORDER BY lapNumber ASC")
+    .all(id) as Lap[];
+
+  return { ...session, laps };
+}
+
+export async function deleteLapSession(id: number): Promise<void> {
+  const db = getDb();
+  // Collect image paths before deletion for file cleanup (CASCADE will remove rows)
+  const laps = db
+    .prepare("SELECT startImagePath, endImagePath FROM laps WHERE sessionId = ?")
+    .all(id) as Pick<Lap, "startImagePath" | "endImagePath">[];
+
+  db.prepare("DELETE FROM lap_sessions WHERE id = ?").run(id);
+
+  // Clean up image files asynchronously after DB rows are gone
+  const { deleteImage } = await import("./filestore");
+  for (const lap of laps) {
+    if (lap.startImagePath) await deleteImage(lap.startImagePath);
+    if (lap.endImagePath) await deleteImage(lap.endImagePath);
+  }
+}
+
+// ─── Lap queries ──────────────────────────────────────────────────────────────
+
+export async function insertLap(
+  input: SaveLapInput & { startImagePath: string | null; endImagePath: string | null }
+): Promise<Lap> {
+  const db = getDb();
+  const result = db
+    .prepare(
+      `INSERT INTO laps
+        (sessionId, lapNumber, startTimestamp, endTimestamp, durationMs,
+         speedAtStart, speedAtEnd, startImagePath, endImagePath)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      input.sessionId,
+      input.lapNumber,
+      input.startTimestamp,
+      input.endTimestamp,
+      input.durationMs,
+      input.speedAtStart,
+      input.speedAtEnd,
+      input.startImagePath,
+      input.endImagePath
+    );
+  return {
+    id: result.lastInsertRowid as number,
+    sessionId: input.sessionId,
+    lapNumber: input.lapNumber,
+    startTimestamp: input.startTimestamp,
+    endTimestamp: input.endTimestamp,
+    durationMs: input.durationMs,
+    speedAtStart: input.speedAtStart,
+    speedAtEnd: input.speedAtEnd,
+    startImagePath: input.startImagePath,
+    endImagePath: input.endImagePath,
+  };
+}
+
+export async function deleteLap(id: number): Promise<void> {
+  const db = getDb();
+  const lap = db.prepare("SELECT startImagePath, endImagePath FROM laps WHERE id = ?").get(
+    id
+  ) as Pick<Lap, "startImagePath" | "endImagePath"> | undefined;
+
+  db.prepare("DELETE FROM laps WHERE id = ?").run(id);
+
+  if (lap) {
+    const { deleteImage } = await import("./filestore");
+    if (lap.startImagePath) await deleteImage(lap.startImagePath);
+    if (lap.endImagePath) await deleteImage(lap.endImagePath);
+  }
 }

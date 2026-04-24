@@ -5,6 +5,7 @@ import { RootRoute } from "./__root";
 import { LiveCamera } from "@/components/LiveCamera";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ViolationCard } from "@/components/ViolationCard";
+import { ArmingButton } from "@/components/ArmingButton";
 import { useAppStore } from "@/stores/useAppStore";
 import { getRpc } from "@/lib/rpc";
 
@@ -59,6 +60,9 @@ function HomePage() {
 
         {/* Side panel */}
         <div className="w-72 shrink-0 flex flex-col gap-4 p-4 border-l border-border overflow-y-auto">
+          {/* Arming control — most important element */}
+          <ArmingButton />
+
           {/* Speed reading */}
           <div className="rounded-xl border border-border bg-card p-4 text-center">
             <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">

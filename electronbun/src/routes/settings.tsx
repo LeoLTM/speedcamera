@@ -100,7 +100,21 @@ function DeviceTab() {
   const refreshCameras = useCallback(async () => {
     setLoadingCameras(true);
     try {
+      // Request camera access so the browser populates deviceId/label for all
+      // devices. Without this, enumerateDevices() returns empty deviceId values
+      // before permission is granted.
+      let stream: MediaStream | null = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      } catch {
+        // Permission denied or no camera — still try to enumerate
+      }
+
       const devices = await navigator.mediaDevices.enumerateDevices();
+
+      // Stop the stream immediately; we only needed it to unlock enumeration
+      stream?.getTracks().forEach((t) => t.stop());
+
       // Filter out entries with empty deviceId — these appear before the user
       // grants camera permission and would crash <Select.Item value="">.
       const videoCameras = devices.filter((d) => d.kind === "videoinput" && d.deviceId !== "");

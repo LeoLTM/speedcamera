@@ -24,6 +24,9 @@ export default {
 		linux: {
 			bundleCEF: true,
 			defaultRenderer: "cef",
+			chromiumFlags: {
+				"--auto-accept-camera-and-microphone-capture": true,
+			}
 		},
 		win: {
 			bundleCEF: false,

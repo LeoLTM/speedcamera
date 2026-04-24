@@ -7,23 +7,29 @@ export interface CameraSlice {
   availableCameras: MediaDeviceInfo[];
   /** deviceId of the selected camera */
   selectedCameraDeviceId: string;
-  /** Ref to the react-webcam instance (set by LiveCamera component) */
+  /** Ref to the react-webcam instance (set by GlobalWebcam, always-mounted) */
   webcamRef: RefObject<Webcam | null> | null;
+  /** Live MediaStream from the always-mounted GlobalWebcam (null until camera starts) */
+  cameraStream: MediaStream | null;
   /** Delay in ms between the flash command and the screenshot */
   pictureDelay: number;
   setAvailableCameras: (cameras: MediaDeviceInfo[]) => void;
   setSelectedCameraDeviceId: (deviceId: string) => void;
   setWebcamRef: (ref: RefObject<Webcam | null> | null) => void;
+  setCameraStream: (stream: MediaStream | null) => void;
   setPictureDelay: (delay: number) => void;
 }
 
 export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> = (set) => ({
   availableCameras: [],
-  selectedCameraDeviceId: "",
+  // TODO: replace with real camera selection once multi-camera support is implemented
+  selectedCameraDeviceId: "mocked",
   webcamRef: null,
+  cameraStream: null,
   pictureDelay: 100,
-  setAvailableCameras: (cameras) => set({ availableCameras: cameras }),
-  setSelectedCameraDeviceId: (deviceId) => set({ selectedCameraDeviceId: deviceId }),
+  setAvailableCameras: (_cameras) => { /* mocked — no-op */ },
+  setSelectedCameraDeviceId: (_deviceId) => { /* mocked — no-op */ },
   setWebcamRef: (ref) => set({ webcamRef: ref }),
+  setCameraStream: (stream) => set({ cameraStream: stream }),
   setPictureDelay: (delay) => set({ pictureDelay: delay }),
 });

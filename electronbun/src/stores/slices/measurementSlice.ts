@@ -1,6 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { SerialStatusPayload, Violation } from "@/shared/types";
 import type { CameraSlice } from "./cameraSlice";
+import type { SystemSlice } from "./systemSlice";
 import { getRpc } from "@/lib/rpc";
 import { playBeep } from "@/lib/sound";
 import { toast } from "sonner";
@@ -23,7 +24,7 @@ export interface MeasurementSlice {
 let capturing = false;
 
 export const createMeasurementSlice: StateCreator<
-  MeasurementSlice & CameraSlice,
+  MeasurementSlice & CameraSlice & SystemSlice,
   [],
   [],
   MeasurementSlice
@@ -38,37 +39,52 @@ export const createMeasurementSlice: StateCreator<
   setLastViolation: (v) => set({ lastViolation: v }),
 
   handleSerialStatus: (payload) => {
+    const { systemState } = get();
+    // In PASSIVE mode, ignore all serial measurements
+    if (systemState === "PASSIVE") return;
+
     if (payload.status === "SPEEDING") {
       const { value } = payload;
       set({ lastSpeed: value });
 
-      if (capturing) return;
-      const { webcamRef, maxSpeed, pictureDelay } = get();
+      // Only save violations and flash when fully ARMED
+      if (systemState !== "ARMED") return;
 
-      if (!webcamRef?.current) {
-        console.warn("[measurement] SPEEDING detected but no webcam ref available");
+      if (capturing) return;
+      const { cameraStream, maxSpeed, pictureDelay } = get();
+
+      if (!cameraStream || cameraStream.getVideoTracks().length === 0) {
+        console.warn("[measurement] SPEEDING detected but no camera stream available");
         return;
       }
 
       capturing = true;
       set({ isCapturing: true });
 
+      // Grab a reference to the track now so it stays stable across the async chain
+      const videoTrack = cameraStream.getVideoTracks()[0];
+
       // 1. Tell the ESP32 to trigger the flash (it applies its own flashDelay + flashDuration).
       // 2. Wait pictureDelay ms so the flash is illuminating the scene when we capture.
-      // 3. Take the screenshot and save the violation.
+      // 3. Use ImageCapture to grab the frame directly from the stream track —
+      //    independent of any DOM visibility/throttling.
       getRpc()
         .request.sendCommand({ json: JSON.stringify({ command: "flash" }) })
         .catch((err: unknown) =>
           console.error("[measurement] Failed to send flash command:", err)
         )
         .then(() => new Promise<void>((resolve) => setTimeout(resolve, pictureDelay)))
-        .then(() => {
-          const screenshot = webcamRef.current?.getScreenshot();
-          if (!screenshot) {
-            console.error("[measurement] Failed to capture webcam screenshot");
-            return Promise.reject(new Error("no screenshot"));
-          }
-          const imageBase64 = screenshot.replace(/^data:image\/\w+;base64,/, "");
+        .then(async () => {
+          const imageCapture = new ImageCapture(videoTrack);
+          const bitmap = await imageCapture.grabFrame();
+          const canvas = document.createElement("canvas");
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return Promise.reject(new Error("no canvas context"));
+          ctx.drawImage(bitmap, 0, 0);
+          bitmap.close();
+          const imageBase64 = canvas.toDataURL("image/png").replace(/^data:image\/\w+;base64,/, "");
           return getRpc().request.saveViolation({ imageBase64, measuredSpeed: value, maxSpeed });
         })
         .then((violation: Violation) => {

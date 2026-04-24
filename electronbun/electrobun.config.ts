@@ -26,6 +26,7 @@ export default {
 			defaultRenderer: "cef",
 			chromiumFlags: {
 				"--auto-accept-camera-and-microphone-capture": true,
+				"--enable-developer-tools": true,
 			}
 		},
 		win: {

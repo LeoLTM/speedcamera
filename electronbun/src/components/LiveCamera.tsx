@@ -1,5 +1,4 @@
 import { useRef, useEffect } from "react";
-import Webcam from "react-webcam";
 import { useAppStore } from "@/stores/useAppStore";
 import { cn } from "@/lib/utils";
 
@@ -10,35 +9,27 @@ interface LiveCameraProps {
 }
 
 export function LiveCamera({ className, aspectRatio = "16 / 9" }: LiveCameraProps) {
-  const webcamRef = useRef<Webcam | null>(null);
-  const selectedCameraDeviceId = useAppStore((s) => s.selectedCameraDeviceId);
-  const setWebcamRef = useAppStore((s) => s.setWebcamRef);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraStream = useAppStore((s) => s.cameraStream);
 
-  // Register ref in the global store so measurementSlice can capture screenshots
+  // Attach the always-alive stream from GlobalWebcam to the video element
   useEffect(() => {
-    setWebcamRef(webcamRef);
-    return () => setWebcamRef(null);
-  }, [setWebcamRef]);
-
-  const videoConstraints: MediaTrackConstraints = selectedCameraDeviceId
-    ? { deviceId: { exact: selectedCameraDeviceId } }
-    : {};
+    if (videoRef.current) {
+      videoRef.current.srcObject = cameraStream;
+    }
+  }, [cameraStream]);
 
   return (
     <div
       className={cn("relative overflow-hidden rounded-lg bg-muted", className)}
       style={{ aspectRatio }}
     >
-      <Webcam
-        ref={webcamRef}
-        audio={false}
-        screenshotFormat="image/png"
-        videoConstraints={videoConstraints}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
         className="absolute inset-0 w-full h-full object-cover"
-        mirrored={false}
-        onUserMediaError={(err) =>
-          console.error("[LiveCamera] Camera access error:", err)
-        }
       />
     </div>
   );

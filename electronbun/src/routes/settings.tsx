@@ -76,13 +76,8 @@ function DeviceTab() {
   const setSelectedPort = useAppStore((s) => s.setSelectedPort);
   const availablePorts = useAppStore((s) => s.availablePorts);
   const setAvailablePorts = useAppStore((s) => s.setAvailablePorts);
-  const availableCameras = useAppStore((s) => s.availableCameras);
-  const setAvailableCameras = useAppStore((s) => s.setAvailableCameras);
-  const selectedCameraDeviceId = useAppStore((s) => s.selectedCameraDeviceId);
-  const setSelectedCameraDeviceId = useAppStore((s) => s.setSelectedCameraDeviceId);
 
   const [loadingPorts, setLoadingPorts] = useState(false);
-  const [loadingCameras, setLoadingCameras] = useState(false);
   const [connecting, setConnecting] = useState(false);
 
   const refreshPorts = useCallback(async () => {
@@ -97,47 +92,16 @@ function DeviceTab() {
     }
   }, [setAvailablePorts]);
 
-  const refreshCameras = useCallback(async () => {
-    setLoadingCameras(true);
-    try {
-      // Request camera access so the browser populates deviceId/label for all
-      // devices. Without this, enumerateDevices() returns empty deviceId values
-      // before permission is granted.
-      let stream: MediaStream | null = null;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      } catch {
-        // Permission denied or no camera — still try to enumerate
-      }
-
-      const devices = await navigator.mediaDevices.enumerateDevices();
-
-      // Stop the stream immediately; we only needed it to unlock enumeration
-      stream?.getTracks().forEach((t) => t.stop());
-
-      // Filter out entries with empty deviceId — these appear before the user
-      // grants camera permission and would crash <Select.Item value="">.
-      const videoCameras = devices.filter((d) => d.kind === "videoinput" && d.deviceId !== "");
-      setAvailableCameras(videoCameras);
-    } catch {
-      toast.error("Failed to list cameras");
-    } finally {
-      setLoadingCameras(false);
-    }
-  }, [setAvailableCameras]);
-
   // Load settings + refresh on mount
   useEffect(() => {
     getRpc()
       .request.getSettings({})
       .then((settings) => {
         if (settings.selectedPort) setSelectedPort(settings.selectedPort);
-        if (settings.selectedCamera) setSelectedCameraDeviceId(settings.selectedCamera);
       })
       .catch(() => {});
     void refreshPorts();
-    void refreshCameras();
-  }, [refreshPorts, refreshCameras, setSelectedPort, setSelectedCameraDeviceId]);
+  }, [refreshPorts, setSelectedPort]);
 
   const handleConnect = async () => {
     if (!selectedPort) return;
@@ -164,15 +128,6 @@ function DeviceTab() {
       toast.error("Failed to disconnect");
     } finally {
       setConnecting(false);
-    }
-  };
-
-  const handleCameraChange = async (deviceId: string) => {
-    setSelectedCameraDeviceId(deviceId);
-    try {
-      await getRpc().request.saveSetting({ key: "selectedCamera", value: deviceId });
-    } catch {
-      toast.error("Failed to save camera setting");
     }
   };
 
@@ -242,43 +197,7 @@ function DeviceTab() {
         )}
       </section>
 
-      {/* Camera */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold">Camera</h2>
-        <div className="flex items-center gap-2">
-          <Select value={selectedCameraDeviceId} onValueChange={handleCameraChange}>
-            <SelectTrigger className="flex-1">
-              <SelectValue placeholder="Select camera…" />
-            </SelectTrigger>
-            <SelectContent>
-              {availableCameras.length === 0 ? (
-                <SelectItem value="__none" disabled>
-                  No cameras found
-                </SelectItem>
-              ) : (
-                availableCameras.map((cam) => (
-                  <SelectItem key={cam.deviceId} value={cam.deviceId}>
-                    {cam.label || `Camera ${cam.deviceId.slice(0, 8)}`}
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={refreshCameras}
-            disabled={loadingCameras}
-            aria-label="Refresh cameras"
-          >
-            <HugeiconsIcon
-              icon={RefreshIcon}
-              strokeWidth={2}
-              className={loadingCameras ? "animate-spin" : ""}
-            />
-          </Button>
-        </div>
-      </section>
+      {/* Camera selection is not yet configurable — mocked in store */}
     </div>
   );
 }

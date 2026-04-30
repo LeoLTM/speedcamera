@@ -22,8 +22,10 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux-x64
-          - os: windows-latest
-            platform: win-x64
+          # Does not work yet due to electronbun cli installation errors
+          # on Windows runners. Windows is no prio atm anyway.
+          # - os: windows-latest
+          #   platform: win-x64
 
     steps:
       - uses: actions/checkout@v6

@@ -6,8 +6,7 @@ import { useAppStore } from "@/stores/useAppStore";
 // NOT the schema description (SpeedcameraRPC). We extract the correct internal type
 // via an instantiation expression from defineRPC, then cast the singleton .rpc
 // accessor to that type so callers get full type-safe request/send access.
-const _defineRpcTyped = Electroview.defineRPC<SpeedcameraRPC>;
-type SpeedcameraInternalRPC = ReturnType<typeof _defineRpcTyped>;
+type SpeedcameraInternalRPC = ReturnType<typeof Electroview.defineRPC<SpeedcameraRPC>>;
 
 // Initialize synchronously at module load so getRpc() is always available,
 // regardless of React effect scheduling order.

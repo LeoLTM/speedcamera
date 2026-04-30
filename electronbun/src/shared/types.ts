@@ -337,9 +337,7 @@ export type SpeedcameraRPC = {
       };
     };
 
-    messages: {
-      // No bun-to-view messages handled on the bun request side
-    };
+    messages: Record<string, never>;
   }>;
 
   webview: RPCSchema<{

@@ -4,8 +4,10 @@
 	"description": "A remake of the Speedcamera companion app using Electrobun",
 	"scripts": {
 		"start": "vite build &&  electrobun dev",
+		"start:mock": "MOCK_MODE=true vite build && MOCK_MODE=true electrobun dev",
 		"dev": "electrobun dev --watch",
 		"dev:hmr": "concurrently \"bun run hmr\" \"bun run start\"",
+		"dev:hmr:mock": "concurrently \"bun run hmr\" \"MOCK_MODE=true electrobun dev\"",
 		"hmr": "vite --port 5173",
 		"build:canary": "vite build && electrobun build --env=canary",
 		"build:stable": "vite build && electrobun build --env=stable",

@@ -12,6 +12,14 @@ export default {
 			// serialport has native bindings — keep it external so Bun loads
 			// the pre-built .node addon from node_modules at runtime
 			external: ["serialport", "@serialport/bindings-cpp"],
+			// Replace process.env.MOCK_MODE at build time.
+			// When MOCK_MODE is not set (stable / canary builds) this inlines an
+			// empty string, and Bun's dead-code elimination removes every mock
+			// import and the mock controller window — mock files are physically
+			// absent from the final bundle.
+			define: {
+				"process.env.MOCK_MODE": JSON.stringify(process.env.MOCK_MODE ?? ""),
+			},
 		},
 		// Vite builds to dist/, we copy from there
 		copy: {

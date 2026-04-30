@@ -222,7 +222,7 @@ if (isDev) {
 // ─── Serial push bridge ───────────────────────────────────────────────────────
 
 initSerial((payload) => {
-  mainWindow.webview.rpc.send.serialStatus(payload);
+  mainWindow.webview.rpc?.send.serialStatus(payload);
 });
 
 console.log("[index] Speedcamera started");

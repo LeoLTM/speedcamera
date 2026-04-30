@@ -191,7 +191,12 @@ const rpc = BrowserView.defineRPC<SpeedcameraRPC>({
         saveTeableTarget(spaceId, baseId, tableId);
       },
 
-      syncLapToTeable: ({ lap, session }) => syncLapToTeable(lap, session),    },
+      syncLapToTeable: ({ lap, session }) => syncLapToTeable(lap, session),
+
+      // ── Updater ─────────────────────────────────────────────────────────────
+      applyUpdate: async () => {
+        await Updater.applyUpdate();
+      },    },
 
     messages: {
       // No bun-side message handlers from the view in this schema
@@ -224,6 +229,30 @@ if (isDev) {
 initSerial((payload) => {
   mainWindow.webview.rpc?.send.serialStatus(payload);
 });
+
+// ─── Auto-updater ─────────────────────────────────────────────────────────────
+
+async function checkAndNotifyUpdate(): Promise<void> {
+  const channel = await Updater.localInfo.channel();
+  if (channel === "dev") return;
+
+  try {
+    const info = await Updater.checkForUpdate();
+    if (!info.updateAvailable) return;
+
+    console.log(`[updater] Update available: ${info.version} — downloading…`);
+    await Updater.downloadUpdate();
+
+    if (Updater.updateInfo()?.updateReady) {
+      console.log(`[updater] Update ready: ${info.version}`);
+      mainWindow.webview.rpc?.send.updateAvailable({ version: info.version });
+    }
+  } catch (err) {
+    console.error("[updater] Update check failed:", err);
+  }
+}
+
+void checkAndNotifyUpdate();
 
 console.log("[index] Speedcamera started");
 

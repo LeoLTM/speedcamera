@@ -1,4 +1,5 @@
 import { Electroview } from "electrobun/view";
+import { toast } from "sonner";
 import type { SpeedcameraRPC } from "@/shared/types";
 import { useAppStore } from "@/stores/useAppStore";
 
@@ -16,6 +17,15 @@ const _rpc = Electroview.defineRPC<SpeedcameraRPC>({
     messages: {
       // Use getState() so we don't depend on the React lifecycle for setup.
       serialStatus: (payload) => useAppStore.getState().handleSerialStatus(payload),
+      updateAvailable: ({ version }) => {
+        toast.info(`Update available: v${version}`, {
+          duration: Infinity,
+          action: {
+            label: "Restart to update",
+            onClick: () => void getRpc().request.applyUpdate({}),
+          },
+        });
+      },
     },
   },
 });

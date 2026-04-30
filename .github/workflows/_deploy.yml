@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       version:
-        description: 'Release version tag (e.g. v1.2.0)'
+        description: 'Release version tag (e.g. v1.2.0 or v1.2.0-canary)'
         type: string
         required: true
 
@@ -18,34 +18,13 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v8
         with:
-          name: electronbun-release-artifacts
+          pattern: electronbun-artifacts-*
+          merge-multiple: true
           path: artifacts
 
-      - name: Rename artifacts
+      - name: List artifacts
         run: |
-          VERSION="${{ inputs.version }}"
-          # Strip leading 'v' for the filename
-          VER="${VERSION#v}"
-
-          # .tar.zst (main distributable)
-          SRC_ZST=$(find artifacts -name "*Speedcamera*.tar.zst" | head -1)
-          if [ -n "$SRC_ZST" ]; then
-            mv "$SRC_ZST" "artifacts/Speedcamera-${VER}-linux-x64.tar.zst"
-          fi
-
-          # Setup / -Setup.tar.gz (installer archive)
-          SRC_SETUP=$(find artifacts -name "*Setup*.tar.gz" -o -name "*setup*.tar.gz" | head -1)
-          if [ -n "$SRC_SETUP" ]; then
-            mv "$SRC_SETUP" "artifacts/Speedcamera-${VER}-linux-x64-Setup.tar.gz"
-          fi
-
-          # update.json (auto-updater manifest)
-          SRC_JSON=$(find artifacts -name "*update*.json" | head -1)
-          if [ -n "$SRC_JSON" ]; then
-            mv "$SRC_JSON" "artifacts/update-linux-x64.json"
-          fi
-
-          echo "Prepared release files:"
+          echo "Artifacts to publish:"
           ls -lh artifacts/
 
       - name: Create GitHub Release
@@ -54,11 +33,9 @@ jobs:
           tag_name: ${{ inputs.version }}
           name: Speedcamera ${{ inputs.version }}
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(inputs.version, '-canary') }}
           generate_release_notes: true
-          files: |
-            artifacts/Speedcamera-*.tar.zst
-            artifacts/Speedcamera-*-Setup.tar.gz
-            artifacts/update-linux-x64.json
+          files: artifacts/**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

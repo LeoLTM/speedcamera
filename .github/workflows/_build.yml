@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       version:
-        description: 'Release version tag (e.g. v1.2.0). Empty string for non-release builds.'
+        description: 'Release version tag (e.g. v1.2.0 or v1.2.0-canary). Empty string for non-release builds.'
         type: string
         default: ''
 
@@ -13,20 +13,20 @@ defaults:
     working-directory: electronbun
 
 jobs:
-  build-linux:
-    name: Build (Linux x64)
-    runs-on: ubuntu-latest
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+          - os: windows-latest
+            platform: win-x64
+
     steps:
       - uses: actions/checkout@v6
-
-      - name: Inject release version
-        if: inputs.version != ''
-        run: |
-          VERSION="${{ inputs.version }}"
-          VERSION="${VERSION#v}"
-          echo "Injecting version: $VERSION"
-          sed -i "s/version: \"[^\"]*\"/version: \"$VERSION\"/" electrobun.config.ts
-          jq --arg v "$VERSION" '.version = $v' package.json > _tmp.json && mv _tmp.json package.json
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -34,12 +34,26 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build stable
-        run: bun run build:stable
+      - name: Inject release version
+        if: inputs.version != ''
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: bun scripts/inject-version.ts
+
+      - name: Build
+        shell: bash
+        run: |
+          if [[ "${{ inputs.version }}" == *"-canary"* ]]; then
+            bun run build:canary
+          else
+            bun run build:stable
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: electronbun-release-artifacts
+          name: electronbun-artifacts-${{ matrix.platform }}
           path: electronbun/artifacts/**
           if-no-files-found: error
+

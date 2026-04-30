@@ -335,6 +335,12 @@ export type SpeedcameraRPC = {
         params: SyncLapInput;
         response: void;
       };
+
+      // Updater
+      applyUpdate: {
+        params: Record<string, never>;
+        response: void;
+      };
     };
 
     messages: Record<string, never>;
@@ -346,6 +352,8 @@ export type SpeedcameraRPC = {
     messages: {
       // Bun pushes serial measurement updates to the view
       serialStatus: SerialStatusPayload;
+      // Bun notifies the view that a new app version is ready to install
+      updateAvailable: { version: string };
     };
   }>;
 };

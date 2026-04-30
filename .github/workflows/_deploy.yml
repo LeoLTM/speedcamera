@@ -1,0 +1,64 @@
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Release version tag (e.g. v1.2.0)'
+        type: string
+        required: true
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: electronbun-release-artifacts
+          path: artifacts
+
+      - name: Rename artifacts
+        run: |
+          VERSION="${{ inputs.version }}"
+          # Strip leading 'v' for the filename
+          VER="${VERSION#v}"
+
+          # .tar.zst (main distributable)
+          SRC_ZST=$(find artifacts -name "*Speedcamera*.tar.zst" | head -1)
+          if [ -n "$SRC_ZST" ]; then
+            mv "$SRC_ZST" "artifacts/Speedcamera-${VER}-linux-x64.tar.zst"
+          fi
+
+          # Setup / -Setup.tar.gz (installer archive)
+          SRC_SETUP=$(find artifacts -name "*Setup*.tar.gz" -o -name "*setup*.tar.gz" | head -1)
+          if [ -n "$SRC_SETUP" ]; then
+            mv "$SRC_SETUP" "artifacts/Speedcamera-${VER}-linux-x64-Setup.tar.gz"
+          fi
+
+          # update.json (auto-updater manifest)
+          SRC_JSON=$(find artifacts -name "*update*.json" | head -1)
+          if [ -n "$SRC_JSON" ]; then
+            mv "$SRC_JSON" "artifacts/update-linux-x64.json"
+          fi
+
+          echo "Prepared release files:"
+          ls -lh artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: Speedcamera ${{ inputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            artifacts/Speedcamera-*.tar.zst
+            artifacts/Speedcamera-*-Setup.tar.gz
+            artifacts/update-linux-x64.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

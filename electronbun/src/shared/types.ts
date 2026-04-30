@@ -29,6 +29,16 @@ export interface AppSettings {
   lapFlashOnStart: string;  // "true" | "false", default "true"
   lapFlashOnLapEnd: string; // "true" | "false", default "true"
   lapSaveImages: string;    // "true" | "false", default "true"
+  // Teable integration
+  teableUrl: string;
+  teableToken: string;
+  teableUserName: string;
+  teableUserEmail: string;
+  teableUserAvatar: string;
+  teableSpaceId: string;
+  teableBaseId: string;
+  teableTableId: string;
+  teableSyncEnabled: string; // "true" | "false"
 }
 
 export interface PortInfo {
@@ -107,6 +117,40 @@ export interface SaveLapInput {
   speedAtEnd: number;
   startImageBase64: string | null; // raw base64, no data-URL prefix
   endImageBase64: string | null;   // raw base64, no data-URL prefix
+}
+
+// ─── Teable Types ────────────────────────────────────────────────────────────
+
+export interface TeableUser {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+}
+
+export interface TeableSpace {
+  id: string;
+  name: string;
+}
+
+export interface TeableBase {
+  id: string;
+  name: string;
+  spaceId: string;
+}
+
+export interface TeableTable {
+  id: string;
+  name: string;
+}
+
+export interface TeableSchemaCheck {
+  missingFields: string[];
+}
+
+export interface SyncLapInput {
+  lap: Lap;
+  session: LapSession;
 }
 
 // ─── Serial Status Message ───────────────────────────────────────────────────
@@ -244,6 +288,52 @@ export type SpeedcameraRPC = {
       getPlatform: {
         params: Record<string, never>;
         response: string;
+      };
+
+      // Teable integration
+      testTeableConnection: {
+        params: { url: string; token: string };
+        response: TeableUser;
+      };
+      saveTeableConfig: {
+        params: { url: string; token: string; userName: string; userEmail: string; userAvatar: string | null };
+        response: void;
+      };
+      removeTeableConfig: {
+        params: Record<string, never>;
+        response: void;
+      };
+      listTeableSpaces: {
+        params: Record<string, never>;
+        response: TeableSpace[];
+      };
+      listTeableBases: {
+        params: { spaceId: string };
+        response: TeableBase[];
+      };
+      listTeableTables: {
+        params: { baseId: string };
+        response: TeableTable[];
+      };
+      verifyTeableTable: {
+        params: { tableId: string };
+        response: TeableSchemaCheck;
+      };
+      ensureTeableFields: {
+        params: { tableId: string };
+        response: string[];
+      };
+      createTeableTable: {
+        params: { baseId: string; tableName: string };
+        response: TeableTable;
+      };
+      saveTeableTarget: {
+        params: { spaceId: string; baseId: string; tableId: string };
+        response: void;
+      };
+      syncLapToTeable: {
+        params: SyncLapInput;
+        response: void;
       };
     };
 

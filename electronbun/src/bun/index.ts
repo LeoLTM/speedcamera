@@ -30,6 +30,19 @@ import {
   closePort,
   sendCommand,
 } from "./serial";
+import {
+  testTeableConnection,
+  saveTeableConfig,
+  removeTeableConfig,
+  listTeableSpaces,
+  listTeableBases,
+  listTeableTables,
+  verifyTeableTable,
+  ensureTeableFields,
+  createTeableTable,
+  saveTeableTarget,
+  syncLapToTeable,
+} from "./teable";
 
 // ─── Dev server / HMR ─────────────────────────────────────────────────────────
 
@@ -151,7 +164,34 @@ const rpc = BrowserView.defineRPC<SpeedcameraRPC>({
 
       // ── System ──────────────────────────────────────────────────────────────
       getPlatform: () => process.platform,
-    },
+      // ── Teable ───────────────────────────────────────────────────────────────
+      testTeableConnection: ({ url, token }) => testTeableConnection(url, token),
+
+      saveTeableConfig: ({ url, token, userName, userEmail, userAvatar }) => {
+        saveTeableConfig(url, token, userName, userEmail, userAvatar);
+      },
+
+      removeTeableConfig: () => {
+        removeTeableConfig();
+      },
+
+      listTeableSpaces: () => listTeableSpaces(),
+
+      listTeableBases: ({ spaceId }) => listTeableBases(spaceId),
+
+      listTeableTables: ({ baseId }) => listTeableTables(baseId),
+
+      verifyTeableTable: ({ tableId }) => verifyTeableTable(tableId),
+
+      ensureTeableFields: ({ tableId }) => ensureTeableFields(tableId),
+
+      createTeableTable: ({ baseId, tableName }) => createTeableTable(baseId, tableName),
+
+      saveTeableTarget: ({ spaceId, baseId, tableId }) => {
+        saveTeableTarget(spaceId, baseId, tableId);
+      },
+
+      syncLapToTeable: ({ lap, session }) => syncLapToTeable(lap, session),    },
 
     messages: {
       // No bun-side message handlers from the view in this schema

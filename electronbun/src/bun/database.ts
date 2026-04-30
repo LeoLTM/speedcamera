@@ -27,6 +27,16 @@ const DEFAULT_SETTINGS: AppSettings = {
   lapFlashOnStart: "true",
   lapFlashOnLapEnd: "true",
   lapSaveImages: "true",
+  // Teable integration
+  teableUrl: "",
+  teableToken: "",
+  teableUserName: "",
+  teableUserEmail: "",
+  teableUserAvatar: "",
+  teableSpaceId: "",
+  teableBaseId: "",
+  teableTableId: "",
+  teableSyncEnabled: "false",
 };
 
 // ─── Database setup (lazy) ───────────────────────────────────────────────────
@@ -234,6 +244,16 @@ export function getSettings(): AppSettings {
     lapFlashOnStart: map.lapFlashOnStart ?? DEFAULT_SETTINGS.lapFlashOnStart,
     lapFlashOnLapEnd: map.lapFlashOnLapEnd ?? DEFAULT_SETTINGS.lapFlashOnLapEnd,
     lapSaveImages: map.lapSaveImages ?? DEFAULT_SETTINGS.lapSaveImages,
+    // Teable integration
+    teableUrl: map.teableUrl ?? DEFAULT_SETTINGS.teableUrl,
+    teableToken: map.teableToken ?? DEFAULT_SETTINGS.teableToken,
+    teableUserName: map.teableUserName ?? DEFAULT_SETTINGS.teableUserName,
+    teableUserEmail: map.teableUserEmail ?? DEFAULT_SETTINGS.teableUserEmail,
+    teableUserAvatar: map.teableUserAvatar ?? DEFAULT_SETTINGS.teableUserAvatar,
+    teableSpaceId: map.teableSpaceId ?? DEFAULT_SETTINGS.teableSpaceId,
+    teableBaseId: map.teableBaseId ?? DEFAULT_SETTINGS.teableBaseId,
+    teableTableId: map.teableTableId ?? DEFAULT_SETTINGS.teableTableId,
+    teableSyncEnabled: map.teableSyncEnabled ?? DEFAULT_SETTINGS.teableSyncEnabled,
   };
 }
 

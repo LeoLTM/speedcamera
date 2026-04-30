@@ -228,7 +228,6 @@ export async function syncLapToTeable(lap: Lap, session: LapSession): Promise<vo
   if (!tableId) throw new Error("No Teable table selected");
 
   const fields: Record<string, string | number> = {
-    "Name": `Session ${session.startedAt.slice(0, 10)} Lap #${lap.lapNumber}`,
     "Session Started At": session.startedAt,
     "Lap Mode": session.lapMode,
     "Lap Number": lap.lapNumber,

@@ -1,0 +1,35 @@
+name: CI - electronbun
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'electronbun/**'
+      - '.github/workflows/ci-main.yml'
+      - '.github/workflows/_test.yml'
+      - '.github/workflows/_build.yml'
+      - '.github/workflows/_deploy.yml'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  test:
+    uses: ./.github/workflows/_test.yml
+    secrets: inherit
+
+  build:
+    uses: ./.github/workflows/_build.yml
+    needs: test
+    with:
+      version: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+    secrets: inherit
+
+  deploy:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/_deploy.yml
+    needs: [test, build]
+    with:
+      version: ${{ github.ref_name }}
+    secrets: inherit

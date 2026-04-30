@@ -1,7 +1,9 @@
 import type { StateCreator } from "zustand";
 import type { Lap, LapSession, LapSessionWithLaps, SerialStatusPayload, AppSettings } from "@/shared/types";
 import type { CameraSlice } from "./cameraSlice";
+import type { TeableSlice } from "./teableSlice";
 import { getRpc } from "@/lib/rpc";
+import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,7 +73,7 @@ async function grabFrame(stream: MediaStream): Promise<string | null> {
 // ─── Slice ────────────────────────────────────────────────────────────────────
 
 export const createLapSlice: StateCreator<
-  LapSlice & CameraSlice,
+  LapSlice & CameraSlice & TeableSlice,
   [],
   [],
   LapSlice
@@ -165,6 +167,7 @@ export const createLapSlice: StateCreator<
       pendingStartImageBase64 = null;
 
       const capturedSessionId = currentSession.id;
+      const capturedSession = currentSession;
       const capturedStartEvent = startEvent;
 
       // Advance state immediately so the UI reflects the new state
@@ -202,6 +205,13 @@ export const createLapSlice: StateCreator<
         });
 
         set((state) => ({ currentLaps: [...state.currentLaps, lap], isLapSaving: false }));
+
+        // Fire-and-forget Teable sync (never blocks local save)
+        if (get().teableSyncEnabled && capturedSession) {
+          getRpc().request.syncLapToTeable({ lap, session: capturedSession }).catch((e: unknown) => {
+            toast.error(`Teable sync failed: ${String(e)}`);
+          });
+        }
 
         // In multi mode, the end image doubles as the start image of the next lap
         if (lapSettings.lapMode === "multi") {

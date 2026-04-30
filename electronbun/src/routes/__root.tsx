@@ -13,10 +13,12 @@ export const RootRoute = createRootRoute({
 function Root() {
   useSystemStateSync();
   const loadLapSettings = useAppStore((s) => s.loadLapSettings);
+  const loadTeableState = useAppStore((s) => s.loadTeableState);
 
   useEffect(() => {
     void loadLapSettings();
-  }, [loadLapSettings]);
+    void loadTeableState();
+  }, [loadLapSettings, loadTeableState]);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground">

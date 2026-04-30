@@ -1,0 +1,22 @@
+name: CI - PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'electronbun/**'
+      - '.github/workflows/ci-pr.yml'
+      - '.github/workflows/_test.yml'
+      - '.github/workflows/_build.yml'
+
+jobs:
+  test:
+    uses: ./.github/workflows/_test.yml
+    secrets: inherit
+
+  build:
+    uses: ./.github/workflows/_build.yml
+    needs: test
+    with:
+      version: ''
+    secrets: inherit

@@ -1,4 +1,4 @@
-name: CI – electronbun
+name: CI - electronbun
 
 on:
   push:
@@ -12,11 +12,6 @@ on:
       - '.github/workflows/_deploy.yml'
     tags:
       - 'v*'
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'electronbun/**'
   workflow_dispatch:
 
 jobs:

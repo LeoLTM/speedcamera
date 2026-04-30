@@ -207,6 +207,12 @@ function buildHtml(wsPort: number): string {
 
     <hr class="divider" />
 
+    <p class="section-label">Lap Timer</p>
+    <p style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">Any car-pass event (SPEEDING <em>or</em> OK) advances the lap state machine. Use this button to simulate a car passing the timing sensor.</p>
+    <button id="btn-pass" class="btn-warning" onclick="triggerPass()" disabled>🏁 Trigger Pass</button>
+
+    <hr class="divider" />
+
     <p class="section-label">Auto-fire</p>
     <div class="row">
       <div class="field">
@@ -218,6 +224,7 @@ function buildHtml(wsPort: number): string {
         <select id="inp-automode" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:inherit;font-size:13px;outline:none;">
           <option value="speeding">SPEEDING</option>
           <option value="ok">OK</option>
+          <option value="pass">Pass (lap trigger)</option>
         </select>
       </div>
     </div>
@@ -268,6 +275,7 @@ function buildHtml(wsPort: number): string {
         document.getElementById("btn-disconnect").disabled = !val;
         document.getElementById("btn-speeding").disabled   = !val;
         document.getElementById("btn-ok").disabled         = !val;
+        document.getElementById("btn-pass").disabled        = !val;
         document.getElementById("btn-autostart").disabled  = !val || autofiring;
       }
 
@@ -292,12 +300,18 @@ function buildHtml(wsPort: number): string {
         });
       }
 
+      function triggerPass() {
+        send("trigger-pass", {
+          speed: Number(document.getElementById("inp-speed").value),
+        });
+      }
+
       function startAutoFire() {
-        const isSpeeding = document.getElementById("inp-automode").value === "speeding";
+        const mode = document.getElementById("inp-automode").value;
         send("auto-start", {
+          mode,
           speed:      Number(document.getElementById("inp-speed").value),
           tolerance:  Number(document.getElementById("inp-tolerance").value),
-          isSpeeding,
           interval:   Number(document.getElementById("inp-interval").value),
         });
         setAutofiring(true);
@@ -391,14 +405,28 @@ export async function startMockServer(serial: MockSerialModule): Promise<number>
             });
             break;
 
-          case "auto-start":
+          case "trigger-pass":
+            // Sends an OK payload — represents a car passing the timing sensor.
+            // The lap state machine responds to both SPEEDING and OK, so this
+            // advances it without implying a violation.
+            serial.triggerMeasurement({
+              speed:      Number(msg.speed ?? 0),
+              tolerance:  0,
+              isSpeeding: false,
+            });
+            break;
+
+          case "auto-start": {
+            const mode = String(msg.mode ?? "speeding");
             serial.startAutoFire({
               speed:      Number(msg.speed ?? 0),
               tolerance:  Number(msg.tolerance ?? 0),
-              isSpeeding: msg.isSpeeding === true,
+              isSpeeding: mode === "speeding",
+              // "pass" mode uses isSpeeding: false (OK payload), same as "ok" mode
               interval:   Math.max(200, Number(msg.interval ?? 2000)),
             });
             break;
+          }
 
           case "auto-stop":
             serial.stopAutoFire();

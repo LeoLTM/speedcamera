@@ -8,7 +8,7 @@
 		"dev:hmr": "concurrently \"bun run hmr\" \"bun run start\"",
 		"hmr": "vite --port 5173",
 		"build:canary": "vite build && electrobun build --env=canary",
-		"build:release": "vite build && electrobun build --env=release",
+		"build:stable": "vite build && electrobun build --env=stable",
 		"lint": "eslint src",
 		"lint:ci": "eslint src --max-warnings 0"
 	},

@@ -23,13 +23,15 @@ import {
   setHwControl,
   resetHwControls,
 } from "./camera";
-import {
-  initSerial,
-  listPorts,
-  openPort,
-  closePort,
-  sendCommand,
-} from "./serial";
+// ─── Serial module (real or mock) ────────────────────────────────────────────
+// process.env.MOCK_MODE is replaced at build time by Bun's `define` with an
+// empty string for stable/canary builds, causing this branch to be dead-code
+// eliminated. In dev mock mode the env var is truthy at runtime.
+const { initSerial, listPorts, openPort, closePort, sendCommand } = await (
+  process.env.MOCK_MODE
+    ? import("./mock/serial")
+    : import("./serial")
+);
 import {
   testTeableConnection,
   saveTeableConfig,
@@ -229,6 +231,21 @@ if (isDev) {
 initSerial((payload) => {
   mainWindow.webview.rpc?.send.serialStatus(payload);
 });
+
+// ─── Mock controller window ─────────────────────────────────────────────────
+// This entire block is dead-code-eliminated from stable/canary builds because
+// process.env.MOCK_MODE is replaced with "" by Bun's `define`.
+if (process.env.MOCK_MODE) {
+  const mockSerial = await import("./mock/serial");
+  const { startMockServer } = await import("./mock/server");
+  const mockPort = await startMockServer(mockSerial);
+  new BrowserWindow({
+    title: "Mock Device Controller",
+    url: `http://localhost:${mockPort}/`,
+    frame: { width: 320, height: 520, x: 50, y: 200 },
+  });
+  console.log(`[index] Mock controller window opened at http://localhost:${mockPort}`);
+}
 
 // ─── Auto-updater ─────────────────────────────────────────────────────────────
 

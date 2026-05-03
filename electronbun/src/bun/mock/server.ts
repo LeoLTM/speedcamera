@@ -1,0 +1,454 @@
+import type { ServerWebSocket } from "bun";
+import type * as MockSerial from "./serial";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type MockSerialModule = typeof MockSerial;
+
+interface ServerState {
+  connectedClients: Set<ServerWebSocket<undefined>>;
+}
+
+// ─── HTML template (inlined — no runtime file I/O) ───────────────────────────
+
+function buildHtml(wsPort: number): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mock Speed Camera</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      :root {
+        --bg:        #18181b;
+        --surface:   #27272a;
+        --border:    #3f3f46;
+        --text:      #fafafa;
+        --muted:     #a1a1aa;
+        --accent:    #6366f1;
+        --danger:    #ef4444;
+        --success:   #22c55e;
+        --warning:   #f59e0b;
+        --radius:    6px;
+        --gap:       10px;
+      }
+
+      html, body {
+        width: 320px;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace;
+        font-size: 13px;
+        user-select: none;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        gap: var(--gap);
+        padding: 12px;
+        overflow-y: auto;
+      }
+
+      h1 {
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: .04em;
+        color: var(--accent);
+        text-align: center;
+      }
+
+      #status-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+      }
+
+      #status-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--danger);
+        flex-shrink: 0;
+        transition: background .2s;
+      }
+      #status-dot.connected { background: var(--success); }
+
+      #status-text {
+        flex: 1;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .divider {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 2px 0;
+      }
+
+      .section-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      label {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      input[type="number"] {
+        width: 100%;
+        padding: 6px 8px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 13px;
+        outline: none;
+        transition: border-color .15s;
+      }
+      input[type="number"]:focus { border-color: var(--accent); }
+
+      .row { display: flex; gap: var(--gap); }
+      .row .field { flex: 1; }
+
+      button {
+        width: 100%;
+        padding: 7px 10px;
+        border: none;
+        border-radius: var(--radius);
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity .15s, filter .15s;
+      }
+      button:hover   { filter: brightness(1.1); }
+      button:active  { filter: brightness(.9); }
+      button:disabled { opacity: .4; cursor: not-allowed; }
+
+      .btn-primary  { background: var(--accent);  color: #fff; }
+      .btn-danger   { background: var(--danger);  color: #fff; }
+      .btn-success  { background: var(--success); color: #fff; }
+      .btn-muted    { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+      .btn-warning  { background: var(--warning); color: #18181b; }
+
+      .btn-group { display: flex; gap: var(--gap); }
+      .btn-group button { flex: 1; }
+
+      #autofire-indicator {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--warning);
+      }
+      #autofire-indicator.active { display: flex; }
+      .pulse {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: var(--warning);
+        animation: pulse 1s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50%       { opacity: .4; transform: scale(.7); }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>⚡ Mock Speed Camera</h1>
+
+    <div id="status-bar">
+      <div id="status-dot"></div>
+      <span id="status-text">Disconnected</span>
+    </div>
+
+    <div class="btn-group">
+      <button id="btn-connect"    class="btn-success" onclick="send('connect')">Connect</button>
+      <button id="btn-disconnect" class="btn-muted"   onclick="send('disconnect')" disabled>Disconnect</button>
+    </div>
+
+    <hr class="divider" />
+
+    <p class="section-label">Measurement</p>
+    <div class="row">
+      <div class="field">
+        <label for="inp-speed">Speed (km/h)</label>
+        <input id="inp-speed" type="number" min="0" max="300" value="85" />
+      </div>
+      <div class="field">
+        <label for="inp-tolerance">Tolerance</label>
+        <input id="inp-tolerance" type="number" min="0" max="20" step="0.5" value="3" />
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button id="btn-speeding" class="btn-danger"  onclick="triggerSpeeding()" disabled>🚨 SPEEDING</button>
+      <button id="btn-ok"       class="btn-primary" onclick="triggerOk()"       disabled>✅ OK</button>
+    </div>
+
+    <hr class="divider" />
+
+    <p class="section-label">Lap Timer</p>
+    <p style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.4;">Any car-pass event (SPEEDING <em>or</em> OK) advances the lap state machine. Use this button to simulate a car passing the timing sensor.</p>
+    <button id="btn-pass" class="btn-warning" onclick="triggerPass()" disabled>🏁 Trigger Pass</button>
+
+    <hr class="divider" />
+
+    <p class="section-label">Auto-fire</p>
+    <div class="row">
+      <div class="field">
+        <label for="inp-interval">Interval (ms)</label>
+        <input id="inp-interval" type="number" min="200" max="30000" step="100" value="2000" />
+      </div>
+      <div class="field">
+        <label for="inp-automode">Type</label>
+        <select id="inp-automode" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:inherit;font-size:13px;outline:none;">
+          <option value="speeding">SPEEDING</option>
+          <option value="ok">OK</option>
+          <option value="pass">Pass (lap trigger)</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="autofire-indicator">
+      <div class="pulse"></div>
+      <span>Auto-fire running…</span>
+    </div>
+
+    <div class="btn-group">
+      <button id="btn-autostart" class="btn-warning" onclick="startAutoFire()" disabled>▶ Start Auto-fire</button>
+      <button id="btn-autostop"  class="btn-muted"   onclick="stopAutoFire()"  disabled>■ Stop</button>
+    </div>
+
+    <script>
+      const WS_PORT = ${wsPort};
+      let ws = null;
+      let connected = false;
+      let autofiring = false;
+
+      function connect() {
+        if (ws && ws.readyState < 2) return;
+        ws = new WebSocket(\`ws://localhost:\${WS_PORT}/ws\`);
+        ws.addEventListener("open", () => console.log("[mock-ui] WS connected"));
+        ws.addEventListener("close", () => {
+          console.log("[mock-ui] WS closed — reconnecting in 1s");
+          setTimeout(connect, 1000);
+        });
+        ws.addEventListener("message", (ev) => {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === "state") {
+            setConnected(msg.connected);
+            if (!msg.connected && autofiring) setAutofiring(false);
+          }
+        });
+      }
+
+      function send(type, extra) {
+        if (!ws || ws.readyState !== 1) return;
+        ws.send(JSON.stringify({ type, ...extra }));
+      }
+
+      function setConnected(val) {
+        connected = val;
+        document.getElementById("status-dot").className = val ? "connected" : "";
+        document.getElementById("status-text").textContent = val ? "Connected to /dev/mock-speedcamera" : "Disconnected";
+        document.getElementById("btn-connect").disabled    = val;
+        document.getElementById("btn-disconnect").disabled = !val;
+        document.getElementById("btn-speeding").disabled   = !val;
+        document.getElementById("btn-ok").disabled         = !val;
+        document.getElementById("btn-pass").disabled        = !val;
+        document.getElementById("btn-autostart").disabled  = !val || autofiring;
+      }
+
+      function setAutofiring(val) {
+        autofiring = val;
+        document.getElementById("autofire-indicator").className = val ? "active" : "";
+        document.getElementById("btn-autostart").disabled = !connected || val;
+        document.getElementById("btn-autostop").disabled  = !val;
+      }
+
+      function triggerSpeeding() {
+        send("trigger-speeding", {
+          speed:     Number(document.getElementById("inp-speed").value),
+          tolerance: Number(document.getElementById("inp-tolerance").value),
+        });
+      }
+
+      function triggerOk() {
+        send("trigger-ok", {
+          speed:     Number(document.getElementById("inp-speed").value),
+          tolerance: Number(document.getElementById("inp-tolerance").value),
+        });
+      }
+
+      function triggerPass() {
+        send("trigger-pass", {
+          speed: Number(document.getElementById("inp-speed").value),
+        });
+      }
+
+      function startAutoFire() {
+        const mode = document.getElementById("inp-automode").value;
+        send("auto-start", {
+          mode,
+          speed:      Number(document.getElementById("inp-speed").value),
+          tolerance:  Number(document.getElementById("inp-tolerance").value),
+          interval:   Number(document.getElementById("inp-interval").value),
+        });
+        setAutofiring(true);
+      }
+
+      function stopAutoFire() {
+        send("auto-stop");
+        setAutofiring(false);
+      }
+
+      connect();
+    </script>
+  </body>
+</html>`;
+}
+
+// ─── Server ───────────────────────────────────────────────────────────────────
+
+export async function startMockServer(serial: MockSerialModule): Promise<number> {
+  const state: ServerState = { connectedClients: new Set() };
+
+  const server = Bun.serve<undefined>({
+    port: 0,
+
+    fetch(req, server) {
+      const url = new URL(req.url);
+
+      // WebSocket upgrade
+      if (url.pathname === "/ws") {
+        const ok = server.upgrade(req);
+        if (ok) return undefined as unknown as Response;
+        return new Response("WebSocket upgrade failed", { status: 400 });
+      }
+
+      // Controller page — inject the actual WS port
+      if (url.pathname === "/" || url.pathname === "/index.html") {
+        return new Response(buildHtml(server.port ?? 0), {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        });
+      }
+
+      return new Response("Not found", { status: 404 });
+    },
+
+    websocket: {
+      open(ws) {
+        state.connectedClients.add(ws);
+        // Send current connection state immediately so the UI syncs up
+        ws.send(JSON.stringify({ type: "state", connected: serial.isConnected() }));
+      },
+
+      close(ws) {
+        state.connectedClients.delete(ws);
+      },
+
+      async message(_ws, raw) {
+        let msg: Record<string, unknown>;
+        try {
+          msg = JSON.parse(typeof raw === "string" ? raw : raw.toString());
+        } catch {
+          console.warn("[mock/server] Invalid JSON from client:", raw);
+          return;
+        }
+
+        console.log("[mock/server] WS message:", msg);
+
+        switch (msg.type) {
+          case "connect":
+            await serial.openPort("/dev/mock-speedcamera");
+            broadcast(state, { type: "state", connected: true });
+            break;
+
+          case "disconnect":
+            await serial.closePort();
+            broadcast(state, { type: "state", connected: false });
+            break;
+
+          case "trigger-speeding":
+            serial.triggerMeasurement({
+              speed:     Number(msg.speed ?? 0),
+              tolerance: Number(msg.tolerance ?? 0),
+              isSpeeding: true,
+            });
+            break;
+
+          case "trigger-ok":
+            serial.triggerMeasurement({
+              speed:     Number(msg.speed ?? 0),
+              tolerance: Number(msg.tolerance ?? 0),
+              isSpeeding: false,
+            });
+            break;
+
+          case "trigger-pass":
+            // Sends an OK payload — represents a car passing the timing sensor.
+            // The lap state machine responds to both SPEEDING and OK, so this
+            // advances it without implying a violation.
+            serial.triggerMeasurement({
+              speed:      Number(msg.speed ?? 0),
+              tolerance:  0,
+              isSpeeding: false,
+            });
+            break;
+
+          case "auto-start": {
+            const mode = String(msg.mode ?? "speeding");
+            serial.startAutoFire({
+              speed:      Number(msg.speed ?? 0),
+              tolerance:  Number(msg.tolerance ?? 0),
+              isSpeeding: mode === "speeding",
+              // "pass" mode uses isSpeeding: false (OK payload), same as "ok" mode
+              interval:   Math.max(200, Number(msg.interval ?? 2000)),
+            });
+            break;
+          }
+
+          case "auto-stop":
+            serial.stopAutoFire();
+            break;
+
+          default:
+            console.warn("[mock/server] Unknown message type:", msg.type);
+        }
+      },
+    },
+  });
+
+  const port = server.port ?? 0;
+  console.log(`[mock/server] Listening on http://localhost:${port}`);
+  return port;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function broadcast(state: ServerState, payload: unknown): void {
+  const json = JSON.stringify(payload);
+  for (const ws of state.connectedClients) {
+    ws.send(json);
+  }
+}

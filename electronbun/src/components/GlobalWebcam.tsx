@@ -1,47 +1,46 @@
-import { useRef, useEffect } from "react";
-import Webcam from "react-webcam";
+import { useEffect } from "react";
 import { useAppStore } from "@/stores/useAppStore";
 
 /**
- * Always-mounted, invisible webcam instance.
- * Rendered once at the root level so the camera stream is never torn down
- * during navigation. Exposes the ref and live MediaStream via the store.
+ * Acquires the camera MediaStream once and stores it in the app store.
+ * Renders nothing — no <video> element, no compositing, no continuous
+ * frame decode.
+ *
+ * Previously this used react-webcam which rendered an always-playing 1280×720
+ * <video> element (visibility: hidden). Even off-screen, Chromium still
+ * software-decodes every frame at ~30 fps on a single CPU thread, pinning one
+ * core at 100%.  By calling getUserMedia() directly the OS driver still
+ * produces compressed frames, but the renderer only decodes them on-demand
+ * when ImageCapture.grabFrame() is explicitly called.
  */
 export function GlobalWebcam() {
-  const webcamRef = useRef<Webcam | null>(null);
-  const setWebcamRef = useAppStore((s) => s.setWebcamRef);
   const setCameraStream = useAppStore((s) => s.setCameraStream);
 
   useEffect(() => {
-    setWebcamRef(webcamRef);
+    let stream: MediaStream | null = null;
+    let cancelled = false;
+
+    navigator.mediaDevices
+      .getUserMedia({ video: true, audio: false })
+      .then((s) => {
+        if (cancelled) {
+          s.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        stream = s;
+        setCameraStream(s);
+      })
+      .catch((err) => {
+        console.error("[GlobalWebcam] Camera access error:", err);
+      });
+
     return () => {
-      setWebcamRef(null);
+      cancelled = true;
+      stream?.getTracks().forEach((t) => t.stop());
       setCameraStream(null);
     };
-  }, [setWebcamRef, setCameraStream]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once — acquiring a new stream on every render would be wrong
 
-  return (
-    <Webcam
-      ref={webcamRef}
-      audio={false}
-      screenshotFormat="image/png"
-      videoConstraints={{}}
-      style={{
-        position: "fixed",
-        // Off-screen but with real rendered dimensions so react-webcam's
-        // getScreenshot() captures at full resolution (it uses clientWidth/Height).
-        left: "-9999px",
-        top: "-9999px",
-        width: "1280px",
-        height: "720px",
-        visibility: "hidden",
-        pointerEvents: "none",
-      }}
-      mirrored={false}
-      onUserMedia={(stream) => setCameraStream(stream)}
-      onUserMediaError={(err) =>
-        console.error("[GlobalWebcam] Camera access error:", err)
-      }
-    />
-  );
+  return null;
 }

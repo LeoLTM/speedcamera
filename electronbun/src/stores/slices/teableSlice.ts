@@ -64,7 +64,7 @@ export const createTeableSlice: StateCreator<TeableSlice, [], [], TeableSlice> =
       teableSpaceId: settings.teableSpaceId,
       teableBaseId: settings.teableBaseId,
       teableTableId: settings.teableTableId,
-      teableSyncEnabled: settings.teableSyncEnabled === "true",
+      teableSyncEnabled: false, // always start disabled until schema is verified
       teableConnected: connected,
       teableSchemaStatus: "unchecked",
     });

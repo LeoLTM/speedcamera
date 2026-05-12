@@ -23,6 +23,7 @@ import {
   Unlink04Icon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
+import { CalibrationWizard } from "@/components/CalibrationWizard";
 
 export const SettingsRoute = createRoute({
   getParentRoute: () => RootRoute,
@@ -462,6 +463,7 @@ function SpeedCameraTab() {
   const [saved, setSaved] = useState<Partial<AppSettings>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [calibOpen, setCalibOpen] = useState(false);
 
   useEffect(() => {
     getRpc()
@@ -579,11 +581,31 @@ function SpeedCameraTab() {
         );
       })}
 
-      <div className="flex justify-end pt-2">
+      <div className="flex justify-end gap-2 pt-2">
+        <Button variant="outline" onClick={() => setCalibOpen(true)}>
+          Auto-Calibrate
+        </Button>
         <Button onClick={handleSave} disabled={!isDirty || saving}>
           {saving ? "Saving…" : "Save Settings"}
         </Button>
       </div>
+
+      <CalibrationWizard
+        open={calibOpen}
+        onOpenChange={(open) => {
+          setCalibOpen(open);
+          if (!open) {
+            // Reload settings after wizard closes so sliders reflect any applied values
+            getRpc()
+              .request.getSettings({})
+              .then((s) => {
+                setValues(s);
+                setSaved(s);
+              })
+              .catch(() => {});
+          }
+        }}
+      />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { SerialPort, list, readlineParser } from "bun-serialport";
 import type { PortInfo, SerialStatusPayload } from "../shared/types";
+import { EspMessageSchema, EspCommandSchema } from "../shared/schemas";
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,22 @@ export function sendCommand(json: string): void {
     console.warn("[serial] sendCommand called but no port is open");
     return;
   }
+
+  // Validate command structure before sending to the ESP
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    console.error("[serial] sendCommand: invalid JSON:", json);
+    return;
+  }
+
+  const validation = EspCommandSchema.safeParse(parsed);
+  if (!validation.success) {
+    console.error("[serial] sendCommand: invalid command schema:", validation.error.issues);
+    return;
+  }
+
   activePort.write(json + "\n").catch((err: Error) => {
     console.error("[serial] Write error:", err);
   });
@@ -81,33 +98,45 @@ export function isConnected(): boolean {
 // ─── Incoming data parser ─────────────────────────────────────────────────────
 
 /**
- * ESP32 sends JSON status messages, e.g.:
- *   {"status":"speeding","value":45.2,"tolerance":3.0}
- *   {"status":"legal","value":25.0,"tolerance":2.0}
- *   {"status":"config","value":30}
- *   {"status":"flash"}
- *   {"status":"jsonError"}
+ * Parses and validates each line received from the ESP.
+ * Debug messages ({"debug":"..."}) are logged but not forwarded to the view.
+ * All other messages are validated against EspMessageSchema before being
+ * forwarded as SerialStatusPayload events.
  */
 function handleIncoming(raw: string): void {
   const timestamp = Date.now(); // capture as early as possible for timing precision
   console.log("[serial] Received:", raw);
 
-  let msg: { status?: string; value?: number; tolerance?: number };
+  let parsed: unknown;
   try {
-    msg = JSON.parse(raw);
+    parsed = JSON.parse(raw);
   } catch {
     console.warn("[serial] Non-JSON data received:", raw);
     return;
   }
 
-  if (!msg.status) return;
+  // Debug messages have a "debug" key instead of "status" — log and skip
+  if (typeof parsed === "object" && parsed !== null && "debug" in parsed) {
+    console.debug("[serial] ESP debug:", (parsed as Record<string, unknown>).debug);
+    return;
+  }
+
+  // Validate against the full ESP message schema
+  const result = EspMessageSchema.safeParse(parsed);
+  if (!result.success) {
+    console.warn("[serial] Schema validation failed:", result.error.issues, "raw:", raw);
+    return;
+  }
+
+  const msg = result.data;
 
   switch (msg.status) {
     case "speeding":
       pushToView?.({
         status: "SPEEDING",
-        value: msg.value ?? 0,
-        tolerance: msg.tolerance ?? 0,
+        value: msg.value,
+        tolerance: msg.tolerance,
+        direction: msg.direction,
         timestamp,
       });
       break;
@@ -115,14 +144,23 @@ function handleIncoming(raw: string): void {
     case "legal":
       pushToView?.({
         status: "OK",
-        value: msg.value ?? 0,
-        tolerance: msg.tolerance ?? 0,
+        value: msg.value,
+        tolerance: msg.tolerance,
+        direction: msg.direction,
         timestamp,
       });
       break;
 
-    // measuring = sensor 1 triggered, waiting for sensor 2 — internal Arduino state,
-    // not a complete car pass; config, flash, jsonError, timeout — no view push needed
+    case "pong":
+      pushToView?.({ status: "PONG", config: msg.config });
+      break;
+
+    case "configError":
+      console.warn("[serial] ESP config error:", msg.message);
+      break;
+
+    // measuring = sensor 1 triggered, waiting for sensor 2 — internal Arduino state
+    // ready, config, flash, jsonError, timeout — no view push needed
     default:
       break;
   }

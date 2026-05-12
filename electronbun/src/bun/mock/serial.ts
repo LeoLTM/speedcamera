@@ -59,10 +59,10 @@ export function triggerMeasurement({ speed, tolerance, isSpeeding }: TriggerOpti
   }
   const timestamp = Date.now();
   if (isSpeeding) {
-    pushToView?.({ status: "SPEEDING", value: speed, tolerance, timestamp });
+    pushToView?.({ status: "SPEEDING", value: speed, tolerance, direction: "forward", timestamp });
     console.log(`[mock/serial] Triggered SPEEDING @ ${speed} km/h (tol ${tolerance})`);
   } else {
-    pushToView?.({ status: "OK", value: speed, tolerance, timestamp });
+    pushToView?.({ status: "OK", value: speed, tolerance, direction: "forward", timestamp });
     console.log(`[mock/serial] Triggered OK @ ${speed} km/h (tol ${tolerance})`);
   }
 }

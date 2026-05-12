@@ -153,11 +153,22 @@ export interface SyncLapInput {
   session: LapSession;
 }
 
+// ─── ESP Pong Config ──────────────────────────────────────────────────────────
+
+export interface EspPongConfig {
+  maxSpeed: number;
+  flashDelay: number;
+  flashDuration: number;
+  sensorDistance: number;
+  debugEnabled: boolean;
+}
+
 // ─── Serial Status Message ───────────────────────────────────────────────────
 
 export type SerialStatusPayload =
-  | { status: "SPEEDING"; value: number; tolerance: number; timestamp: number }
-  | { status: "OK"; value: number; tolerance: number; timestamp: number }
+  | { status: "SPEEDING"; value: number; tolerance: number; direction: "forward" | "reverse"; timestamp: number }
+  | { status: "OK";       value: number; tolerance: number; direction: "forward" | "reverse"; timestamp: number }
+  | { status: "PONG"; config: EspPongConfig }
   | { status: "CONNECTED" }
   | { status: "DISCONNECTED" };
 

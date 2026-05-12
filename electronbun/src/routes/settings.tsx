@@ -15,12 +15,13 @@ import {
 } from "@/components/ui/select";
 import { getRpc } from "@/lib/rpc";
 import { useAppStore } from "@/stores/useAppStore";
-import type { AppSettings, PortInfo, HwControl, CameraInfo } from "@/shared/types";
+import type { AppSettings, PortInfo, HwControl, CameraInfo, EspPongConfig } from "@/shared/types";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   RefreshIcon,
   LinkSquare02Icon,
   Unlink04Icon,
+  FilterIcon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { CalibrationWizard } from "@/components/CalibrationWizard";
@@ -86,9 +87,33 @@ function DeviceTab() {
   const setSelectedPort = useAppStore((s) => s.setSelectedPort);
   const availablePorts = useAppStore((s) => s.availablePorts);
   const setAvailablePorts = useAppStore((s) => s.setAvailablePorts);
+  const lastPongConfig = useAppStore((s) => s.lastPongConfig);
 
   const [loadingPorts, setLoadingPorts] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [pinging, setPinging] = useState(false);
+  const [showAllPorts, setShowAllPorts] = useState(false);
+
+  // Filter ports to likely ESP/USB serial devices.
+  // On Linux: /dev/ttyUSB*, /dev/ttyACM*
+  // On Windows: COM* (these are all serial, show them)
+  // On macOS: /dev/cu.usbserial*, /dev/cu.usbmodem*, /dev/tty.usbserial*, /dev/tty.usbmodem*
+  const filteredPorts = showAllPorts
+    ? availablePorts
+    : availablePorts.filter((p) =>
+        /\/dev\/(ttyUSB|ttyACM)|COM\d|cu\.usb|tty\.usb/i.test(p.path)
+      );
+
+  const sendPing = useCallback(async () => {
+    setPinging(true);
+    try {
+      await getRpc().request.sendCommand({ json: JSON.stringify({ command: "ping" }) });
+    } catch {
+      // silently ignore — port may not be open yet
+    } finally {
+      setPinging(false);
+    }
+  }, []);
 
   const refreshPorts = useCallback(async () => {
     setLoadingPorts(true);
@@ -102,7 +127,7 @@ function DeviceTab() {
     }
   }, [setAvailablePorts]);
 
-  // Load settings + refresh on mount
+  // Load settings + refresh ports on mount
   useEffect(() => {
     getRpc()
       .request.getSettings({})
@@ -112,6 +137,11 @@ function DeviceTab() {
       .catch(() => {});
     void refreshPorts();
   }, [refreshPorts, setSelectedPort]);
+
+  // Auto-ping whenever the port becomes connected to populate the config card
+  useEffect(() => {
+    if (connectedPort) void sendPing();
+  }, [connectedPort, sendPing]);
 
   const handleConnect = async () => {
     if (!selectedPort) return;
@@ -152,12 +182,12 @@ function DeviceTab() {
               <SelectValue placeholder="Select port…" />
             </SelectTrigger>
             <SelectContent>
-              {availablePorts.length === 0 ? (
+              {filteredPorts.length === 0 ? (
                 <SelectItem value="__none" disabled>
-                  No ports found
+                  {availablePorts.length === 0 ? "No ports found" : "No ESP/USB ports found"}
                 </SelectItem>
               ) : (
-                availablePorts.map((p) => (
+                filteredPorts.map((p) => (
                   <SelectItem key={p.path} value={p.path}>
                     {p.path}
                     {p.manufacturer ? ` — ${p.manufacturer}` : ""}
@@ -200,6 +230,19 @@ function DeviceTab() {
             </Button>
           )}
         </div>
+        {/* Show-all filter toggle */}
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showAllPorts}
+            onChange={(e) => setShowAllPorts(e.target.checked)}
+            className="rounded border-input accent-primary"
+          />
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <HugeiconsIcon icon={FilterIcon} size={12} strokeWidth={2} />
+            Show all ports
+          </span>
+        </label>
         {connectedPort && (
           <p className="text-xs text-green-600 dark:text-green-400">
             Connected: {connectedPort}
@@ -207,7 +250,44 @@ function DeviceTab() {
         )}
       </section>
 
-      {/* Camera selection is not yet configurable — mocked in store */}
+      {/* Device config */}
+      {connectedPort && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Device Config</h2>
+            <Button variant="ghost" size="icon" onClick={sendPing} disabled={pinging} aria-label="Refresh ESP config">
+              <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} className={pinging ? "animate-spin" : ""} />
+            </Button>
+          </div>
+          {lastPongConfig
+            ? <PongConfigDisplay config={lastPongConfig} />
+            : <p className="text-xs text-muted-foreground">{pinging ? "Fetching config…" : "No config yet — click refresh"}</p>
+          }
+        </section>
+      )}
+    </div>
+  );
+}
+
+function PongConfigDisplay({ config }: { config: EspPongConfig }) {
+  const rows: [string, string][] = [
+    ["Speed limit",      `${config.maxSpeed} km/h`],
+    ["Flash delay",      `${config.flashDelay} ms`],
+    ["Flash duration",   `${config.flashDuration} ms`],
+    ["Sensor distance",  `${config.sensorDistance} mm`],
+    ["Debug output",     config.debugEnabled ? "On" : "Off"],
+  ];
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+        ESP Config
+      </p>
+      {rows.map(([label, value]) => (
+        <div key={label} className="flex justify-between text-xs">
+          <span className="text-muted-foreground">{label}</span>
+          <span className="font-mono">{value}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -456,36 +536,71 @@ const SPEED_CAMERA_FIELDS: Array<{
   { key: "maxSpeed", label: "Max Speed", unit: "km/h", min: 1, max: 200, step: 1 },
 ];
 
+// Keys that are synced to the ESP and therefore populated from the pong config
+const ESP_SYNCED_KEYS = new Set<keyof AppSettings>(["maxSpeed", "flashDelay", "flashDuration"]);
+
+const SERIAL_SYNC: Partial<Record<keyof AppSettings, string>> = {
+  maxSpeed: "setMaxSpeed",
+  flashDelay: "setFlashDelay",
+  flashDuration: "setFlashDuration",
+};
+
 function SpeedCameraTab() {
   const setMaxSpeedInStore = useAppStore((s) => s.setMaxSpeed);
   const setPictureDelayInStore = useAppStore((s) => s.setPictureDelay);
+  const connectedPort = useAppStore((s) => s.connectedPort);
+  const lastPongConfig = useAppStore((s) => s.lastPongConfig);
+
   const [values, setValues] = useState<Partial<AppSettings>>({});
   const [saved, setSaved] = useState<Partial<AppSettings>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [calibOpen, setCalibOpen] = useState(false);
 
-  useEffect(() => {
-    getRpc()
-      .request.getSettings({})
-      .then((settings) => {
-        setValues(settings);
-        setSaved(settings);
-      })
-      .catch(() => toast.error("Failed to load settings"))
-      .finally(() => setLoading(false));
+  const loadFromDb = useCallback(async () => {
+    const settings = await getRpc().request.getSettings({});
+    setValues(settings);
+    setSaved(settings);
+    return settings;
   }, []);
 
-  const isDirty = SPEED_CAMERA_FIELDS.some(
-    ({ key }) => values[key] !== saved[key]
-  );
+  useEffect(() => {
+    loadFromDb()
+      .catch(() => toast.error("Failed to load settings"))
+      .finally(() => setLoading(false));
+  }, [loadFromDb]);
 
-  // Serial commands to sync changed values to the ESP32
-  const SERIAL_SYNC: Partial<Record<keyof AppSettings, string>> = {
-    maxSpeed: "setMaxSpeed",
-    flashDelay: "setFlashDelay",
-    flashDuration: "setFlashDuration",
-  };
+  // When a pong config arrives (on connect or manual refresh), merge the ESP-sourced
+  // values into both values and saved so sliders reflect actual device state.
+  useEffect(() => {
+    if (!lastPongConfig) return;
+    const patch: Partial<AppSettings> = {
+      maxSpeed: lastPongConfig.maxSpeed,
+      flashDelay: lastPongConfig.flashDelay,
+      flashDuration: lastPongConfig.flashDuration,
+    };
+    setValues((prev) => ({ ...prev, ...patch }));
+    setSaved((prev) => ({ ...prev, ...patch }));
+  }, [lastPongConfig]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      // Reload host-side settings (pictureDelay etc.)
+      await loadFromDb();
+      // Ping the ESP so pong config arrives and the useEffect above merges it in
+      if (connectedPort) {
+        await getRpc().request.sendCommand({ json: JSON.stringify({ command: "ping" }) });
+      }
+    } catch {
+      toast.error("Failed to refresh settings");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadFromDb, connectedPort]);
+
+  const isDirty = SPEED_CAMERA_FIELDS.some(({ key }) => values[key] !== saved[key]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -496,14 +611,14 @@ function SpeedCameraTab() {
         )
       );
 
-      // Sync changed values to the ESP32 over serial
+      // Sync changed values to the ESP over serial
       await Promise.all(
         SPEED_CAMERA_FIELDS
           .filter(({ key }) => values[key] !== saved[key] && key in SERIAL_SYNC)
           .map(({ key }) =>
             getRpc().request.sendCommand({
               json: JSON.stringify({ command: SERIAL_SYNC[key], value: values[key] }),
-            }).catch(() => {/* not connected — silently ignore */})
+            })
           )
       );
 
@@ -534,14 +649,47 @@ function SpeedCameraTab() {
     );
   }
 
+  const saveDisabledReason = !connectedPort
+    ? "Connect to the ESP before saving"
+    : !isDirty
+    ? undefined
+    : undefined;
+
   return (
     <div className="max-w-lg space-y-6">
+      {/* Header row with refresh button */}
+      <div className="flex items-center justify-between -mb-2">
+        <p className="text-xs text-muted-foreground">
+          {connectedPort
+            ? lastPongConfig
+              ? "Values synced from device"
+              : "Connect to device to sync values"
+            : <span className="text-amber-500 dark:text-amber-400">Serial not connected — save disabled</span>
+          }
+        </p>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          aria-label="Refresh settings from device"
+        >
+          <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} className={refreshing ? "animate-spin" : ""} />
+        </Button>
+      </div>
+
       {SPEED_CAMERA_FIELDS.map(({ key, label, unit, min, max, step }) => {
         const val = (values[key] as number) ?? min;
+        const isEspSynced = ESP_SYNCED_KEYS.has(key);
         return (
           <div key={key} className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">{label}</label>
+              <label className="text-sm font-medium flex items-center gap-1.5">
+                {label}
+                {isEspSynced && (
+                  <span className="text-[10px] text-muted-foreground/50 font-normal">ESP</span>
+                )}
+              </label>
               <div className="flex items-center gap-1.5">
                 <input
                   type="number"
@@ -570,22 +718,22 @@ function SpeedCameraTab() {
               }
             />
             <div className="flex justify-between text-xs text-muted-foreground/60">
-              <span>
-                {min} {unit}
-              </span>
-              <span>
-                {max} {unit}
-              </span>
+              <span>{min} {unit}</span>
+              <span>{max} {unit}</span>
             </div>
           </div>
         );
       })}
 
-      <div className="flex justify-end gap-2 pt-2">
+      <div className="flex items-center justify-end gap-2 pt-2">
         <Button variant="outline" onClick={() => setCalibOpen(true)}>
           Auto-Calibrate
         </Button>
-        <Button onClick={handleSave} disabled={!isDirty || saving}>
+        <Button
+          onClick={handleSave}
+          disabled={!isDirty || saving || !connectedPort}
+          title={saveDisabledReason}
+        >
           {saving ? "Saving…" : "Save Settings"}
         </Button>
       </div>
@@ -596,13 +744,7 @@ function SpeedCameraTab() {
           setCalibOpen(open);
           if (!open) {
             // Reload settings after wizard closes so sliders reflect any applied values
-            getRpc()
-              .request.getSettings({})
-              .then((s) => {
-                setValues(s);
-                setSaved(s);
-              })
-              .catch(() => {});
+            loadFromDb().catch(() => {});
           }
         }}
       />

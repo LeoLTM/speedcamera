@@ -9,6 +9,8 @@ import { ArmingButton } from "@/components/ArmingButton";
 import { LapTimerDisplay } from "@/components/LapTimerDisplay";
 import { useAppStore } from "@/stores/useAppStore";
 import { getRpc } from "@/lib/rpc";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ArrowUpBigIcon, ArrowDownBigIcon } from "@hugeicons/core-free-icons";
 
 export const IndexRoute = createRoute({
   getParentRoute: () => RootRoute,
@@ -20,6 +22,7 @@ function HomePage() {
   const connectedPort = useAppStore((s) => s.connectedPort);
   const selectedCameraDeviceId = useAppStore((s) => s.selectedCameraDeviceId);
   const lastSpeed = useAppStore((s) => s.lastSpeed);
+  const lastDirection = useAppStore((s) => s.lastDirection);
   const lastViolation = useAppStore((s) => s.lastViolation);
   const setMaxSpeed = useAppStore((s) => s.setMaxSpeed);
   const setPictureDelay = useAppStore((s) => s.setPictureDelay);
@@ -77,22 +80,33 @@ function HomePage() {
               <ArmingButton />
 
               {/* Speed reading */}
-              <div className="rounded-xl border border-border bg-card p-4 text-center">
-                <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">
-                  Current Speed
-                </p>
-                <p
-                  className={
-                    lastSpeed !== null
-                      ? "text-5xl font-bold tabular-nums"
-                      : "text-3xl font-medium text-muted-foreground/50"
-                  }
-                >
-                  {lastSpeed !== null ? lastSpeed : "—"}
-                </p>
-                {lastSpeed !== null && (
-                  <p className="text-xs text-muted-foreground mt-1">km/h</p>
+              <div className="rounded-xl border border-border bg-card p-4 text-center flex flex-row items- justify-around">
+                {lastSpeed !== null && lastDirection !== null && (
+                  <p className="mt-1 flex items-center justify-center gap-1">
+                    <HugeiconsIcon
+                      icon={lastDirection === "forward" ? ArrowUpBigIcon : ArrowDownBigIcon}
+                      size={48}
+                      strokeWidth={2}
+                    />
+                  </p>
                 )}
+                <div className="flex flex-col items-center">
+                  <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">
+                    Current Speed
+                  </p>
+                  <p
+                    className={
+                      lastSpeed !== null
+                        ? "text-5xl font-bold tabular-nums"
+                        : "text-3xl font-medium text-muted-foreground/50"
+                    }
+                  >
+                    {lastSpeed !== null ? lastSpeed : "—"}
+                  </p>
+                  {lastSpeed !== null && (
+                    <p className="text-xs text-muted-foreground mt-1">km/h</p>
+                  )}
+                </div>
               </div>
 
               {/* Last violation */}

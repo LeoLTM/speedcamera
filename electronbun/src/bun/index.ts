@@ -87,11 +87,11 @@ const rpc = BrowserView.defineRPC<SpeedcameraRPC>({
       exportViolationsCsv: ({ dateFrom, dateTo, minSpeed }) =>
         exportCsv({ dateFrom, dateTo, minSpeed }),
 
-      saveViolation: async ({ imageBase64, measuredSpeed, maxSpeed }) => {
+      saveViolation: async ({ imageBase64, measuredSpeed, maxSpeed, direction }) => {
         // Strip data-URL prefix if the view accidentally includes it
         const raw = imageBase64.replace(/^data:image\/\w+;base64,/, "");
         const imagePath = await saveImage(raw);
-        return insertViolation({ imageBase64: raw, imagePath, measuredSpeed, maxSpeed });
+        return insertViolation({ imageBase64: raw, imagePath, measuredSpeed, maxSpeed, direction });
       },
 
       // ── Lap Sessions ────────────────────────────────────────────────────────

@@ -27,6 +27,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   lapFlashOnStart: "true",
   lapFlashOnLapEnd: "true",
   lapSaveImages: "true",
+  lapAutoFlash: "true",
+  lapDirFilter: "both",
   // Teable integration
   teableUrl: "",
   teableToken: "",
@@ -60,10 +62,18 @@ function getDb(): Database {
       timestamp   TEXT    NOT NULL,
       measuredSpeed REAL  NOT NULL,
       maxSpeed    REAL    NOT NULL,
+      direction   TEXT    NOT NULL DEFAULT 'forward',
       imagePath   TEXT    NOT NULL,
       createdAt   TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migration: add direction column to existing databases that predate this field
+  try {
+    db.run("ALTER TABLE speed_violations ADD COLUMN direction TEXT NOT NULL DEFAULT 'forward'");
+  } catch {
+    // Column already exists — ignore
+  }
 
   db.run(`
     CREATE INDEX IF NOT EXISTS idx_timestamp ON speed_violations(timestamp)
@@ -126,15 +136,16 @@ export function insertViolation(input: SaveViolationInput & { imagePath: string 
   const db = getDb();
   const now = new Date().toISOString();
   const stmt = db.prepare(`
-    INSERT INTO speed_violations (timestamp, measuredSpeed, maxSpeed, imagePath, createdAt)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO speed_violations (timestamp, measuredSpeed, maxSpeed, direction, imagePath, createdAt)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
-  const result = stmt.run(now, input.measuredSpeed, input.maxSpeed, input.imagePath, now);
+  const result = stmt.run(now, input.measuredSpeed, input.maxSpeed, input.direction, input.imagePath, now);
   return {
     id: result.lastInsertRowid as number,
     timestamp: now,
     measuredSpeed: input.measuredSpeed,
     maxSpeed: input.maxSpeed,
+    direction: input.direction,
     imagePath: input.imagePath,
     createdAt: now,
   };
@@ -214,10 +225,10 @@ export function exportCsv(opts: {
     .prepare(`SELECT * FROM speed_violations ${where} ORDER BY timestamp DESC`)
     .all(...params) as Violation[];
 
-  const header = "id,timestamp,measuredSpeed,maxSpeed,imagePath,createdAt";
+  const header = "id,timestamp,measuredSpeed,maxSpeed,direction,imagePath,createdAt";
   const lines = rows.map(
     (r) =>
-      `${r.id},"${r.timestamp}",${r.measuredSpeed},${r.maxSpeed},"${r.imagePath}","${r.createdAt}"`
+      `${r.id},"${r.timestamp}",${r.measuredSpeed},${r.maxSpeed},${r.direction},"${r.imagePath}","${r.createdAt}"`
   );
   return [header, ...lines].join("\n");
 }
@@ -244,6 +255,8 @@ export function getSettings(): AppSettings {
     lapFlashOnStart: map.lapFlashOnStart ?? DEFAULT_SETTINGS.lapFlashOnStart,
     lapFlashOnLapEnd: map.lapFlashOnLapEnd ?? DEFAULT_SETTINGS.lapFlashOnLapEnd,
     lapSaveImages: map.lapSaveImages ?? DEFAULT_SETTINGS.lapSaveImages,
+    lapAutoFlash: map.lapAutoFlash ?? DEFAULT_SETTINGS.lapAutoFlash,
+    lapDirFilter: map.lapDirFilter ?? DEFAULT_SETTINGS.lapDirFilter,
     // Teable integration
     teableUrl: map.teableUrl ?? DEFAULT_SETTINGS.teableUrl,
     teableToken: map.teableToken ?? DEFAULT_SETTINGS.teableToken,

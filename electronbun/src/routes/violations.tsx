@@ -22,6 +22,8 @@ import {
   Download01Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  ArrowUpBigIcon,
+  ArrowDownBigIcon,
 } from "@hugeicons/core-free-icons";
 
 export const ViolationsRoute = createRoute({
@@ -242,6 +244,7 @@ function ViolationsPage() {
                 <th className="w-10 px-3 py-2" />
                 <th className="px-3 py-2 text-left font-medium text-muted-foreground">Image</th>
                 <th className="px-3 py-2 text-left font-medium text-muted-foreground">Timestamp</th>
+                <th className="px-3 py-2 text-center font-medium text-muted-foreground">Dir</th>
                 <th className="px-3 py-2 text-right font-medium text-muted-foreground">Speed (km/h)</th>
                 <th className="px-3 py-2 text-right font-medium text-muted-foreground">Limit (km/h)</th>
                 <th className="px-3 py-2 text-right font-medium text-muted-foreground">Over</th>
@@ -254,6 +257,7 @@ function ViolationsPage() {
                   <td className="px-3 py-2"><Skeleton className="size-4 rounded" /></td>
                   <td className="px-3 py-2"><Skeleton className="w-16 h-10 rounded-md" /></td>
                   <td className="px-3 py-2"><Skeleton className="h-4 w-36 rounded" /></td>
+                  <td className="px-3 py-2"><Skeleton className="h-4 w-5 rounded mx-auto" /></td>
                   <td className="px-3 py-2 text-right"><Skeleton className="h-4 w-10 rounded ml-auto" /></td>
                   <td className="px-3 py-2 text-right"><Skeleton className="h-4 w-10 rounded ml-auto" /></td>
                   <td className="px-3 py-2 text-right"><Skeleton className="h-4 w-10 rounded ml-auto" /></td>
@@ -287,6 +291,7 @@ function ViolationsPage() {
                 <th className="px-3 py-2 text-left font-medium text-muted-foreground">
                   Timestamp
                 </th>
+                <th className="px-3 py-2 text-center font-medium text-muted-foreground">Dir</th>
                 <th className="px-3 py-2 text-right font-medium text-muted-foreground">
                   Speed (km/h)
                 </th>
@@ -445,6 +450,15 @@ function ViolationRow({
         </button>
       </td>
       <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{formattedTime}</td>
+      <td className="px-3 py-2 text-center text-muted-foreground">
+        <span title={violation.direction === "forward" ? "Forward (sensor 1 → 2)" : "Reverse (sensor 2 → 1)"}>
+          <HugeiconsIcon
+            icon={violation.direction === "forward" ? ArrowUpBigIcon : ArrowDownBigIcon}
+            size={18}
+            strokeWidth={2}
+          />
+        </span>
+      </td>
       <td className="px-3 py-2 text-right font-semibold text-destructive">
         {violation.measuredSpeed}
       </td>

@@ -7,21 +7,21 @@ import { useAppStore } from "@/stores/useAppStore";
  */
 export function useLiveLapTimer(): number | null {
   const lapState = useAppStore((s) => s.lapState);
-  const startEvent = useAppStore((s) => s.startEvent);
+  const lapTimingStartedAt = useAppStore((s) => s.lapTimingStartedAt);
   const [elapsed, setElapsed] = useState<number | null>(null);
 
   useEffect(() => {
-    if (lapState !== "timing" || !startEvent) {
+    if (lapState !== "timing" || !lapTimingStartedAt) {
       setElapsed(null);
       return;
     }
     // Tick immediately, then every 50 ms
-    setElapsed(Date.now() - startEvent.timestamp);
+    setElapsed(Date.now() - lapTimingStartedAt);
     const id = setInterval(() => {
-      setElapsed(Date.now() - startEvent.timestamp);
+      setElapsed(Date.now() - lapTimingStartedAt);
     }, 50);
     return () => clearInterval(id);
-  }, [lapState, startEvent]);
+  }, [lapState, lapTimingStartedAt]);
 
   return elapsed;
 }

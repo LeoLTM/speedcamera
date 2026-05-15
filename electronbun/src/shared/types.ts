@@ -29,6 +29,8 @@ export interface AppSettings {
   lapFlashOnStart: string;  // "true" | "false", default "true"
   lapFlashOnLapEnd: string; // "true" | "false", default "true"
   lapSaveImages: string;    // "true" | "false", default "true"
+  lapAutoFlash: string;     // "true" | "false", default "true"
+  lapDirFilter: string;     // "both" | "forward" | "reverse", default "both"
   // Teable integration
   teableUrl: string;
   teableToken: string;
@@ -161,6 +163,10 @@ export interface EspPongConfig {
   flashDuration: number;
   sensorDistance: number;
   debugEnabled: boolean;
+  lapMode: "single" | "multi";
+  lapActive: boolean;
+  lapAutoFlash: boolean;
+  lapDirFilter: "both" | "forward" | "reverse";
 }
 
 // ─── Serial Status Message ───────────────────────────────────────────────────
@@ -169,6 +175,10 @@ export type SerialStatusPayload =
   | { status: "SPEEDING"; value: number; tolerance: number; direction: "forward" | "reverse"; timestamp: number }
   | { status: "OK";       value: number; tolerance: number; direction: "forward" | "reverse"; timestamp: number }
   | { status: "PONG"; config: EspPongConfig }
+  | { status: "LAPSTART"; lapNumber: number; speedAtStart: number; timestamp: number }
+  | { status: "LAPEND";   lapNumber: number; durationMs: number; speedAtStart: number; speedAtEnd: number; timestamp: number }
+  | { status: "LAPWAITING" }
+  | { status: "LAPSTOPPED" }
   | { status: "CONNECTED" }
   | { status: "DISCONNECTED" };
 

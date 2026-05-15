@@ -22,6 +22,10 @@ export const EspPongConfigSchema = z.object({
   flashDuration: z.number().positive(),
   sensorDistance: z.number().positive(),
   debugEnabled: z.boolean(),
+  lapMode: z.enum(["single", "multi"]),
+  lapActive: z.boolean(),
+  lapAutoFlash: z.boolean(),
+  lapDirFilter: z.enum(["both", "forward", "reverse"]),
 });
 
 const EspPongSchema = z.object({
@@ -47,6 +51,25 @@ const EspTimeoutSchema    = z.object({ status: z.literal("timeout") });
 const EspFlashSchema      = z.object({ status: z.literal("flash") });
 const EspJsonErrorSchema  = z.object({ status: z.literal("jsonError") });
 
+// ─── Lap Timer Messages ───────────────────────────────────────────────────────
+
+const EspLapWaitingSchema = z.object({ status: z.literal("lapWaiting") });
+const EspLapStoppedSchema = z.object({ status: z.literal("lapStopped") });
+
+const EspLapStartSchema = z.object({
+  status: z.literal("lapStart"),
+  lapNumber: z.number().int().positive(),
+  speedAtStart: z.number().nonnegative(),
+});
+
+const EspLapEndSchema = z.object({
+  status: z.literal("lapEnd"),
+  lapNumber: z.number().int().positive(),
+  durationMs: z.number().positive(),
+  speedAtStart: z.number().nonnegative(),
+  speedAtEnd: z.number().nonnegative(),
+});
+
 export const EspMessageSchema = z.discriminatedUnion("status", [
   EspSpeedingSchema,
   EspLegalSchema,
@@ -58,6 +81,10 @@ export const EspMessageSchema = z.discriminatedUnion("status", [
   EspTimeoutSchema,
   EspFlashSchema,
   EspJsonErrorSchema,
+  EspLapWaitingSchema,
+  EspLapStoppedSchema,
+  EspLapStartSchema,
+  EspLapEndSchema,
 ]);
 
 export type EspMessage    = z.infer<typeof EspMessageSchema>;
@@ -68,10 +95,12 @@ export type EspPongConfig = z.infer<typeof EspPongConfigSchema>;
 export const EspCommandSchema = z.discriminatedUnion("command", [
   z.object({ command: z.literal("flash") }),
   z.object({ command: z.literal("ping") }),
-  z.object({ command: z.literal("setMaxSpeed"),     value: z.number().min(1).max(250) }),
-  z.object({ command: z.literal("setFlashDelay"),   value: z.number().min(0).max(5000) }),
+  z.object({ command: z.literal("setMaxSpeed"),      value: z.number().min(1).max(250) }),
+  z.object({ command: z.literal("setFlashDelay"),    value: z.number().min(0).max(5000) }),
   z.object({ command: z.literal("setFlashDuration"), value: z.number().min(1).max(10000) }),
-  z.object({ command: z.literal("setDebug"),        value: z.union([z.literal(0), z.literal(1)]) }),
+  z.object({ command: z.literal("setDebug"),         value: z.union([z.literal(0), z.literal(1)]) }),
+  z.object({ command: z.literal("startLapSession"),  mode: z.enum(["single", "multi"]), autoFlash: z.boolean().optional(), dirFilter: z.enum(["both", "forward", "reverse"]).optional() }),
+  z.object({ command: z.literal("stopLapSession") }),
 ]);
 
 export type EspCommand = z.infer<typeof EspCommandSchema>;

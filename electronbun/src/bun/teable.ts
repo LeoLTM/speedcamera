@@ -37,10 +37,11 @@ function apiFetch(url: string, init?: RequestInit): Promise<Response> {
 }
 
 function formatDuration(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
+  const total = Math.round(ms);
+  const totalSeconds = Math.floor(total / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  const millis = ms % 1000;
+  const millis = total % 1000;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
 }
 

@@ -56,9 +56,17 @@ export const createMeasurementSlice: StateCreator<
     // In PASSIVE mode, ignore all serial measurements
     if (systemState === "PASSIVE") return;
 
-    // In lap timer mode, delegate entirely to the lap state machine
+    // In lap timer mode, delegate lap-specific events to the lap state machine
     if (appMode === "laptimer") {
-      get().handleSerialStatusForLap(payload);
+      if (payload.status === "LAPSTART" || payload.status === "LAPEND" ||
+          payload.status === "LAPWAITING" || payload.status === "LAPSTOPPED") {
+        get().handleSerialStatusForLap(payload);
+        return;
+      }
+      // Speed events still update the display but do not create violations in lap mode
+      if (payload.status === "SPEEDING" || payload.status === "OK") {
+        set({ lastSpeed: payload.value, lastDirection: payload.direction });
+      }
       return;
     }
 

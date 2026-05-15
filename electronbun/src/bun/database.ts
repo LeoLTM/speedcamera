@@ -27,6 +27,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   lapFlashOnStart: "true",
   lapFlashOnLapEnd: "true",
   lapSaveImages: "true",
+  lapAutoFlash: "true",
+  lapDirFilter: "both",
   // Teable integration
   teableUrl: "",
   teableToken: "",
@@ -244,6 +246,8 @@ export function getSettings(): AppSettings {
     lapFlashOnStart: map.lapFlashOnStart ?? DEFAULT_SETTINGS.lapFlashOnStart,
     lapFlashOnLapEnd: map.lapFlashOnLapEnd ?? DEFAULT_SETTINGS.lapFlashOnLapEnd,
     lapSaveImages: map.lapSaveImages ?? DEFAULT_SETTINGS.lapSaveImages,
+    lapAutoFlash: map.lapAutoFlash ?? DEFAULT_SETTINGS.lapAutoFlash,
+    lapDirFilter: map.lapDirFilter ?? DEFAULT_SETTINGS.lapDirFilter,
     // Teable integration
     teableUrl: map.teableUrl ?? DEFAULT_SETTINGS.teableUrl,
     teableToken: map.teableToken ?? DEFAULT_SETTINGS.teableToken,

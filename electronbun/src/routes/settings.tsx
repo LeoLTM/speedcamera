@@ -826,6 +826,43 @@ function LapTimerTab() {
           onChange={(v) => handleUpdate("lapSaveImages", v ? "true" : "false")}
         />
       </section>
+
+      {/* Direction filter */}
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold">Direction Filter</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Which direction a car must pass the sensors to start or end a lap.
+            Use this when cars always travel the same way past the device.
+          </p>
+        </div>
+        <Select
+          value={lapSettings.dirFilter}
+          onValueChange={(v) => handleUpdate("lapDirFilter", v)}
+          disabled={saving === "lapDirFilter"}
+        >
+          <SelectTrigger className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="both">Both directions</SelectItem>
+            <SelectItem value="forward">Forward only (sensor 1 → sensor 2)</SelectItem>
+            <SelectItem value="reverse">Reverse only (sensor 2 → sensor 1)</SelectItem>
+          </SelectContent>
+        </Select>
+      </section>
+
+      {/* Auto-flash */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold">Auto Flash</h2>
+        <ToggleSetting
+          label="ESP fires flash autonomously"
+          description="The firmware triggers the flash at the exact lap boundary without waiting for a host command. Recommended for maximum timing precision. When off, the companion app sends the flash command instead."
+          checked={lapSettings.autoFlash}
+          disabled={saving === "lapAutoFlash"}
+          onChange={(v) => handleUpdate("lapAutoFlash", v ? "true" : "false")}
+        />
+      </section>
     </div>
   );
 }

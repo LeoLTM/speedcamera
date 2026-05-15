@@ -155,6 +155,34 @@ function handleIncoming(raw: string): void {
       pushToView?.({ status: "PONG", config: msg.config });
       break;
 
+    case "lapStart":
+      pushToView?.({
+        status: "LAPSTART",
+        lapNumber: msg.lapNumber,
+        speedAtStart: msg.speedAtStart,
+        timestamp,
+      });
+      break;
+
+    case "lapEnd":
+      pushToView?.({
+        status: "LAPEND",
+        lapNumber: msg.lapNumber,
+        durationMs: msg.durationMs,
+        speedAtStart: msg.speedAtStart,
+        speedAtEnd: msg.speedAtEnd,
+        timestamp,
+      });
+      break;
+
+    case "lapWaiting":
+      pushToView?.({ status: "LAPWAITING" });
+      break;
+
+    case "lapStopped":
+      pushToView?.({ status: "LAPSTOPPED" });
+      break;
+
     case "configError":
       console.warn("[serial] ESP config error:", msg.message);
       break;

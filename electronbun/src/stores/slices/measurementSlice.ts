@@ -112,7 +112,7 @@ export const createMeasurementSlice: StateCreator<
           ctx.drawImage(bitmap, 0, 0);
           bitmap.close();
           const imageBase64 = canvas.toDataURL("image/png").replace(/^data:image\/\w+;base64,/, "");
-          return getRpc().request.saveViolation({ imageBase64, measuredSpeed: value, maxSpeed });
+          return getRpc().request.saveViolation({ imageBase64, measuredSpeed: value, maxSpeed, direction });
         })
         .then((violation: Violation) => {
           set({ lastViolation: violation, isCapturing: false });

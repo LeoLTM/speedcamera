@@ -7,6 +7,7 @@ export interface Violation {
   timestamp: string;      // ISO 8601
   measuredSpeed: number;
   maxSpeed: number;
+  direction: "forward" | "reverse";
   imagePath: string;
   createdAt: string;      // ISO 8601
 }
@@ -15,6 +16,7 @@ export interface SaveViolationInput {
   imageBase64: string;    // raw base64 (no data-URL prefix)
   measuredSpeed: number;
   maxSpeed: number;
+  direction: "forward" | "reverse";
 }
 
 export interface AppSettings {

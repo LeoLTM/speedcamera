@@ -59,3 +59,37 @@ jobs:
           path: electronbun/artifacts/**
           if-no-files-found: error
 
+  arduino-build:
+    name: Arduino — Build Firmware
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: arduino
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v5
+        with:
+          path: ~/.platformio
+          key: platformio-${{ hashFiles('arduino/platformio.ini') }}
+          restore-keys: platformio-
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build firmware
+        run: pio run
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: arduino-firmware
+          path: arduino/.pio/build/d1_mini/firmware.bin
+          if-no-files-found: error
+

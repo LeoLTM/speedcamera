@@ -22,6 +22,12 @@ jobs:
           merge-multiple: true
           path: artifacts
 
+      - name: Download firmware artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: arduino-firmware
+          path: artifacts
+
       - name: List artifacts
         run: |
           echo "Artifacts to publish:"

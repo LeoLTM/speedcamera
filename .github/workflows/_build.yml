@@ -67,6 +67,7 @@ jobs:
           name: electronbun-artifacts-${{ matrix.platform }}
           path: electronbun/artifacts/**
           if-no-files-found: error
+          retention-days: 1
 
   arduino-build:
     name: Arduino — Build Firmware
@@ -101,4 +102,5 @@ jobs:
           name: arduino-firmware
           path: arduino/.pio/build/d1_mini/firmware.bin
           if-no-files-found: error
+          retention-days: 1
 

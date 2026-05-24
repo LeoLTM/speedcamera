@@ -25,6 +25,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { CalibrationWizard } from "@/components/CalibrationWizard";
+import { FirmwareFlasher } from "@/components/FirmwareFlasher";
 
 export const SettingsRoute = createRoute({
   getParentRoute: () => RootRoute,
@@ -265,6 +266,9 @@ function DeviceTab() {
           }
         </section>
       )}
+
+      {/* Firmware update */}
+      <FirmwareFlasher />
     </div>
   );
 }

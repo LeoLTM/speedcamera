@@ -52,6 +52,26 @@ When you run `bun run dev` (without HMR):
 └── package.json
 ```
 
+## Firmware Flashing
+
+The firmware update UI (Settings → Device → Firmware Update) requires the `esptool` binary to be present at `resources/esptool`. This file is excluded from git and downloaded automatically in CI.
+
+For local development, use one of the following:
+
+**Option A — download the pre-built binary (Linux amd64, matches CI):**
+```bash
+bun run setup:esptool
+```
+
+**Option B — install esptool system-wide via pip (cross-platform):**
+```bash
+pip install esptool
+```
+
+The app will automatically detect a system-installed `esptool` on `$PATH` if the bundled binary is not found.
+
+> **Note:** Flash testing requires a physical ESP8266 device connected over USB. You will also need a GitHub personal access token (fine-grained PAT with *Contents: Read* access) configured in the app to fetch firmware releases from the private repository.
+
 ## Customizing
 
 - **React components**: Edit files in `src/mainview/`

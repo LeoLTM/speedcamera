@@ -39,6 +39,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   teableBaseId: "",
   teableTableId: "",
   teableSyncEnabled: "false",
+  githubToken: "",
 };
 
 // ─── Database setup (lazy) ───────────────────────────────────────────────────
@@ -267,6 +268,7 @@ export function getSettings(): AppSettings {
     teableBaseId: map.teableBaseId ?? DEFAULT_SETTINGS.teableBaseId,
     teableTableId: map.teableTableId ?? DEFAULT_SETTINGS.teableTableId,
     teableSyncEnabled: map.teableSyncEnabled ?? DEFAULT_SETTINGS.teableSyncEnabled,
+    githubToken: map.githubToken ?? DEFAULT_SETTINGS.githubToken,
   };
 }
 

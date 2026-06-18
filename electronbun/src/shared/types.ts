@@ -43,6 +43,8 @@ export interface AppSettings {
   teableBaseId: string;
   teableTableId: string;
   teableSyncEnabled: string; // "true" | "false"
+  // GitHub access
+  githubToken: string;
 }
 
 export interface PortInfo {
@@ -170,6 +172,23 @@ export interface EspPongConfig {
   lapAutoFlash: boolean;
   lapDirFilter: "both" | "forward" | "reverse";
 }
+
+// ─── Firmware Flasher Types ───────────────────────────────────────────────────
+
+export interface GithubRelease {
+  tag: string;
+  name: string;
+  publishedAt: string;
+  prerelease: boolean;
+  /** API URL for the firmware.bin asset — use with auth header for private repos */
+  firmwareAssetApiUrl: string;
+}
+
+export type FlashProgressPayload =
+  | { type: "downloading" }
+  | { type: "output"; line: string }
+  | { type: "done" }
+  | { type: "error"; message: string };
 
 // ─── Serial Status Message ───────────────────────────────────────────────────
 
@@ -364,6 +383,24 @@ export type SpeedcameraRPC = {
         params: Record<string, never>;
         response: void;
       };
+
+      // Firmware flasher
+      listFirmwareReleases: {
+        params: Record<string, never>;
+        response: GithubRelease[];
+      };
+      flashFirmware: {
+        params: { releaseTag: string; port: string; firmwareAssetApiUrl: string };
+        response: void;
+      };
+      cancelFlash: {
+        params: Record<string, never>;
+        response: void;
+      };
+      testGithubToken: {
+        params: { token: string };
+        response: { valid: boolean; login?: string; error?: string };
+      };
     };
 
     messages: Record<string, never>;
@@ -377,6 +414,8 @@ export type SpeedcameraRPC = {
       serialStatus: SerialStatusPayload;
       // Bun notifies the view that a new app version is ready to install
       updateAvailable: { version: string };
+      // Bun streams esptool progress events to the view
+      flashProgress: FlashProgressPayload;
     };
   }>;
 };

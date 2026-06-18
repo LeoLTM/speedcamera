@@ -36,6 +36,15 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Download esptool binary (Linux amd64)
+        shell: bash
+        run: |
+          curl -fsSL https://github.com/espressif/esptool/releases/download/v5.2.0/esptool-v5.2.0-linux-amd64.tar.gz \
+            | tar -xz --wildcards '*/esptool' --strip-components=1
+          mkdir -p resources
+          mv esptool resources/esptool
+          chmod +x resources/esptool
+
       - name: Inject release version
         if: inputs.version != ''
         env:
@@ -58,6 +67,7 @@ jobs:
           name: electronbun-artifacts-${{ matrix.platform }}
           path: electronbun/artifacts/**
           if-no-files-found: error
+          retention-days: 1
 
   arduino-build:
     name: Arduino — Build Firmware
@@ -92,4 +102,5 @@ jobs:
           name: arduino-firmware
           path: arduino/.pio/build/d1_mini/firmware.bin
           if-no-files-found: error
+          retention-days: 1
 

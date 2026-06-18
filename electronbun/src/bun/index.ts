@@ -32,6 +32,7 @@ const { initSerial, listPorts, openPort, closePort, sendCommand } = await (
     ? import("./mock/serial")
     : import("./serial")
 );
+import { initFlasher, listFirmwareReleases, flashFirmware, cancelFlash, testGithubToken } from "./flasher";
 import {
   testTeableConnection,
   saveTeableConfig,
@@ -198,7 +199,25 @@ const rpc = BrowserView.defineRPC<SpeedcameraRPC>({
       // ── Updater ─────────────────────────────────────────────────────────────
       applyUpdate: async () => {
         await Updater.applyUpdate();
-      },    },
+      },
+
+      // ── Firmware flasher ────────────────────────────────────────────────────
+      listFirmwareReleases: async () => {
+        const { githubToken } = getSettings();
+        return listFirmwareReleases(githubToken);
+      },
+
+      flashFirmware: async ({ releaseTag, port, firmwareAssetApiUrl }) => {
+        const { githubToken } = getSettings();
+        // Auto-disconnect the serial port so esptool gets exclusive access
+        try { closePort(); } catch { /* already closed */ }
+        await flashFirmware(releaseTag, port, firmwareAssetApiUrl, githubToken);
+      },
+
+      cancelFlash: () => cancelFlash(),
+
+      testGithubToken: ({ token }) => testGithubToken(token),
+    },
 
     messages: {
       // No bun-side message handlers from the view in this schema
@@ -230,6 +249,12 @@ if (isDev) {
 
 initSerial((payload) => {
   mainWindow.webview.rpc?.send.serialStatus(payload);
+});
+
+// ─── Flash progress push bridge ──────────────────────────────────────────────
+
+initFlasher((payload) => {
+  mainWindow.webview.rpc?.send.flashProgress(payload);
 });
 
 // ─── Mock controller window ─────────────────────────────────────────────────

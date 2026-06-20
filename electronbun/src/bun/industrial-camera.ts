@@ -62,17 +62,27 @@ export function initCamera() {
     }
 
     if (camera.isFeatureAvailable("LineSelector")) {
-      camera.setStringFeature("LineSelector", "Line1");
-      camera.setStringFeature("LineMode", "Strobe");
-      camera.setStringFeature("LineSource", "FrameStartActive");
       try {
-        camera.setIntegerFeature("LineInverter", 0);
-        camera.setIntegerFeature("StrobeEnable", 1);
-        camera.setIntegerFeature("StrobeLineDuration", strobeDuration);
-        camera.setIntegerFeature("StrobeLineDelay", 0);
-        camera.setIntegerFeature("StrobeLinePreDelay", 0);
+        camera.setStringFeature("LineSelector", "Line1");
+      } catch (e) {}
+
+      try {
+        camera.setStringFeature("LineMode", "Strobe");
+      } catch (e) {}
+
+      try {
+        camera.setStringFeature("LineSource", "ExposureActive");
+      } catch (e) {}
+
+      try {
+        if (camera.isFeatureAvailable("StrobeEnable")) {
+          camera.setIntegerFeature("StrobeEnable", 1);
+          camera.setIntegerFeature("StrobeLineDuration", strobeDuration);
+          camera.setIntegerFeature("StrobeLineDelay", 0);
+          camera.setIntegerFeature("StrobeLinePreDelay", 0);
+        }
       } catch (e) {
-        console.warn("[industrial-camera] Strobe features missing");
+        console.warn("[industrial-camera] Standard Strobe features missing, relying on LineSource = ExposureActive");
       }
     }
 

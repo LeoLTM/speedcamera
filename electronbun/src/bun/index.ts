@@ -1,3 +1,4 @@
+import "./env";
 import { BrowserView, BrowserWindow, Updater } from "electrobun/bun";
 import type { SpeedcameraRPC } from "../shared/types";
 import {

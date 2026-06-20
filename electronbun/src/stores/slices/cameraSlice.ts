@@ -10,6 +10,7 @@ export interface CameraSlice {
   cameraExposure: number;
   cameraGain: number;
   setCameraStatus: (status: CameraStatusPayload) => void;
+  refreshCameraStatus: () => Promise<void>;
   connectCamera: () => Promise<void>;
   disconnectCamera: () => Promise<void>;
   setCameraExposure: (value: number) => Promise<void>;
@@ -33,6 +34,16 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
   
   connectCamera: async () => {
     await getRpc().request.connectCamera({});
+  },
+  
+  refreshCameraStatus: async () => {
+    const status = await getRpc().request.getCameraStatus({});
+    set({
+      cameraConnected: status.connected,
+      cameraVendor: status.vendor,
+      cameraModel: status.model,
+      cameraSerial: status.serial,
+    });
   },
   
   disconnectCamera: async () => {

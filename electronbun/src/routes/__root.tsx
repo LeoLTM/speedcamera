@@ -13,11 +13,13 @@ function Root() {
   useSystemStateSync();
   const loadLapSettings = useAppStore((s) => s.loadLapSettings);
   const loadTeableState = useAppStore((s) => s.loadTeableState);
+  const refreshCameraStatus = useAppStore((s) => s.refreshCameraStatus);
 
   useEffect(() => {
     void loadLapSettings();
     void loadTeableState();
-  }, [loadLapSettings, loadTeableState]);
+    void refreshCameraStatus();
+  }, [loadLapSettings, loadTeableState, refreshCameraStatus]);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground">

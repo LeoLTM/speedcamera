@@ -16,7 +16,7 @@ export function ArmingButton() {
   const systemState = useAppStore((s) => s.systemState);
   const setSystemState = useAppStore((s) => s.setSystemState);
   const connectedPort = useAppStore((s) => s.connectedPort);
-  const selectedCameraDeviceId = useAppStore((s) => s.selectedCameraDeviceId);
+  const cameraConnected = useAppStore((s) => s.cameraConnected);
 
   const [progress, setProgress] = useState(0); // 0–1
   const [isHolding, setIsHolding] = useState(false);
@@ -103,7 +103,7 @@ export function ArmingButton() {
   const isDisarmed = systemState === "DISARMED";
 
   // Derive which conditions are missing for the hint text
-  const missingCamera = !selectedCameraDeviceId;
+  const missingCamera = !cameraConnected;
   const missingSerial = !connectedPort;
 
   return (

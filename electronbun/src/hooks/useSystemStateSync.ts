@@ -13,9 +13,9 @@ export function useSystemStateSync() {
   const systemState = useAppStore((s) => s.systemState);
   const setSystemState = useAppStore((s) => s.setSystemState);
   const connectedPort = useAppStore((s) => s.connectedPort);
-  const selectedCameraDeviceId = useAppStore((s) => s.selectedCameraDeviceId);
+  const cameraConnected = useAppStore((s) => s.cameraConnected);
 
-  const conditionsMet = !!connectedPort && !!selectedCameraDeviceId;
+  const conditionsMet = !!connectedPort && cameraConnected;
 
   useEffect(() => {
     if (conditionsMet) {

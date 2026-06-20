@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { createRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { RootRoute } from "./__root";
-import { LiveCamera } from "@/components/LiveCamera";
+import { LastCapturedImage } from "@/components/LastCapturedImage";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ViolationCard } from "@/components/ViolationCard";
 import { ArmingButton } from "@/components/ArmingButton";
@@ -20,17 +20,16 @@ export const IndexRoute = createRoute({
 
 function HomePage() {
   const connectedPort = useAppStore((s) => s.connectedPort);
-  const selectedCameraDeviceId = useAppStore((s) => s.selectedCameraDeviceId);
+  const cameraConnected = useAppStore((s) => s.cameraConnected);
   const lastSpeed = useAppStore((s) => s.lastSpeed);
   const lastDirection = useAppStore((s) => s.lastDirection);
   const lastViolation = useAppStore((s) => s.lastViolation);
   const setMaxSpeed = useAppStore((s) => s.setMaxSpeed);
-  const setPictureDelay = useAppStore((s) => s.setPictureDelay);
   const appMode = useAppStore((s) => s.appMode);
   const currentLaps = useAppStore((s) => s.currentLaps);
 
   const serialStatus = connectedPort ? "connected" : "disconnected";
-  const cameraStatus = selectedCameraDeviceId ? "connected" : "unknown";
+  const cameraStatus = cameraConnected ? "connected" : "unknown";
 
   // Load relevant settings into the store on mount
   useEffect(() => {
@@ -38,10 +37,9 @@ function HomePage() {
       .request.getSettings({})
       .then((settings) => {
         setMaxSpeed(settings.maxSpeed);
-        setPictureDelay(settings.pictureDelay);
       })
       .catch(() => toast.error("Failed to load settings"));
-  }, [setMaxSpeed, setPictureDelay]);
+  }, [setMaxSpeed]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -53,7 +51,7 @@ function HomePage() {
         />
         <StatusBadge
           status={cameraStatus}
-          label={selectedCameraDeviceId ? "Camera: connected" : "Camera: not selected"}
+          label={cameraConnected ? "Camera: connected" : "Camera: disconnected"}
         />
       </div>
 
@@ -61,7 +59,7 @@ function HomePage() {
       <div className="flex flex-1 overflow-hidden gap-0">
         {/* Main: camera feed */}
         <div className="flex-1 flex items-center justify-center p-4 overflow-hidden bg-black/5 dark:bg-black/20">
-          <LiveCamera className="w-full max-h-full" />
+          <LastCapturedImage />
         </div>
 
         {/* Side panel */}

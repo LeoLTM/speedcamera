@@ -18,11 +18,14 @@ import {
 } from "./database";
 import { saveImage, readImageAsDataUrl, deleteImage } from "./filestore";
 import {
-  getAvailableCameras,
-  getAvailableHwControls,
-  setHwControl,
-  resetHwControls,
-} from "./camera";
+  initCamera,
+  disconnectCamera,
+  getCameraStatus,
+  captureFrame,
+  setExposure,
+  setGain,
+  initCameraPush
+} from "./industrial-camera";
 // ─── Serial module (real or mock) ────────────────────────────────────────────
 // process.env.MOCK_MODE is replaced at build time by Bun's `define` with an
 // empty string for stable/canary builds, causing this branch to be dead-code
@@ -88,11 +91,13 @@ const rpc = BrowserView.defineRPC<SpeedcameraRPC>({
       exportViolationsCsv: ({ dateFrom, dateTo, minSpeed }) =>
         exportCsv({ dateFrom, dateTo, minSpeed }),
 
-      saveViolation: async ({ imageBase64, measuredSpeed, maxSpeed, direction }) => {
-        // Strip data-URL prefix if the view accidentally includes it
-        const raw = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+      saveViolation: async ({ measuredSpeed, maxSpeed, direction }) => {
+        // Bun captures directly from camera
+        const raw = await captureFrame();
+        if (!raw) throw new Error("Failed to capture frame from industrial camera");
         const imagePath = await saveImage(raw);
-        return insertViolation({ imageBase64: raw, imagePath, measuredSpeed, maxSpeed, direction });
+        const v = await insertViolation({ imageBase64: raw, imagePath, measuredSpeed, maxSpeed, direction });
+        return v;
       },
 
       // ── Lap Sessions ────────────────────────────────────────────────────────
@@ -157,13 +162,28 @@ const rpc = BrowserView.defineRPC<SpeedcameraRPC>({
       },
 
       // ── Camera HW ───────────────────────────────────────────────────────────
-      getAvailableCameras: () => getAvailableCameras(),
+      connectCamera: () => {
+        initCamera();
+      },
 
-      getAvailableHwControls: ({ cameraId }) => getAvailableHwControls(cameraId),
+      disconnectCamera: () => {
+        disconnectCamera();
+      },
 
-      setHwControl: ({ cameraId, name, value }) => setHwControl(cameraId, name, value),
+      getCameraStatus: () => getCameraStatus(),
 
-      resetHwControls: ({ cameraId }) => resetHwControls(cameraId),
+      captureFrame: async () => {
+        const b64 = await captureFrame();
+        return b64 ?? null;
+      },
+
+      setCameraExposure: ({ value }) => {
+        setExposure(value);
+      },
+
+      setCameraGain: ({ value }) => {
+        setGain(value);
+      },
 
       // ── System ──────────────────────────────────────────────────────────────
       getPlatform: () => process.platform,
@@ -250,6 +270,13 @@ if (isDev) {
 initSerial((payload) => {
   mainWindow.webview.rpc?.send.serialStatus(payload);
 });
+
+initCameraPush((payload) => {
+  mainWindow.webview.rpc?.send.cameraStatus(payload);
+});
+
+// Auto-connect camera on startup
+initCamera();
 
 // ─── Flash progress push bridge ──────────────────────────────────────────────
 

@@ -20,18 +20,15 @@ export interface SaveViolationInput {
 }
 
 export interface AppSettings {
-  flashDelay: number;       // ms, default 100
-  flashDuration: number;    // ms, default 50
-  pictureDelay: number;     // ms, default 100
   maxSpeed: number;         // km/h, default 30
   selectedPort: string;     // serial port path, default ""
-  selectedCamera: string;   // webcam deviceId, default ""
+  // Industrial Camera Settings
+  cameraExposure: number;
+  cameraGain: number;
+  strobeLineDuration: number;
   // Lap timer settings
   lapMode: string;          // "single" | "multi", default "single"
-  lapFlashOnStart: string;  // "true" | "false", default "true"
-  lapFlashOnLapEnd: string; // "true" | "false", default "true"
   lapSaveImages: string;    // "true" | "false", default "true"
-  lapAutoFlash: string;     // "true" | "false", default "true"
   lapDirFilter: string;     // "both" | "forward" | "reverse", default "both"
   // Teable integration
   teableUrl: string;
@@ -57,20 +54,11 @@ export interface PortInfo {
   vendorId?: string;
 }
 
-export interface CameraInfo {
-  id: number;   // v4l2 device number (e.g. 0 for /dev/video0)
-  name: string;
-}
-
-export interface HwControl {
-  name: string;
-  type: "int" | "bool" | "menu";
-  min?: number;
-  max?: number;
-  step?: number;
-  default: number;
-  value: number;
-  flags?: string;
+export interface CameraStatusPayload {
+  connected: boolean;
+  vendor: string | null;
+  model: string | null;
+  serial: string | null;
 }
 
 export interface ViolationQuery {
@@ -294,21 +282,29 @@ export type SpeedcameraRPC = {
         response: void;
       };
 
-      // Camera HW (Linux / v4l2)
-      getAvailableCameras: {
+      // Camera HW (Industrial / bun-aravis)
+      connectCamera: {
         params: Record<string, never>;
-        response: CameraInfo[];
-      };
-      getAvailableHwControls: {
-        params: { cameraId: number };
-        response: HwControl[];
-      };
-      setHwControl: {
-        params: { cameraId: number; name: string; value: number };
         response: void;
       };
-      resetHwControls: {
-        params: { cameraId: number };
+      disconnectCamera: {
+        params: Record<string, never>;
+        response: void;
+      };
+      getCameraStatus: {
+        params: Record<string, never>;
+        response: CameraStatusPayload;
+      };
+      captureFrame: {
+        params: Record<string, never>;
+        response: string | null; // base64
+      };
+      setCameraExposure: {
+        params: { value: number };
+        response: void;
+      };
+      setCameraGain: {
+        params: { value: number };
         response: void;
       };
 
@@ -412,6 +408,10 @@ export type SpeedcameraRPC = {
     messages: {
       // Bun pushes serial measurement updates to the view
       serialStatus: SerialStatusPayload;
+      // Bun pushes camera connection status to the view
+      cameraStatus: CameraStatusPayload;
+      // Bun notifies the view when it autonomously captures and saves a violation
+      violationCaptured: Violation;
       // Bun notifies the view that a new app version is ready to install
       updateAvailable: { version: string };
       // Bun streams esptool progress events to the view

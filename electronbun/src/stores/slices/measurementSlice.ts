@@ -18,15 +18,10 @@ export interface MeasurementSlice {
   lastViolation: Violation | null;
   /** Config returned by the last successful ping */
   lastPongConfig: EspPongConfig | null;
-  /** Prevent re-entrant captures */
-  isCapturing: boolean;
   setMaxSpeed: (speed: number) => void;
   setLastViolation: (v: Violation | null) => void;
   handleSerialStatus: (payload: SerialStatusPayload) => void;
 }
-
-// Module-level guard to survive Zustand re-renders
-let capturing = false;
 
 export const createMeasurementSlice: StateCreator<
   MeasurementSlice & CameraSlice & SystemSlice & LapSlice,
@@ -39,7 +34,6 @@ export const createMeasurementSlice: StateCreator<
   maxSpeed: 30,
   lastViolation: null,
   lastPongConfig: null,
-  isCapturing: false,
 
   setMaxSpeed: (speed) => set({ maxSpeed: speed }),
 
@@ -77,58 +71,17 @@ export const createMeasurementSlice: StateCreator<
       // Only save violations and flash when fully ARMED
       if (systemState !== "ARMED") return;
 
-      if (capturing) return;
-      const { cameraStream, maxSpeed, pictureDelay } = get();
+      const { maxSpeed } = get();
 
-      if (!cameraStream || cameraStream.getVideoTracks().length === 0) {
-        console.warn("[measurement] SPEEDING detected but no camera stream available");
-        return;
-      }
-
-      capturing = true;
-      set({ isCapturing: true });
-
-      // Grab a reference to the track now so it stays stable across the async chain
-      const videoTrack = cameraStream.getVideoTracks()[0];
-
-      // 1. Tell the ESP32 to trigger the flash (it applies its own flashDelay + flashDuration).
-      // 2. Wait pictureDelay ms so the flash is illuminating the scene when we capture.
-      // 3. Use ImageCapture to grab the frame directly from the stream track —
-      //    independent of any DOM visibility/throttling.
+      // Trigger bun-side capture and save
       getRpc()
-        .request.sendCommand({ json: JSON.stringify({ command: "flash" }) })
-        .catch((err: unknown) =>
-          console.error("[measurement] Failed to send flash command:", err)
-        )
-        .then(() => new Promise<void>((resolve) => setTimeout(resolve, pictureDelay)))
-        .then(async () => {
-          const imageCapture = new ImageCapture(videoTrack);
-          const bitmap = await imageCapture.grabFrame();
-          const canvas = document.createElement("canvas");
-          canvas.width = bitmap.width;
-          canvas.height = bitmap.height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) return Promise.reject(new Error("no canvas context"));
-          ctx.drawImage(bitmap, 0, 0);
-          bitmap.close();
-          const imageBase64 = canvas.toDataURL("image/png").replace(/^data:image\/\w+;base64,/, "");
-          return getRpc().request.saveViolation({ imageBase64, measuredSpeed: value, maxSpeed, direction });
-        })
-        .then((violation: Violation) => {
-          set({ lastViolation: violation, isCapturing: false });
-          playBeep();
-          toast.success(`Speed violation: ${value} km/h`, {
-            description: `Limit: ${maxSpeed} km/h`,
-          });
-        })
+        .request.saveViolation({ measuredSpeed: value, maxSpeed, direction })
         .catch((err: unknown) => {
           console.error("[measurement] Capture/save failed:", err);
           toast.error("Failed to save violation");
-          set({ isCapturing: false });
-        })
-        .finally(() => {
-          capturing = false;
         });
+        
+      // Note: `lastViolation` state is updated by the new `violationCaptured` push listener in rpc.ts
     } else if (payload.status === "OK") {
       set({ lastSpeed: payload.value, lastDirection: payload.direction });
     }

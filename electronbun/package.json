@@ -16,6 +16,7 @@
 		"setup:esptool": "mkdir -p resources && curl -fsSL https://github.com/espressif/esptool/releases/download/v5.2.0/esptool-v5.2.0-linux-amd64.tar.gz | tar -xz --wildcards '*/esptool' --strip-components=1 && mv esptool resources/esptool && chmod +x resources/esptool"
 	},
 	"dependencies": {
+		"@asl-gokart/bun-aravis": "^0.1.0",
 		"@fontsource-variable/figtree": "^5.2.10",
 		"@hugeicons/core-free-icons": "^4.1.1",
 		"@hugeicons/react": "^1.1.6",

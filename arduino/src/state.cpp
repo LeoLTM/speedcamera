@@ -2,8 +2,6 @@
 
 // ─── Configurable Parameters ─────────────────────────────────────────────────
 float maxSpeedKmH     = 2.0f;
-int   flashTime       = 50;
-int   waitBeforeFlash = 100;
 bool  debugEnabled    = false;
 
 // ─── Serial Input State ───────────────────────────────────────────────────────
@@ -24,11 +22,7 @@ LapDirectionFilter lapDirectionFilter = LapDirectionFilter::BOTH;
 unsigned long      lapStartUs         = 0;
 float              lapStartSpeedKmH   = 0.0f;
 int                lapNumber          = 1;
-bool               lapAutoFlash       = true;
 
-// ─── Non-blocking Flash State ─────────────────────────────────────────────────
-bool          flashActive  = false;
-unsigned long flashStartMs = 0;
 
 // ─── Speed Measurement Results ────────────────────────────────────────────────
 float speedInKmH    = 0.0f;

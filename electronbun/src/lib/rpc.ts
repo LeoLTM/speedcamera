@@ -18,6 +18,7 @@ const _rpc = Electroview.defineRPC<SpeedcameraRPC>({
       // Use getState() so we don't depend on the React lifecycle for setup.
       serialStatus: (payload) => useAppStore.getState().handleSerialStatus(payload),
       flashProgress: (payload) => useAppStore.getState().handleFlashProgress(payload),
+      cameraStatus: (payload) => useAppStore.getState().setCameraStatus(payload),
       updateAvailable: ({ version }) => {
         toast.info(`Update available: v${version}`, {
           duration: Infinity,

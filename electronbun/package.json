@@ -26,7 +26,7 @@
 		"bun-serialport": "^0.1.1",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
-		"electrobun": "1.16.0",
+		"electrobun": "1.18.1",
 		"lucide-react": "^1.8.0",
 		"next-themes": "^0.4.6",
 		"radix-ui": "^1.4.3",

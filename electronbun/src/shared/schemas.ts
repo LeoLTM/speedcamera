@@ -22,7 +22,7 @@ export const EspPongConfigSchema = z.object({
   debugEnabled: z.boolean(),
   lapMode: z.enum(["single", "multi"]),
   lapActive: z.boolean(),
-  lapAutoFlash: z.boolean(),
+  lapAutoFlash: z.boolean().optional(),
   lapDirFilter: z.enum(["both", "forward", "reverse"]),
 });
 

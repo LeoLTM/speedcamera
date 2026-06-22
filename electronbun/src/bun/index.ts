@@ -25,7 +25,15 @@ import {
   captureFrame,
   setExposure,
   setGain,
-  initCameraPush
+  initCameraPush,
+  applyMfsConfig,
+  startSetupStream,
+  stopSetupStream,
+  setPixelFormat,
+  getPixelFormat,
+  setStrobeDuration,
+  setCameraFeatureStr,
+  setCameraFeatureInt
 } from "./industrial-camera";
 // ─── Serial module (real or mock) ────────────────────────────────────────────
 // process.env.MOCK_MODE is replaced at build time by Bun's `define` with an
@@ -184,6 +192,38 @@ const rpc = BrowserView.defineRPC<SpeedcameraRPC>({
 
       setCameraGain: ({ value }) => {
         setGain(value);
+      },
+
+      applyMfsConfig: ({ mfsContent, saveAsDefault }) => {
+        return applyMfsConfig(mfsContent, saveAsDefault);
+      },
+
+      startSetupStream: () => {
+        startSetupStream((base64) => {
+          mainWindow.webview.rpc?.send.liveFrame(base64);
+        });
+      },
+
+      stopSetupStream: () => {
+        stopSetupStream();
+      },
+
+      setCameraPixelFormat: ({ format }) => {
+        setPixelFormat(format);
+      },
+
+      getCameraPixelFormat: () => getPixelFormat(),
+
+      setCameraStrobeDuration: ({ value }) => {
+        setStrobeDuration(value);
+      },
+
+      setCameraFeatureStr: ({ feature, value }) => {
+        setCameraFeatureStr(feature, value);
+      },
+
+      setCameraFeatureInt: ({ feature, value }) => {
+        setCameraFeatureInt(feature, value);
       },
 
       // ── System ──────────────────────────────────────────────────────────────

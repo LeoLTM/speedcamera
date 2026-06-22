@@ -8,6 +8,7 @@ import { SettingsRoute } from "@/routes/settings";
 import { AboutRoute } from "@/routes/about";
 import { LapsRoute } from "@/routes/laps";
 import { TeableRoute } from "@/routes/teable";
+import { SetupRoute } from "@/routes/setup";
 
 // ─── Router ─────────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,7 @@ const routeTree = RootRoute.addChildren([
   AboutRoute,
   LapsRoute,
   TeableRoute,
+  SetupRoute,
 ]);
 
 const history = createMemoryHistory({ initialEntries: ["/"] });

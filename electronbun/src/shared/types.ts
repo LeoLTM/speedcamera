@@ -26,6 +26,13 @@ export interface AppSettings {
   cameraExposure: number;
   cameraGain: number;
   strobeLineDuration: number;
+  pixelFormat: string;      // "Mono" | "Color"
+  exposureAuto: string;     // "Off" | "Once" | "Continuous"
+  gainAuto: string;         // "Off" | "Once" | "Continuous"
+  frameRate: number;
+  cameraWidth: number;
+  cameraHeight: number;
+  blackLevel: number;
   // Lap timer settings
   lapMode: string;          // "single" | "multi", default "single"
   lapSaveImages: string;    // "true" | "false", default "true"
@@ -52,6 +59,27 @@ export interface PortInfo {
   locationId?: string;
   productId?: string;
   vendorId?: string;
+}
+
+export interface CameraInfo {
+  id: string;
+  vendor: string;
+  model: string;
+}
+
+export interface HwControl {
+  name: string;
+  type: "int" | "bool";
+  min?: number;
+  max?: number;
+  step?: number;
+  default?: number;
+  value: number;
+}
+
+export interface MfsConfigResult {
+  applied: string[];
+  failed: string[];
 }
 
 export interface CameraStatusPayload {
@@ -157,7 +185,7 @@ export interface EspPongConfig {
   debugEnabled: boolean;
   lapMode: "single" | "multi";
   lapActive: boolean;
-  lapAutoFlash: boolean;
+  lapAutoFlash?: boolean;
   lapDirFilter: "both" | "forward" | "reverse";
 }
 
@@ -307,6 +335,38 @@ export type SpeedcameraRPC = {
         params: { value: number };
         response: void;
       };
+      applyMfsConfig: {
+        params: { mfsContent: string; saveAsDefault: boolean };
+        response: MfsConfigResult;
+      };
+      startSetupStream: {
+        params: Record<string, never>;
+        response: void;
+      };
+      stopSetupStream: {
+        params: Record<string, never>;
+        response: void;
+      };
+      setCameraPixelFormat: {
+        params: { format: string };
+        response: void;
+      };
+      getCameraPixelFormat: {
+        params: Record<string, never>;
+        response: string;
+      };
+      setCameraStrobeDuration: {
+        params: { value: number };
+        response: void;
+      };
+      setCameraFeatureStr: {
+        params: { feature: string; value: string };
+        response: void;
+      };
+      setCameraFeatureInt: {
+        params: { feature: string; value: number };
+        response: void;
+      };
 
       // Window
       minimizeWindow: {
@@ -414,6 +474,8 @@ export type SpeedcameraRPC = {
       updateAvailable: { version: string };
       // Bun streams esptool progress events to the view
       flashProgress: FlashProgressPayload;
+      // Push setup live stream frame
+      liveFrame: string;
     };
   }>;
 };

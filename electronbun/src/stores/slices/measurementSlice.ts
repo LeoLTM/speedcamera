@@ -76,12 +76,13 @@ export const createMeasurementSlice: StateCreator<
       // Trigger bun-side capture and save
       getRpc()
         .request.saveViolation({ measuredSpeed: value, maxSpeed, direction })
+        .then((v) => {
+          get().setLastViolation(v);
+        })
         .catch((err: unknown) => {
           console.error("[measurement] Capture/save failed:", err);
           toast.error("Failed to save violation");
         });
-        
-      // Note: `lastViolation` state is updated by the new `violationCaptured` push listener in rpc.ts
     } else if (payload.status === "OK") {
       set({ lastSpeed: payload.value, lastDirection: payload.direction });
     }

@@ -410,8 +410,6 @@ export type SpeedcameraRPC = {
       serialStatus: SerialStatusPayload;
       // Bun pushes camera connection status to the view
       cameraStatus: CameraStatusPayload;
-      // Bun notifies the view when it autonomously captures and saves a violation
-      violationCaptured: Violation;
       // Bun notifies the view that a new app version is ready to install
       updateAvailable: { version: string };
       // Bun streams esptool progress events to the view

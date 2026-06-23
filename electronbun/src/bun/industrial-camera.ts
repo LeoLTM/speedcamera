@@ -183,6 +183,13 @@ export async function captureFrame(): Promise<string | null> {
   }
 
   try {
+    // Clear any stale frames from the buffer queue
+    let staleBuffer;
+    while ((staleBuffer = stream.tryPopBuffer()) !== null) {
+      console.warn("[industrial-camera] Discarding stale frame before new capture");
+      stream.pushBuffer(staleBuffer);
+    }
+
     if (camera.isFeatureAvailable("TriggerSoftware")) {
       camera.executeCommand("TriggerSoftware");
     }

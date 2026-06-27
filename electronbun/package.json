@@ -13,7 +13,10 @@
 		"build:stable": "vite build && electrobun build --env=stable",
 		"lint": "eslint src",
 		"lint:ci": "eslint src --max-warnings 0",
-		"setup:esptool": "mkdir -p resources && curl -fsSL https://github.com/espressif/esptool/releases/download/v5.2.0/esptool-v5.2.0-linux-amd64.tar.gz | tar -xz --wildcards '*/esptool' --strip-components=1 && mv esptool resources/esptool && chmod +x resources/esptool"
+		"setup:esptool": "mkdir -p resources && curl -fsSL https://github.com/espressif/esptool/releases/download/v5.2.0/esptool-v5.2.0-linux-amd64.tar.gz | tar -xz --wildcards '*/esptool' --strip-components=1 && mv esptool resources/esptool && chmod +x resources/esptool",
+		"db:reset": "bun scripts/reset-db.ts dev",
+		"db:reset:stable": "bun scripts/reset-db.ts stable",
+		"db:reset:all": "bun scripts/reset-db.ts all"
 	},
 	"dependencies": {
 		"@asl-gokart/bun-aravis": "^0.1.0",

@@ -52,6 +52,11 @@ When you run `bun run dev` (without HMR):
 └── package.json
 ```
 
+## File Locations
+
+- DB path: `/home/<your_username>/.local/share/com.speedcamera.app/dev/speedcamera.db`
+- Images dir: `/home/<your_username>/.local/share/com.speedcamera.app/dev/images/`
+
 ## Firmware Flashing
 
 The firmware update UI (Settings → Device → Firmware Update) requires the `esptool` binary to be present at `resources/esptool`. This file is excluded from git and downloaded automatically in CI.

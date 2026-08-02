@@ -239,7 +239,7 @@ export function SpeedCameraTab() {
         <div className="space-y-2">
           <label className="text-sm font-medium">Measuring Location (Messort)</label>
           <p className="text-xs text-muted-foreground -mt-1">
-            Shown in Poliscan skin bottom bar. e.g. "BAB 2 Km 81,2, Ri. Hannover"
+            Shown in Poliscan skin bottom bar. e.g. &quot;BAB 2 Km 81,2, Ri. Hannover&quot;
           </p>
           <input
             type="text"

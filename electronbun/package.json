@@ -19,7 +19,7 @@
 		"db:reset:all": "bun scripts/reset-db.ts all"
 	},
 	"dependencies": {
-		"@asl-gokart/bun-aravis": "^0.1.0",
+		"@asl-gokart/bun-aravis": "^0.2.0",
 		"@fontsource-variable/figtree": "^5.2.10",
 		"@hugeicons/core-free-icons": "^4.1.1",
 		"@hugeicons/react": "^1.1.6",

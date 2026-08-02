@@ -5,7 +5,7 @@
     "": {
       "name": "electrobun-react-tailwind-vite",
       "dependencies": {
-        "@asl-gokart/bun-aravis": "^0.1.0",
+        "@asl-gokart/bun-aravis": "^0.2.0",
         "@fontsource-variable/figtree": "^5.2.10",
         "@hugeicons/core-free-icons": "^4.1.1",
         "@hugeicons/react": "^1.1.6",
@@ -56,7 +56,7 @@
   "packages": {
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
 
-    "@asl-gokart/bun-aravis": ["@asl-gokart/bun-aravis@0.1.0", "https://registry.leotm.de/@asl-gokart/bun-aravis/-/bun-aravis-0.1.0.tgz", { "peerDependencies": { "typescript": "^5.0.0" } }, "sha512-c9wxSRTQvq/w1M6j75ISSN7Es2X7GlGfa85fen4MEJyet8c9YPSezFKE0IXtpw9sScY6uXygLhttHlG46RC0Lw=="],
+    "@asl-gokart/bun-aravis": ["@asl-gokart/bun-aravis@0.2.0", "https://registry.leotm.de/@asl-gokart/bun-aravis/-/bun-aravis-0.2.0.tgz", { "peerDependencies": { "typescript": "^5.0.0" } }, "sha512-PqQWZZD45sOZijdUJmLpTjnf4ZqFR9ltmYWBh4fQfXBobIJiZJiUWJQ/EevvR9KuhtIAvXqlvO3B2KtSoWV21Q=="],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.0", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.28.5", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw=="],
 

@@ -4,7 +4,8 @@ import { toast } from "sonner";
 import { RootRoute } from "./__root";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -15,6 +16,7 @@ import {
 import { getRpc } from "@/lib/rpc";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Violation, ViolationQuery } from "@/shared/types";
+import { cn } from "@/lib/utils";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Delete02Icon,
@@ -24,6 +26,9 @@ import {
   ArrowRight01Icon,
   ArrowUpBigIcon,
   ArrowDownBigIcon,
+  Image01Icon,
+  GridViewIcon,
+  LayoutList,
 } from "@hugeicons/core-free-icons";
 
 export const ViolationsRoute = createRoute({
@@ -48,6 +53,20 @@ function ViolationsPage() {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [skinEnabled, setSkinEnabled] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportDir, setExportDir] = useState("");
+  const [exportingImages, setExportingImages] = useState(false);
+
+  // ponytail: view preference stored in localStorage
+  const [viewMode, setViewMode] = useState<"list" | "grid">(() => {
+    return (localStorage.getItem("violations_view_mode") as "list" | "grid") || "list";
+  });
+
+  const handleViewModeChange = (mode: "list" | "grid") => {
+    setViewMode(mode);
+    localStorage.setItem("violations_view_mode", mode);
+  };
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
@@ -128,6 +147,30 @@ function ViolationsPage() {
       toast.error("Failed to export CSV");
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleExportImages = async () => {
+    if (!exportDir.trim()) {
+      toast.error("Please enter an export directory");
+      return;
+    }
+    setExportingImages(true);
+    try {
+      // ponytail: export selected if any, else all on current page
+      const ids = selected.size > 0
+        ? [...selected]
+        : violations.map((v) => v.id);
+      const result = await getRpc().request.exportSkinnedImages({
+        violationIds: ids,
+        targetDir: exportDir.trim(),
+      });
+      toast.success(`Exported ${result.exported} images${result.failed ? `, ${result.failed} failed` : ""}`);
+      setExportDialogOpen(false);
+    } catch {
+      toast.error("Failed to export images");
+    } finally {
+      setExportingImages(false);
     }
   };
 
@@ -214,6 +257,23 @@ function ViolationsPage() {
             <HugeiconsIcon icon={Download01Icon} strokeWidth={2} />
             {exporting ? "Exporting…" : "Export CSV"}
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setExportDialogOpen(true)}
+            disabled={total === 0}
+          >
+            <HugeiconsIcon icon={Image01Icon} strokeWidth={2} />
+            Export Images
+          </Button>
+          <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
+            <Switch
+              checked={skinEnabled}
+              onCheckedChange={setSkinEnabled}
+              aria-label="Toggle Poliscan skin"
+            />
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Poliscan Skin</span>
+          </div>
           <Select
             value={String(limit)}
             onValueChange={(v) => {
@@ -232,40 +292,79 @@ function ViolationsPage() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* ponytail: View mode toggle buttons (List / Grid) */}
+          <div className="flex items-center rounded-lg border border-border bg-background p-0.5 ml-1">
+            <Button
+              variant={viewMode === "list" ? "secondary" : "ghost"}
+              size="icon-sm"
+              className="h-7 w-7"
+              onClick={() => handleViewModeChange("list")}
+              title="List View"
+            >
+              <HugeiconsIcon icon={LayoutList} strokeWidth={2} className="size-4" />
+            </Button>
+            <Button
+              variant={viewMode === "grid" ? "secondary" : "ghost"}
+              size="icon-sm"
+              className="h-7 w-7"
+              onClick={() => handleViewModeChange("grid")}
+              title="Grid View"
+            >
+              <HugeiconsIcon icon={GridViewIcon} strokeWidth={2} className="size-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Main Content Area: List Table vs Image Grid */}
       <div className="flex-1 overflow-auto">
         {loading ? (
-          <table className="w-full text-sm border-collapse">
-            <thead className="sticky top-0 bg-background border-b border-border z-10">
-              <tr>
-                <th className="w-10 px-3 py-2" />
-                <th className="px-3 py-2 text-left font-medium text-muted-foreground">Image</th>
-                <th className="px-3 py-2 text-left font-medium text-muted-foreground">Timestamp</th>
-                <th className="px-3 py-2 text-center font-medium text-muted-foreground">Dir</th>
-                <th className="px-3 py-2 text-right font-medium text-muted-foreground">Speed (km/h)</th>
-                <th className="px-3 py-2 text-right font-medium text-muted-foreground">Limit (km/h)</th>
-                <th className="px-3 py-2 text-right font-medium text-muted-foreground">Over</th>
-                <th className="w-12 px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <tr key={i}>
-                  <td className="px-3 py-2"><Skeleton className="size-4 rounded" /></td>
-                  <td className="px-3 py-2"><Skeleton className="w-16 h-10 rounded-md" /></td>
-                  <td className="px-3 py-2"><Skeleton className="h-4 w-36 rounded" /></td>
-                  <td className="px-3 py-2"><Skeleton className="h-4 w-5 rounded mx-auto" /></td>
-                  <td className="px-3 py-2 text-right"><Skeleton className="h-4 w-10 rounded ml-auto" /></td>
-                  <td className="px-3 py-2 text-right"><Skeleton className="h-4 w-10 rounded ml-auto" /></td>
-                  <td className="px-3 py-2 text-right"><Skeleton className="h-4 w-10 rounded ml-auto" /></td>
-                  <td className="px-3 py-2"><Skeleton className="size-7 rounded-md ml-auto" /></td>
-                </tr>
+          viewMode === "grid" ? (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4 p-4">
+              {Array.from({ length: limit > 25 ? 12 : 8 }).map((_, i) => (
+                <div key={i} className="flex flex-col rounded-xl border border-border bg-card overflow-hidden">
+                  <Skeleton className="w-full h-52 rounded-none" />
+                  <div className="p-3 space-y-2">
+                    <div className="flex justify-between">
+                      <Skeleton className="h-4 w-20" />
+                      <Skeleton className="h-4 w-16" />
+                    </div>
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          ) : (
+            <table className="w-full text-sm border-collapse">
+              <thead className="sticky top-0 bg-background border-b border-border z-10">
+                <tr>
+                  <th className="w-10 px-3 py-2" />
+                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Image</th>
+                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Timestamp</th>
+                  <th className="px-3 py-2 text-center font-medium text-muted-foreground">Dir</th>
+                  <th className="px-3 py-2 text-right font-medium text-muted-foreground">Speed (km/h)</th>
+                  <th className="px-3 py-2 text-right font-medium text-muted-foreground">Limit (km/h)</th>
+                  <th className="px-3 py-2 text-right font-medium text-muted-foreground">Over</th>
+                  <th className="w-12 px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-3 py-2"><Skeleton className="size-4 rounded" /></td>
+                    <td className="px-3 py-2"><Skeleton className="w-16 h-10 rounded-md" /></td>
+                    <td className="px-3 py-2"><Skeleton className="h-4 w-36 rounded" /></td>
+                    <td className="px-3 py-2"><Skeleton className="h-4 w-5 rounded mx-auto" /></td>
+                    <td className="px-3 py-2 text-right"><Skeleton className="h-4 w-10 rounded ml-auto" /></td>
+                    <td className="px-3 py-2 text-right"><Skeleton className="h-4 w-10 rounded ml-auto" /></td>
+                    <td className="px-3 py-2 text-right"><Skeleton className="h-4 w-10 rounded ml-auto" /></td>
+                    <td className="px-3 py-2"><Skeleton className="size-7 rounded-md ml-auto" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
         ) : violations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
             <div className="flex items-center justify-center size-16 rounded-2xl bg-muted text-muted-foreground/40">
@@ -275,6 +374,37 @@ function ViolationsPage() {
             <p className="text-sm text-muted-foreground/60 max-w-xs">
               Speed violations will appear here once the camera detects them, or try adjusting your filters.
             </p>
+          </div>
+        ) : viewMode === "grid" ? (
+          <div className="flex flex-col h-full">
+            {/* Grid Select All Header */}
+            <div className="flex items-center justify-between px-4 py-2 bg-muted/10 border-b border-border text-xs text-muted-foreground shrink-0">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={allSelected || (someSelected ? "indeterminate" : false)}
+                  onCheckedChange={toggleSelectAll}
+                  id="grid-select-all"
+                />
+                <label htmlFor="grid-select-all" className="cursor-pointer select-none font-medium">
+                  Select All ({selected.size} selected)
+                </label>
+              </div>
+              <span>{violations.length} items on page</span>
+            </div>
+            {/* Grid Tiles */}
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4 p-4 overflow-auto flex-1">
+              {violations.map((v) => (
+                <ViolationGridTile
+                  key={v.id}
+                  violation={v}
+                  selected={selected.has(v.id)}
+                  skinEnabled={skinEnabled}
+                  onToggleSelect={() => toggleSelect(v.id)}
+                  onDelete={() => handleDelete(v.id)}
+                  onImageClick={(url) => setLightboxUrl(url)}
+                />
+              ))}
+            </div>
           </div>
         ) : (
           <table className="w-full text-sm border-collapse">
@@ -308,6 +438,7 @@ function ViolationsPage() {
                   key={v.id}
                   violation={v}
                   selected={selected.has(v.id)}
+                  skinEnabled={skinEnabled}
                   onToggleSelect={() => toggleSelect(v.id)}
                   onDelete={() => handleDelete(v.id)}
                   onImageClick={(url) => setLightboxUrl(url)}
@@ -353,16 +484,48 @@ function ViolationsPage() {
       {/* Lightbox */}
       <Dialog open={lightboxUrl !== null} onOpenChange={(open) => !open && setLightboxUrl(null)}>
         <DialogContent
-          className="max-w-3xl w-full p-2 rounded-2xl"
+          className="max-w-[96vw] sm:max-w-[96vw] w-[96vw] sm:w-[96vw] h-[96vh] sm:h-[96vh] max-h-[96vh] sm:max-h-[96vh] p-0 rounded-none bg-black/95 border-none flex items-center justify-center overflow-hidden"
           showCloseButton
         >
           {lightboxUrl && (
             <img
               src={lightboxUrl}
               alt="Violation"
-              className="w-full rounded-xl object-contain max-h-[80vh]"
+              className="w-full h-full object-contain rounded-none"
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Images Dialog */}
+      <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Export Skinned Images</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {selected.size > 0
+              ? `Export ${selected.size} selected violation(s) with Poliscan skin.`
+              : `Export all ${violations.length} violations on this page with Poliscan skin.`}
+          </p>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Export Directory</label>
+            <input
+              type="text"
+              value={exportDir}
+              onChange={(e) => setExportDir(e.target.value)}
+              placeholder="/home/user/exports"
+              className="w-full h-8 px-3 text-sm rounded-lg border border-input bg-input/30 focus:outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExportDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleExportImages} disabled={exportingImages || !exportDir.trim()}>
+              {exportingImages ? "Exporting…" : "Export"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -374,6 +537,7 @@ function ViolationsPage() {
 interface ViolationRowProps {
   violation: Violation;
   selected: boolean;
+  skinEnabled: boolean;
   onToggleSelect: () => void;
   onDelete: () => void;
   onImageClick: (url: string) => void;
@@ -382,6 +546,7 @@ interface ViolationRowProps {
 function ViolationRow({
   violation,
   selected,
+  skinEnabled,
   onToggleSelect,
   onDelete,
   onImageClick,
@@ -392,13 +557,16 @@ function ViolationRow({
 
   useEffect(() => {
     let cancelled = false;
-    getRpc()
-      .request.getImageData({ imagePath: violation.imagePath })
+    setImageLoading(true);
+    const fetchImage = skinEnabled
+      ? getRpc().request.getSkinnedImageData({ violationId: violation.id })
+      : getRpc().request.getImageData({ imagePath: violation.imagePath });
+    fetchImage
       .then((data) => { if (!cancelled) setImageData(data); })
       .catch(() => { if (!cancelled) setImageData(null); })
       .finally(() => { if (!cancelled) setImageLoading(false); });
     return () => { cancelled = true; };
-  }, [violation.imagePath]);
+  }, [violation.imagePath, violation.id, skinEnabled]);
 
   const over = (violation.measuredSpeed - violation.maxSpeed).toFixed(1);
   const formattedTime = new Date(violation.timestamp).toLocaleString(undefined, {
@@ -477,5 +645,148 @@ function ViolationRow({
         </Button>
       </td>
     </tr>
+  );
+}
+
+// ─── ViolationGridTile ─────────────────────────────────────────────────────────
+
+interface ViolationGridTileProps {
+  violation: Violation;
+  selected: boolean;
+  skinEnabled: boolean;
+  onToggleSelect: () => void;
+  onDelete: () => void;
+  onImageClick: (url: string) => void;
+}
+
+function ViolationGridTile({
+  violation,
+  selected,
+  skinEnabled,
+  onToggleSelect,
+  onDelete,
+  onImageClick,
+}: ViolationGridTileProps) {
+  const [imageData, setImageData] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setImageLoading(true);
+    const fetchImage = skinEnabled
+      ? getRpc().request.getSkinnedImageData({ violationId: violation.id })
+      : getRpc().request.getImageData({ imagePath: violation.imagePath });
+    fetchImage
+      .then((data) => { if (!cancelled) setImageData(data); })
+      .catch(() => { if (!cancelled) setImageData(null); })
+      .finally(() => { if (!cancelled) setImageLoading(false); });
+    return () => { cancelled = true; };
+  }, [violation.imagePath, violation.id, skinEnabled]);
+
+  const over = (violation.measuredSpeed - violation.maxSpeed).toFixed(1);
+  const formattedTime = new Date(violation.timestamp).toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeleting(true);
+    try {
+      await onDelete();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div
+      className={cn(
+        "group relative flex flex-col rounded-xl border border-border bg-card overflow-hidden transition-all duration-150 shadow-xs hover:shadow-md",
+        selected ? "border-primary ring-2 ring-primary/40 bg-primary/5" : "hover:border-border/80"
+      )}
+    >
+      {/* Top Image Preview Area */}
+      <div
+        className="relative w-full h-52 bg-black/60 overflow-hidden cursor-pointer flex items-center justify-center"
+        onClick={() => imageData && onImageClick(imageData)}
+      >
+        {/* Checkbox (top-left) */}
+        <div
+          className="absolute top-2.5 left-2.5 z-10 p-1.5 rounded-lg bg-background/80 backdrop-blur-md border border-border/60 shadow-sm"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            checked={selected}
+            onCheckedChange={onToggleSelect}
+            aria-label="Select violation"
+          />
+        </div>
+
+        {/* Delete Button (top-right) */}
+        <div
+          className="absolute top-2.5 right-2.5 z-10"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-8 w-8 rounded-lg bg-background/80 backdrop-blur-md border border-border/60 text-muted-foreground hover:text-destructive hover:bg-destructive/20 transition-colors shadow-sm"
+            onClick={handleDelete}
+            disabled={deleting}
+            aria-label="Delete violation"
+          >
+            <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />
+          </Button>
+        </div>
+
+        {/* Image / Skeleton */}
+        {imageLoading ? (
+          <div className="w-full h-full animate-pulse bg-muted-foreground/20" />
+        ) : imageData ? (
+          <img
+            src={imageData}
+            alt={`Violation at ${formattedTime}`}
+            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-200"
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-1 text-muted-foreground">
+            <span className="text-xs">No image available</span>
+          </div>
+        )}
+
+        {/* Direction & Speed Badge (bottom-left overlay on image) */}
+        <div className="absolute bottom-2.5 left-2.5 z-10 px-2.5 py-1 rounded-lg bg-background/90 backdrop-blur-md border border-border/60 shadow-sm flex items-center gap-2">
+          <span title={violation.direction === "forward" ? "Forward (sensor 1 → 2)" : "Reverse (sensor 2 → 1)"} className="text-muted-foreground">
+            <HugeiconsIcon
+              icon={violation.direction === "forward" ? ArrowUpBigIcon : ArrowDownBigIcon}
+              size={16}
+              strokeWidth={2}
+            />
+          </span>
+          <span className="text-base font-bold text-destructive tracking-tight">
+            {violation.measuredSpeed} <span className="text-xs font-normal text-muted-foreground">km/h</span>
+          </span>
+        </div>
+      </div>
+
+      {/* Card Info Details */}
+      <div className="p-3 flex flex-col gap-2">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground font-medium">Limit: {violation.maxSpeed} km/h</span>
+          <span className="font-semibold text-destructive bg-destructive/10 px-2 py-0.5 rounded-md">
+            +{over} km/h
+          </span>
+        </div>
+        <div className="text-xs text-muted-foreground/80 truncate font-mono">
+          {formattedTime}
+        </div>
+      </div>
+    </div>
   );
 }

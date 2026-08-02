@@ -1,4 +1,4 @@
-import { Camera, Stream, updateDeviceList, getDevices, ArvPixelFormat } from "@asl-gokart/bun-aravis";
+import { Camera, Stream, updateDeviceList, getDevices } from "@asl-gokart/bun-aravis";
 import sharp from "sharp";
 import { getSettings } from "./database";
 

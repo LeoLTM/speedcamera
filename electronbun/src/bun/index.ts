@@ -116,7 +116,7 @@ function getImageServerPort(): number {
             const buf = await renderPoliscanSkin(v.imagePath, v, {
               measuringLocation: settings.skinMeasuringLocation,
             });
-            return new Response(buf, {
+            return new Response(new Uint8Array(buf), {
               headers: { "Content-Type": "image/png" },
             });
           } catch (err) {
@@ -130,7 +130,7 @@ function getImageServerPort(): number {
     });
     console.log(`[index] Image server started on http://127.0.0.1:${imageServer.port}`);
   }
-  return imageServer.port;
+  return imageServer.port ?? 0;
 }
 
 // ─── RPC definition ───────────────────────────────────────────────────────────

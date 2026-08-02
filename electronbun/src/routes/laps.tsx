@@ -359,7 +359,7 @@ function LapRow({ lap, isBest }: LapRowProps) {
               <img
                 src={lightboxUrl}
                 alt="Lap capture"
-                className="max-w-[90vw] max-h-[90vh] rounded-xl shadow-2xl"
+                className="max-w-[96vw] max-h-[96vh] object-contain rounded-none"
               />
             </button>
           </td>
@@ -726,7 +726,7 @@ function HistoryLapRow({ lap, isBest }: { lap: Lap; isBest: boolean }) {
               <img
                 src={lightboxUrl}
                 alt="Lap capture"
-                className="max-w-[90vw] max-h-[90vh] rounded-xl shadow-2xl"
+                className="max-w-[96vw] max-h-[96vh] object-contain rounded-none"
               />
             </button>
           </td>

@@ -1,5 +1,6 @@
 import "./env";
-import { BrowserView, BrowserWindow, Updater } from "electrobun/bun";
+import path from "path";
+import { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
 import type { SpeedcameraRPC } from "../shared/types";
 import {
   insertViolation,
@@ -17,7 +18,7 @@ import {
   deleteLapSession,
   deleteLap,
 } from "./database";
-import { saveImage, readImageAsDataUrl, deleteImage } from "./filestore";
+import { saveImage, deleteImage } from "./filestore";
 import { renderPoliscanSkin } from "./skin-renderer";
 import {
   initCamera,
@@ -77,6 +78,59 @@ async function getMainViewUrl(): Promise<{ url: string; isDev: boolean }> {
     }
   }
   return { url: "views://mainview/index.html", isDev: false };
+}
+
+// ─── Local Image Server ────────────────────────────────────────────────────────
+let imageServer: ReturnType<typeof Bun.serve> | null = null;
+
+function getImageServerPort(): number {
+  if (!imageServer) {
+    imageServer = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      async fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === "/image") {
+          const imgPath = url.searchParams.get("path");
+          if (!imgPath) return new Response("Missing path", { status: 400 });
+          const resolvedPath = path.resolve(imgPath);
+          const allowedDir = path.resolve(Utils.paths.userData);
+          if (!resolvedPath.startsWith(allowedDir)) {
+            return new Response("Forbidden", { status: 403 });
+          }
+          const file = Bun.file(resolvedPath);
+          if (!(await file.exists())) {
+            return new Response("Not Found", { status: 404 });
+          }
+          return new Response(file);
+        }
+
+        if (url.pathname === "/skinned-image") {
+          const idStr = url.searchParams.get("violationId");
+          if (!idStr) return new Response("Missing violationId", { status: 400 });
+          const violationId = parseInt(idStr, 10);
+          const v = getViolationById(violationId);
+          if (!v) return new Response("Violation not found", { status: 404 });
+          try {
+            const settings = getSettings();
+            const buf = await renderPoliscanSkin(v.imagePath, v, {
+              measuringLocation: settings.skinMeasuringLocation,
+            });
+            return new Response(buf, {
+              headers: { "Content-Type": "image/png" },
+            });
+          } catch (err) {
+            console.error("[image-server] Skinned image rendering failed:", err);
+            return new Response("Rendering failed", { status: 500 });
+          }
+        }
+
+        return new Response("Not Found", { status: 404 });
+      },
+    });
+    console.log(`[index] Image server started on http://127.0.0.1:${imageServer.port}`);
+  }
+  return imageServer.port;
 }
 
 // ─── RPC definition ───────────────────────────────────────────────────────────
@@ -149,18 +203,14 @@ const rpc = BrowserView.defineRPC<SpeedcameraRPC>({
 
       // ── Images ──────────────────────────────────────────────────────────────
       getImageData: async ({ imagePath }) => {
-        const data = await readImageAsDataUrl(imagePath);
-        return data ?? "";
+        if (!imagePath) return "";
+        const port = getImageServerPort();
+        return `http://127.0.0.1:${port}/image?path=${encodeURIComponent(imagePath)}`;
       },
 
       getSkinnedImageData: async ({ violationId }) => {
-        const v = getViolationById(violationId);
-        if (!v) return "";
-        const settings = getSettings();
-        const buf = await renderPoliscanSkin(v.imagePath, v, {
-          measuringLocation: settings.skinMeasuringLocation,
-        });
-        return `data:image/png;base64,${buf.toString("base64")}`;
+        const port = getImageServerPort();
+        return `http://127.0.0.1:${port}/skinned-image?violationId=${violationId}`;
       },
 
       exportSkinnedImages: async ({ violationIds, targetDir }) => {

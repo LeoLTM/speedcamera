@@ -401,14 +401,14 @@ function ViolationsPage() {
       {/* Lightbox */}
       <Dialog open={lightboxUrl !== null} onOpenChange={(open) => !open && setLightboxUrl(null)}>
         <DialogContent
-          className="max-w-3xl w-full p-2 rounded-2xl"
+          className="max-w-[96vw] sm:max-w-[96vw] w-[96vw] sm:w-[96vw] h-[96vh] sm:h-[96vh] max-h-[96vh] sm:max-h-[96vh] p-0 rounded-none bg-black/95 border-none flex items-center justify-center overflow-hidden"
           showCloseButton
         >
           {lightboxUrl && (
             <img
               src={lightboxUrl}
               alt="Violation"
-              className="w-full rounded-xl object-contain max-h-[80vh]"
+              className="w-full h-full object-contain rounded-none"
             />
           )}
         </DialogContent>

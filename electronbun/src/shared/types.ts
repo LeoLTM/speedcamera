@@ -13,7 +13,7 @@ export interface Violation {
 }
 
 export interface SaveViolationInput {
-  imageBase64: string;    // raw base64 (no data-URL prefix)
+  imageBase64?: string;   // raw base64 (optional if captured backend-side)
   measuredSpeed: number;
   maxSpeed: number;
   direction: "forward" | "reverse";
@@ -179,8 +179,8 @@ export interface SyncLapInput {
 
 export interface EspPongConfig {
   maxSpeed: number;
-  flashDelay: number;
-  flashDuration: number;
+  flashDelay?: number;
+  flashDuration?: number;
   sensorDistance: number;
   debugEnabled: boolean;
   lapMode: "single" | "multi";

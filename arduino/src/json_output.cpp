@@ -56,13 +56,10 @@ void sendJsonPong() {
   doc["status"] = "pong";
   JsonObject cfg = doc["config"].to<JsonObject>();
   cfg["maxSpeed"]       = maxSpeedKmH;
-  cfg["flashDelay"]     = waitBeforeFlash;
-  cfg["flashDuration"]  = flashTime;
   cfg["sensorDistance"] = sensorDistance;
   cfg["debugEnabled"]   = debugEnabled;
   cfg["lapMode"]        = (lapMode == LapMode::MULTI) ? "multi" : "single";
   cfg["lapActive"]      = (lapSessionState != LapSessionState::IDLE);
-  cfg["lapAutoFlash"]   = lapAutoFlash;
   cfg["lapDirFilter"]   = (lapDirectionFilter == LapDirectionFilter::FORWARD_ONLY) ? "forward"
                         : (lapDirectionFilter == LapDirectionFilter::REVERSE_ONLY) ? "reverse" : "both";
   String out;

@@ -16,18 +16,22 @@ import type {
 // ─── Default settings ────────────────────────────────────────────────────────
 
 const DEFAULT_SETTINGS: AppSettings = {
-  flashDelay: 100,
-  flashDuration: 50,
-  pictureDelay: 100,
   maxSpeed: 30,
   selectedPort: "",
-  selectedCamera: "",
+  // Industrial Camera Settings
+  cameraExposure: 5000,
+  cameraGain: 0,
+  strobeLineDuration: 5000,
+  pixelFormat: "Mono",
+  exposureAuto: "Off",
+  gainAuto: "Off",
+  frameRate: 30,
+  cameraWidth: 1280,
+  cameraHeight: 1024,
+  blackLevel: 0,
   // Lap timer settings
   lapMode: "single",
-  lapFlashOnStart: "true",
-  lapFlashOnLapEnd: "true",
   lapSaveImages: "true",
-  lapAutoFlash: "true",
   lapDirFilter: "both",
   // Teable integration
   teableUrl: "",
@@ -246,17 +250,20 @@ export function getSettings(): AppSettings {
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
 
   return {
-    flashDelay: Number(map.flashDelay ?? DEFAULT_SETTINGS.flashDelay),
-    flashDuration: Number(map.flashDuration ?? DEFAULT_SETTINGS.flashDuration),
-    pictureDelay: Number(map.pictureDelay ?? DEFAULT_SETTINGS.pictureDelay),
     maxSpeed: Number(map.maxSpeed ?? DEFAULT_SETTINGS.maxSpeed),
     selectedPort: map.selectedPort ?? DEFAULT_SETTINGS.selectedPort,
-    selectedCamera: map.selectedCamera ?? DEFAULT_SETTINGS.selectedCamera,
+    cameraExposure: Number(map.cameraExposure ?? DEFAULT_SETTINGS.cameraExposure),
+    cameraGain: Number(map.cameraGain ?? DEFAULT_SETTINGS.cameraGain),
+    strobeLineDuration: Number(map.strobeLineDuration ?? DEFAULT_SETTINGS.strobeLineDuration),
+    pixelFormat: map.pixelFormat ?? DEFAULT_SETTINGS.pixelFormat,
+    exposureAuto: map.exposureAuto ?? DEFAULT_SETTINGS.exposureAuto,
+    gainAuto: map.gainAuto ?? DEFAULT_SETTINGS.gainAuto,
+    frameRate: Number(map.frameRate ?? DEFAULT_SETTINGS.frameRate),
+    cameraWidth: Number(map.cameraWidth ?? DEFAULT_SETTINGS.cameraWidth),
+    cameraHeight: Number(map.cameraHeight ?? DEFAULT_SETTINGS.cameraHeight),
+    blackLevel: Number(map.blackLevel ?? DEFAULT_SETTINGS.blackLevel),
     lapMode: map.lapMode ?? DEFAULT_SETTINGS.lapMode,
-    lapFlashOnStart: map.lapFlashOnStart ?? DEFAULT_SETTINGS.lapFlashOnStart,
-    lapFlashOnLapEnd: map.lapFlashOnLapEnd ?? DEFAULT_SETTINGS.lapFlashOnLapEnd,
     lapSaveImages: map.lapSaveImages ?? DEFAULT_SETTINGS.lapSaveImages,
-    lapAutoFlash: map.lapAutoFlash ?? DEFAULT_SETTINGS.lapAutoFlash,
     lapDirFilter: map.lapDirFilter ?? DEFAULT_SETTINGS.lapDirFilter,
     // Teable integration
     teableUrl: map.teableUrl ?? DEFAULT_SETTINGS.teableUrl,

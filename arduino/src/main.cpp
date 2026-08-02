@@ -2,7 +2,6 @@
 #include "config.h"
 #include "state.h"
 #include "json_output.h"
-#include "flash.h"
 #include "serial_io.h"
 
 // ─── State Reset ─────────────────────────────────────────────────────────────
@@ -18,20 +17,11 @@ void setup() {
   Serial.begin(115200);
   pinMode(sensor1,  INPUT_PULLUP);
   pinMode(sensor2,  INPUT_PULLUP);
-  pinMode(flashPin, OUTPUT);
-  digitalWrite(flashPin, LOW);
   sendJsonStatus("ready");
 }
 
 // ─── Main Loop ───────────────────────────────────────────────────────────────
 void loop() {
-  // ── Non-blocking flash tick ──────────────────────────────────────────────
-  // Runs every iteration (µs-level) so flash duration is accurate without blocking.
-  if (flashActive && (millis() - flashStartMs >= (unsigned long)flashTime)) {
-    digitalWrite(flashPin, LOW);
-    flashActive = false;
-  }
-
   // Process incoming serial commands every iteration
   handleSerial();
   if (stringComplete) {
@@ -120,15 +110,12 @@ void loop() {
       if (lapSessionState == LapSessionState::IDLE) {
         if (speedInKmH > maxSpeedKmH) {
           sendJsonStatus("speeding", speedInKmH, speedTolerance, direction);
-          waitForFlash(); // blocking — host must send {"command":"flash"}
         } else {
           sendJsonStatus("legal", speedInKmH, speedTolerance, direction);
         }
 
       // ================================================================
       // LAP TIMER MODE  (active lap session)
-      // waitForFlash() is NEVER called — lap timing must never block.
-      // Flash fires autonomously via startNonBlockingFlash().
       // Lap boundaries are firstTriggerUs (µs-precise first beam break),
       // captured before any serial output or state change.
       // ================================================================
@@ -152,13 +139,11 @@ void loop() {
             lapStartSpeedKmH = speedInKmH;
             lapSessionState  = LapSessionState::TIMING;
             sendLapStart(lapNumber, speedInKmH);
-            if (lapAutoFlash) startNonBlockingFlash();
 
           } else if (lapSessionState == LapSessionState::TIMING) {
             // ── TIMING: close lap N ──────────────────────────────────────────
             float lapDurationMs = (float)(boundaryUs - lapStartUs) * 0.001f;
             sendLapEnd(lapNumber, lapDurationMs, lapStartSpeedKmH, speedInKmH);
-            if (lapAutoFlash) startNonBlockingFlash();
 
             if (lapMode == LapMode::SINGLE) {
               lapSessionState  = LapSessionState::WAITING;
@@ -191,11 +176,8 @@ void loop() {
 //
 // SPEED CAMERA MODE (lapSessionState == IDLE)
 //   Out: speeding {value, tolerance, direction} | legal {value, tolerance, direction}
-//        timeout | measuring | flash | ready | pong | config | configError | jsonError
-//   In:  flash                         — host triggers flash after "speeding"
-//        setMaxSpeed {value:1–250}     — set speed limit
-//        setFlashDelay {value:0–5000}  — pre-flash delay
-//        setFlashDuration {value:1–10000}
+//        timeout | measuring | ready | pong | config | configError | jsonError
+//   In:  setMaxSpeed {value:1–250}     — set speed limit
 //        setDebug {value:0|1}
 //        ping
 //
@@ -204,10 +186,9 @@ void loop() {
 //        lapStopped                    — session closed by host
 //        lapStart {lapNumber, speedAtStart}              — first beam break
 //        lapEnd   {lapNumber, durationMs, speedAtStart, speedAtEnd}  — lap closed
-//        speeding / legal still emitted (UI speed display); no waitForFlash
-//   In:  startLapSession {mode, autoFlash?, dirFilter?}  — open session
+//        speeding / legal still emitted (UI speed display)
+//   In:  startLapSession {mode, dirFilter?}  — open session
 //        stopLapSession                                   — close session
 //
 // startLapSession optional fields:
-//   autoFlash:  true | false                    (default true)  ESP fires flash at boundary
 //   dirFilter:  "both" | "forward" | "reverse"  (default "both")

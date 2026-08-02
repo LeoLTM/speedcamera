@@ -1,20 +1,25 @@
 import { SerialPort, list, readlineParser } from "bun-serialport";
 import type { PortInfo, SerialStatusPayload } from "../shared/types";
-import { EspMessageSchema, EspCommandSchema } from "../shared/schemas";
+import { EspMessageSchema, EspCommandSchema, type EspMessage } from "../shared/schemas";
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
 let activePort: SerialPort | null = null;
 let pushToView: ((payload: SerialStatusPayload) => void) | null = null;
+let onSpeeding: ((msg: EspMessage) => void) | null = null;
 
 // ─── Initialization ───────────────────────────────────────────────────────────
 
 /**
- * Provide the callback that will be used to push serialStatus messages to the view.
- * Call this once from index.ts after the BrowserWindow is created.
+ * Provide the callbacks that will be used to push serialStatus messages to the view,
+ * and to trigger an automatic capture when speeding.
  */
-export function initSerial(push: (payload: SerialStatusPayload) => void): void {
+export function initSerial(
+  push: (payload: SerialStatusPayload) => void,
+  onSpeedingCapture?: (msg: EspMessage) => void
+): void {
   pushToView = push;
+  onSpeeding = onSpeedingCapture || null;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -139,6 +144,7 @@ function handleIncoming(raw: string): void {
         direction: msg.direction,
         timestamp,
       });
+      onSpeeding?.(msg);
       break;
 
     case "legal":

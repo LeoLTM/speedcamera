@@ -11,10 +11,7 @@ export type LapState = "idle" | "waiting" | "timing";
 
 export interface LapSettings {
   lapMode: "single" | "multi";
-  flashOnStart: boolean;
-  flashOnLapEnd: boolean;
   saveImages: boolean;
-  autoFlash: boolean;
   dirFilter: "both" | "forward" | "reverse";
 }
 
@@ -48,30 +45,7 @@ let pendingStartImageBase64: string | null = null;
 let lapSaving = false;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Grabs a single frame from the given MediaStream and returns it as raw
- * base64 (no data-URL prefix).  Returns null if the track is unavailable.
- */
-async function grabFrame(stream: MediaStream): Promise<string | null> {
-  const videoTrack = stream.getVideoTracks()[0];
-  if (!videoTrack) return null;
-
-  const imageCapture = new ImageCapture(videoTrack);
-  const bitmap = await imageCapture.grabFrame();
-  const canvas = document.createElement("canvas");
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    bitmap.close();
-    return null;
-  }
-  ctx.drawImage(bitmap, 0, 0);
-  bitmap.close();
-  return canvas.toDataURL("image/png").replace(/^data:image\/\w+;base64,/, "");
-}
-
+// Removed grabFrame (using bun side captureFrame)
 // ─── Slice ────────────────────────────────────────────────────────────────────
 
 export const createLapSlice: StateCreator<
@@ -89,10 +63,7 @@ export const createLapSlice: StateCreator<
   isLapSaving: false,
   lapSettings: {
     lapMode: "single",
-    flashOnStart: true,
-    flashOnLapEnd: true,
     saveImages: true,
-    autoFlash: true,
     dirFilter: "both",
   },
 
@@ -111,7 +82,7 @@ export const createLapSlice: StateCreator<
     });
     // Tell the ESP to start a lap session — it will drive all subsequent lap events
     await getRpc().request
-      .sendCommand({ json: JSON.stringify({ command: "startLapSession", mode: lapSettings.lapMode, autoFlash: lapSettings.autoFlash, dirFilter: lapSettings.dirFilter }) })
+      .sendCommand({ json: JSON.stringify({ command: "startLapSession", mode: lapSettings.lapMode, autoFlash: true, dirFilter: lapSettings.dirFilter }) })
       .catch((err: unknown) => console.error("[lapSlice] startLapSession command failed:", err));
   },
 
@@ -138,7 +109,7 @@ export const createLapSlice: StateCreator<
   handleSerialStatusForLap: (payload) => {
     // ── LAPSTART: first car pass — firmware opened a new lap ──────────────────
     if (payload.status === "LAPSTART") {
-      const { lapState, lapSettings, cameraStream, pictureDelay } = get();
+      const { lapState, lapSettings } = get();
 
       // Accept "waiting" (first lap) or "timing" (MULTI lap N+1 boundary)
       const isMultiContinuation = lapState === "timing" && lapSettings.lapMode === "multi";
@@ -151,23 +122,11 @@ export const createLapSlice: StateCreator<
         // to the end image of the previous lap — reuse it, no new capture needed here.
         if (isMultiContinuation) return;
 
-        if (lapSettings.autoFlash) {
-          // ESP fired the flash autonomously; wait for the camera to settle then capture
-          if (lapSettings.saveImages && cameraStream) {
-            await new Promise<void>((res) => setTimeout(res, pictureDelay));
-            pendingStartImageBase64 = await grabFrame(cameraStream);
-          } else {
-            pendingStartImageBase64 = null;
-          }
+        if (lapSettings.saveImages) {
+            const b64 = await getRpc().request.captureFrame({});
+            pendingStartImageBase64 = b64;
         } else {
-          if (lapSettings.flashOnStart) {
-            await getRpc().request
-              .sendCommand({ json: JSON.stringify({ command: "flash" }) })
-              .catch((err: unknown) => console.error("[lapSlice] Flash (start) failed:", err));
-            await new Promise<void>((res) => setTimeout(res, pictureDelay));
-          }
-          pendingStartImageBase64 =
-            lapSettings.saveImages && cameraStream ? await grabFrame(cameraStream) : null;
+            pendingStartImageBase64 = null;
         }
       })().catch((err: unknown) =>
         console.error("[lapSlice] Start image capture failed:", err)
@@ -177,7 +136,7 @@ export const createLapSlice: StateCreator<
 
     // ── LAPEND: second car pass — firmware computed the lap duration ───────────
     if (payload.status === "LAPEND") {
-      const { lapState, currentSession, lapSettings, lapNumber, cameraStream, pictureDelay } = get();
+      const { lapState, currentSession, lapSettings, lapNumber } = get();
       if (lapState !== "timing" || !currentSession) return;
       if (lapSaving) return; // Guard against re-entrant saves
       lapSaving = true;
@@ -206,22 +165,8 @@ export const createLapSlice: StateCreator<
       }
 
       (async () => {
-        // Flash on lap end (only if not already handled by the ESP autonomously)
-        if (lapSettings.autoFlash) {
-          // ESP fired the flash at the boundary; wait for camera to settle
-          if (lapSettings.saveImages) {
-            await new Promise<void>((res) => setTimeout(res, pictureDelay));
-          }
-        } else if (lapSettings.flashOnLapEnd) {
-          await getRpc().request
-            .sendCommand({ json: JSON.stringify({ command: "flash" }) })
-            .catch((err: unknown) => console.error("[lapSlice] Flash (end) failed:", err));
-          await new Promise<void>((res) => setTimeout(res, pictureDelay));
-        }
-
         // Capture end image
-        const endImageBase64 =
-          lapSettings.saveImages && cameraStream ? await grabFrame(cameraStream) : null;
+        const endImageBase64 = lapSettings.saveImages ? await getRpc().request.captureFrame({}) : null;
 
         // Persist the lap
         const lap = await getRpc().request.saveLap({
@@ -267,10 +212,7 @@ export const createLapSlice: StateCreator<
     set({
       lapSettings: {
         lapMode: settings.lapMode === "multi" ? "multi" : "single",
-        flashOnStart: settings.lapFlashOnStart === "true",
-        flashOnLapEnd: settings.lapFlashOnLapEnd === "true",
         saveImages: settings.lapSaveImages === "true",
-        autoFlash: settings.lapAutoFlash !== "false", // default true
         dirFilter: (settings.lapDirFilter === "forward" || settings.lapDirFilter === "reverse")
           ? settings.lapDirFilter
           : "both",
@@ -283,10 +225,7 @@ export const createLapSlice: StateCreator<
     set((state) => {
       const s = { ...state.lapSettings };
       if (key === "lapMode") s.lapMode = value === "multi" ? "multi" : "single";
-      else if (key === "lapFlashOnStart") s.flashOnStart = value === "true";
-      else if (key === "lapFlashOnLapEnd") s.flashOnLapEnd = value === "true";
       else if (key === "lapSaveImages") s.saveImages = value === "true";
-      else if (key === "lapAutoFlash") s.autoFlash = value !== "false";
       else if (key === "lapDirFilter") s.dirFilter = (value === "forward" || value === "reverse") ? value : "both";
       return { lapSettings: s };
     });

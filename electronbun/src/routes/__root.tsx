@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { Outlet, createRootRoute } from "@tanstack/react-router";
 import { NavigationMenu } from "@/components/NavigationMenu";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { GlobalWebcam } from "@/components/GlobalWebcam";
 import { useSystemStateSync } from "@/hooks/useSystemStateSync";
 import { useAppStore } from "@/stores/useAppStore";
 
@@ -14,17 +13,16 @@ function Root() {
   useSystemStateSync();
   const loadLapSettings = useAppStore((s) => s.loadLapSettings);
   const loadTeableState = useAppStore((s) => s.loadTeableState);
+  const refreshCameraStatus = useAppStore((s) => s.refreshCameraStatus);
 
   useEffect(() => {
     void loadLapSettings();
     void loadTeableState();
-  }, [loadLapSettings, loadTeableState]);
+    void refreshCameraStatus();
+  }, [loadLapSettings, loadTeableState, refreshCameraStatus]);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground">
-      {/* Always-mounted camera instance — never unmounts across navigation */}
-      <GlobalWebcam />
-
       {/* App-level navigation bar */}
       <div className="flex items-center justify-between border-b border-border">
         <NavigationMenu />

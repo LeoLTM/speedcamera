@@ -10,8 +10,14 @@ const MOCK_PORT_PATH = "/dev/mock-speedcamera";
 
 // ─── Serial API (mirrors src/bun/serial.ts) ───────────────────────────────────
 
-export function initSerial(push: (payload: SerialStatusPayload) => void): void {
+let onSpeeding: ((msg: unknown) => void) | null = null;
+
+export function initSerial(
+  push: (payload: SerialStatusPayload) => void,
+  onSpeedingCapture?: (msg: unknown) => void
+): void {
   pushToView = push;
+  onSpeeding = onSpeedingCapture || null;
   console.log("[mock/serial] Initialized");
 }
 
@@ -59,7 +65,9 @@ export function triggerMeasurement({ speed, tolerance, isSpeeding }: TriggerOpti
   }
   const timestamp = Date.now();
   if (isSpeeding) {
-    pushToView?.({ status: "SPEEDING", value: speed, tolerance, direction: "forward", timestamp });
+    const msg = { status: "SPEEDING", value: speed, tolerance, direction: "forward", timestamp };
+    pushToView?.(msg as SerialStatusPayload);
+    onSpeeding?.(msg);
     console.log(`[mock/serial] Triggered SPEEDING @ ${speed} km/h (tol ${tolerance})`);
   } else {
     pushToView?.({ status: "OK", value: speed, tolerance, direction: "forward", timestamp });

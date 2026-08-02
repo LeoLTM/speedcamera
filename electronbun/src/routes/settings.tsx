@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { getRpc } from "@/lib/rpc";
 import { useAppStore } from "@/stores/useAppStore";
-import type { AppSettings, PortInfo, HwControl, CameraInfo, EspPongConfig } from "@/shared/types";
+import type { AppSettings, PortInfo, HwControl, EspPongConfig } from "@/shared/types";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   RefreshIcon,
@@ -24,7 +24,12 @@ import {
   FilterIcon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
-import { CalibrationWizard } from "@/components/CalibrationWizard";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { ChevronDown, CheckCircle2, XCircle, Upload } from "lucide-react";
+
 import { FirmwareFlasher } from "@/components/FirmwareFlasher";
 
 export const SettingsRoute = createRoute({
@@ -39,7 +44,7 @@ function SettingsPage() {
       <TabsPrimitive.Root defaultValue="device" className="flex flex-col h-full">
         {/* Tab list */}
         <TabsPrimitive.List className="flex shrink-0 border-b border-border px-4 gap-0.5">
-          {(["device", "camera-hw", "speed-camera", "lap-timer"] as const).map((tab) => (
+          {(["device", "camera", "speed-camera", "lap-timer"] as const).map((tab) => (
             <TabsPrimitive.Trigger
               key={tab}
               value={tab}
@@ -52,8 +57,8 @@ function SettingsPage() {
             >
               {tab === "device"
                 ? "Device"
-                : tab === "camera-hw"
-                ? "Camera HW"
+                : tab === "camera"
+                ? "Camera"
                 : tab === "speed-camera"
                 ? "Speed Camera"
                 : "Lap Timer"}
@@ -65,8 +70,8 @@ function SettingsPage() {
         <TabsPrimitive.Content value="device" className="flex-1 overflow-y-auto p-6">
           <DeviceTab />
         </TabsPrimitive.Content>
-        <TabsPrimitive.Content value="camera-hw" className="flex-1 overflow-y-auto p-6">
-          <CameraHwTab />
+        <TabsPrimitive.Content value="camera" className="flex-1 overflow-y-auto p-6">
+          <CameraTab />
         </TabsPrimitive.Content>
         <TabsPrimitive.Content value="speed-camera" className="flex-1 overflow-y-auto p-6">
           <SpeedCameraTab />
@@ -298,152 +303,227 @@ function PongConfigDisplay({ config }: { config: EspPongConfig }) {
 
 // ─── Camera HW Tab ────────────────────────────────────────────────────────────
 
-function CameraHwTab() {
-  const [platform, setPlatform] = useState<string | null>(null);
-  const [cameras, setCameras] = useState<CameraInfo[]>([]);
-  const [selectedCamId, setSelectedCamId] = useState<number | null>(null);
-  const [controls, setControls] = useState<HwControl[]>([]);
-  const [localValues, setLocalValues] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    getRpc()
-      .request.getPlatform({})
-      .then((p) => {
-        setPlatform(p);
-        if (p === "linux") {
-          return getRpc().request.getAvailableCameras({});
-        }
-        return [];
-      })
-      .then((cams: CameraInfo[]) => {
-        setCameras(cams);
-        if (cams.length > 0) {
-          setSelectedCamId(cams[0].id);
-        }
-      })
-      .catch(() => toast.error("Failed to load camera hardware info"))
-      .finally(() => setLoading(false));
-  }, []);
+function CameraTab() {
+  const connected = useAppStore((s) => s.cameraConnected);
+  const vendor = useAppStore((s) => s.cameraVendor);
+  const model = useAppStore((s) => s.cameraModel);
+  const serial = useAppStore((s) => s.cameraSerial);
+  
+  const connectCamera = useAppStore((s) => s.connectCamera);
+  const disconnectCamera = useAppStore((s) => s.disconnectCamera);
+  const applyMfsConfig = useAppStore((s) => s.applyMfsConfig);
+  const clearMfsResult = useAppStore((s) => s.clearMfsResult);
+  const mfsResult = useAppStore((s) => s.mfsResult);
+  const setCameraFeature = useAppStore((s) => s.setCameraFeature);
 
-  useEffect(() => {
-    if (selectedCamId === null) return;
-    setLoading(true);
-    getRpc()
-      .request.getAvailableHwControls({ cameraId: selectedCamId })
-      .then((ctrls) => {
-        setControls(ctrls);
-        const vals: Record<string, number> = {};
-        for (const c of ctrls) vals[c.name] = c.value;
-        setLocalValues(vals);
-      })
-      .catch(() => toast.error("Failed to load camera controls"))
-      .finally(() => setLoading(false));
-  }, [selectedCamId]);
+  const exposure = useAppStore((s) => s.cameraExposure);
+  const gain = useAppStore((s) => s.cameraGain);
+  const pixelFormat = useAppStore((s) => s.pixelFormat);
+  const exposureAuto = useAppStore((s) => s.exposureAuto);
+  const gainAuto = useAppStore((s) => s.gainAuto);
+  const frameRate = useAppStore((s) => s.frameRate);
+  const cameraWidth = useAppStore((s) => s.cameraWidth);
+  const cameraHeight = useAppStore((s) => s.cameraHeight);
+  const blackLevel = useAppStore((s) => s.blackLevel);
+  const strobeLineDuration = useAppStore((s) => s.strobeLineDuration);
 
-  const handleSetControl = async (name: string, value: number) => {
-    if (selectedCamId === null) return;
-    setSaving((prev) => ({ ...prev, [name]: true }));
+  const [saveAsDefault, setSaveAsDefault] = useState(true);
+  const [mfsLoading, setMfsLoading] = useState(false);
+
+  const handleMfsUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMfsLoading(true);
+    clearMfsResult();
     try {
-      await getRpc().request.setHwControl({ cameraId: selectedCamId, name, value });
-      setLocalValues((prev) => ({ ...prev, [name]: value }));
+      const text = await file.text();
+      await applyMfsConfig(text, saveAsDefault);
     } catch {
-      toast.error(`Failed to set ${name}`);
+      toast.error("Failed to apply config file");
     } finally {
-      setSaving((prev) => ({ ...prev, [name]: false }));
+      setMfsLoading(false);
+      e.target.value = '';
     }
   };
-
-  const handleReset = async () => {
-    if (selectedCamId === null) return;
-    try {
-      await getRpc().request.resetHwControls({ cameraId: selectedCamId });
-      // Reload controls to get default values
-      const ctrls = await getRpc().request.getAvailableHwControls({ cameraId: selectedCamId });
-      setControls(ctrls);
-      const vals: Record<string, number> = {};
-      for (const c of ctrls) vals[c.name] = c.value;
-      setLocalValues(vals);
-      toast.success("Controls reset to defaults");
-    } catch {
-      toast.error("Failed to reset controls");
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="max-w-lg space-y-5">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="space-y-2">
-            <div className="flex justify-between">
-              <Skeleton className="h-4 w-28 rounded" />
-              <Skeleton className="h-4 w-12 rounded" />
-            </div>
-            <Skeleton className="h-4 w-full rounded-full" />
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (platform !== "linux") {
-    return (
-      <div className="flex flex-col items-center justify-center h-48 gap-2 text-center">
-        <p className="text-muted-foreground text-sm">
-          Camera hardware controls (v4l2) are only available on Linux.
-        </p>
-        <p className="text-xs text-muted-foreground/60">
-          Current platform: <code className="font-mono">{platform ?? "unknown"}</code>
-        </p>
-      </div>
-    );
-  }
-
-  if (cameras.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">No v4l2 cameras detected.</p>
-    );
-  }
 
   return (
-    <div className="max-w-lg space-y-6">
-      <div className="flex items-center gap-3">
-        <Select
-          value={selectedCamId !== null ? String(selectedCamId) : undefined}
-          onValueChange={(v) => setSelectedCamId(Number(v))}
-        >
-          <SelectTrigger className="w-52">
-            <SelectValue placeholder="Select camera" />
-          </SelectTrigger>
-          <SelectContent>
-            {cameras.map((cam) => (
-              <SelectItem key={cam.id} value={String(cam.id)}>
-                {cam.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button variant="outline" size="sm" onClick={handleReset}>
-          Reset to defaults
-        </Button>
+    <div className="max-w-lg space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">Industrial Camera</h2>
+          {connected ? (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Connected to {vendor} {model} ({serial})
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              No camera connected.
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={connectCamera} disabled={connected}>
+            Connect
+          </Button>
+          <Button variant="outline" size="sm" onClick={disconnectCamera} disabled={!connected}>
+            Disconnect
+          </Button>
+        </div>
       </div>
 
-      {controls.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No controls available for this camera.</p>
-      ) : (
-        <div className="grid gap-5">
-          {controls.map((ctrl) => (
-            <HwControlRow
-              key={ctrl.name}
-              control={ctrl}
-              currentValue={localValues[ctrl.name] ?? ctrl.value}
-              saving={!!saving[ctrl.name]}
-              onChange={(val) => handleSetControl(ctrl.name, val)}
-            />
-          ))}
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold border-b pb-2">Load .mfs Config</h3>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <Checkbox id="saveAsDefault" checked={saveAsDefault} onCheckedChange={(c) => setSaveAsDefault(!!c)} />
+            <Label htmlFor="saveAsDefault">Save as default (persist to camera NVRAM)</Label>
+          </div>
+          <div className="flex gap-2">
+            <Button asChild variant="outline" className="cursor-pointer" disabled={!connected || mfsLoading}>
+              <label>
+                <Upload className="mr-2 h-4 w-4" />
+                {mfsLoading ? "Applying..." : "Select & Apply .mfs File"}
+                <input type="file" accept=".mfs" className="hidden" onChange={handleMfsUpload} disabled={!connected || mfsLoading} />
+              </label>
+            </Button>
+          </div>
+
+          {mfsResult && (
+            <div className="space-y-2 mt-4 text-sm">
+              <Collapsible className="rounded-md border px-4 py-2">
+                <CollapsibleTrigger className="flex w-full items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    <span>Applied Features</span>
+                    <Badge variant="secondary">{mfsResult.applied.length}</Badge>
+                  </div>
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 text-xs text-muted-foreground">
+                  <div className="max-h-40 overflow-y-auto space-y-1 bg-muted/50 p-2 rounded">
+                    {mfsResult.applied.map(f => <div key={f}>{f}</div>)}
+                    {mfsResult.applied.length === 0 && <div>No features applied</div>}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+
+              <Collapsible className="rounded-md border px-4 py-2">
+                <CollapsibleTrigger className="flex w-full items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-4 w-4 text-destructive" />
+                    <span>Failed Features</span>
+                    <Badge variant={mfsResult.failed.length > 0 ? "destructive" : "secondary"}>{mfsResult.failed.length}</Badge>
+                  </div>
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 text-xs text-muted-foreground">
+                  <div className="max-h-40 overflow-y-auto space-y-1 bg-muted/50 p-2 rounded">
+                    {mfsResult.failed.map(f => <div key={f}>{f}</div>)}
+                    {mfsResult.failed.length === 0 && <div>No failures</div>}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+          )}
         </div>
-      )}
+      </div>
+
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold border-b pb-2">Camera Settings</h3>
+        <div className="grid gap-5">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Pixel Format</Label>
+            <Select value={pixelFormat} onValueChange={(v) => setCameraFeature("pixelFormat", v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select Pixel Format" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Mono">Mono (Mono8)</SelectItem>
+                <SelectItem value="Color">Color (RGB8)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Exposure Auto</Label>
+            <Select value={exposureAuto} onValueChange={(v) => setCameraFeature("exposureAuto", v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select Exposure Auto" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Off">Off</SelectItem>
+                <SelectItem value="Once">Once</SelectItem>
+                <SelectItem value="Continuous">Continuous</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <HwControlRow
+            control={{ name: "ExposureTime", type: "int", min: 10, max: 200000, step: 100, default: 5000, value: exposure }}
+            currentValue={exposure}
+            saving={false}
+            onChange={(v) => setCameraFeature("cameraExposure", v)}
+          />
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Gain Auto</Label>
+            <Select value={gainAuto} onValueChange={(v) => setCameraFeature("gainAuto", v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select Gain Auto" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Off">Off</SelectItem>
+                <SelectItem value="Once">Once</SelectItem>
+                <SelectItem value="Continuous">Continuous</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <HwControlRow
+            control={{ name: "Gain", type: "int", min: 0, max: 24, step: 1, default: 0, value: gain }}
+            currentValue={gain}
+            saving={false}
+            onChange={(v) => setCameraFeature("cameraGain", v)}
+          />
+
+          <HwControlRow
+            control={{ name: "Frame Rate", type: "int", min: 1, max: 120, step: 1, default: 30, value: frameRate }}
+            currentValue={frameRate}
+            saving={false}
+            onChange={(v) => setCameraFeature("frameRate", v)}
+          />
+
+          <HwControlRow
+            control={{ name: "Width", type: "int", min: 16, max: 4096, step: 8, default: 1280, value: cameraWidth }}
+            currentValue={cameraWidth}
+            saving={false}
+            onChange={(v) => setCameraFeature("cameraWidth", v)}
+          />
+
+          <HwControlRow
+            control={{ name: "Height", type: "int", min: 16, max: 4096, step: 8, default: 1024, value: cameraHeight }}
+            currentValue={cameraHeight}
+            saving={false}
+            onChange={(v) => setCameraFeature("cameraHeight", v)}
+          />
+
+          <HwControlRow
+            control={{ name: "Black Level", type: "int", min: 0, max: 4095, step: 1, default: 0, value: blackLevel }}
+            currentValue={blackLevel}
+            saving={false}
+            onChange={(v) => setCameraFeature("blackLevel", v)}
+          />
+
+          <HwControlRow
+            control={{ name: "Strobe Duration", type: "int", min: 100, max: 50000, step: 100, default: 5000, value: strobeLineDuration }}
+            currentValue={strobeLineDuration}
+            saving={false}
+            onChange={(v) => setCameraFeature("strobeLineDuration", v)}
+          />
+
+        </div>
+      </div>
     </div>
   );
 }
@@ -452,30 +532,48 @@ interface HwControlRowProps {
   control: HwControl;
   currentValue: number;
   saving: boolean;
-  onChange: (value: number) => void;
+  onChange: (value: number) => Promise<void> | void;
 }
 
 function HwControlRow({ control, currentValue, saving, onChange }: HwControlRowProps) {
   const [draft, setDraft] = useState(currentValue);
+  const [showCheck, setShowCheck] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
 
   useEffect(() => {
     setDraft(currentValue);
   }, [currentValue]);
 
+  const handleApply = async (value: number) => {
+    setIsApplying(true);
+    try {
+      await onChange(value);
+      setShowCheck(true);
+      setTimeout(() => setShowCheck(false), 2000);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  const isBusy = saving || isApplying;
+
   if (control.type === "bool") {
     return (
       <div className="flex items-center justify-between gap-4">
-        <label className="text-sm font-medium capitalize">
+        <label className="text-sm font-medium capitalize flex items-center gap-2">
           {control.name.replace(/_/g, " ")}
+          {showCheck && <CheckCircle2 className="h-4 w-4 text-green-500 animate-in fade-in" />}
         </label>
         <Button
           variant={draft ? "default" : "outline"}
           size="sm"
-          disabled={saving}
+          disabled={isBusy}
           onClick={() => {
             const next = draft ? 0 : 1;
             setDraft(next);
-            onChange(next);
+            handleApply(next);
           }}
         >
           {draft ? "On" : "Off"}
@@ -491,8 +589,9 @@ function HwControlRow({ control, currentValue, saving, onChange }: HwControlRowP
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label className="text-sm font-medium capitalize">
+        <label className="text-sm font-medium capitalize flex items-center gap-2">
           {control.name.replace(/_/g, " ")}
+          {showCheck && <CheckCircle2 className="h-4 w-4 text-green-500 animate-in fade-in" />}
         </label>
         <div className="flex items-center gap-2">
           <span className="text-sm font-mono text-muted-foreground w-10 text-right">
@@ -501,10 +600,10 @@ function HwControlRow({ control, currentValue, saving, onChange }: HwControlRowP
           <Button
             size="xs"
             variant="outline"
-            disabled={saving || draft === currentValue}
-            onClick={() => onChange(draft)}
+            disabled={isBusy || draft === currentValue}
+            onClick={() => handleApply(draft)}
           >
-            {saving ? "…" : "Apply"}
+            {isBusy ? "…" : "Apply"}
           </Button>
         </div>
       </div>
@@ -514,7 +613,7 @@ function HwControlRow({ control, currentValue, saving, onChange }: HwControlRowP
         step={step}
         value={[draft]}
         onValueChange={([v]) => setDraft(v)}
-        onValueCommit={([v]) => onChange(v)}
+        onValueCommit={([v]) => handleApply(v)}
       />
       <div className="flex justify-between text-xs text-muted-foreground/60">
         <span>{min}</span>
@@ -534,24 +633,19 @@ const SPEED_CAMERA_FIELDS: Array<{
   max: number;
   step: number;
 }> = [
-  { key: "flashDelay", label: "Flash Delay", unit: "ms", min: 0, max: 1000, step: 10 },
-  { key: "flashDuration", label: "Flash Duration", unit: "ms", min: 0, max: 500, step: 5 },
-  { key: "pictureDelay", label: "Picture Delay", unit: "ms", min: 0, max: 1000, step: 10 },
   { key: "maxSpeed", label: "Max Speed", unit: "km/h", min: 1, max: 200, step: 1 },
+  { key: "strobeLineDuration", label: "Strobe Duration", unit: "ms", min: 10, max: 20000, step: 10 },
 ];
 
 // Keys that are synced to the ESP and therefore populated from the pong config
-const ESP_SYNCED_KEYS = new Set<keyof AppSettings>(["maxSpeed", "flashDelay", "flashDuration"]);
+const ESP_SYNCED_KEYS = new Set<keyof AppSettings>(["maxSpeed"]);
 
 const SERIAL_SYNC: Partial<Record<keyof AppSettings, string>> = {
   maxSpeed: "setMaxSpeed",
-  flashDelay: "setFlashDelay",
-  flashDuration: "setFlashDuration",
 };
 
 function SpeedCameraTab() {
   const setMaxSpeedInStore = useAppStore((s) => s.setMaxSpeed);
-  const setPictureDelayInStore = useAppStore((s) => s.setPictureDelay);
   const connectedPort = useAppStore((s) => s.connectedPort);
   const lastPongConfig = useAppStore((s) => s.lastPongConfig);
 
@@ -560,7 +654,6 @@ function SpeedCameraTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [calibOpen, setCalibOpen] = useState(false);
 
   const loadFromDb = useCallback(async () => {
     const settings = await getRpc().request.getSettings({});
@@ -575,14 +668,10 @@ function SpeedCameraTab() {
       .finally(() => setLoading(false));
   }, [loadFromDb]);
 
-  // When a pong config arrives (on connect or manual refresh), merge the ESP-sourced
-  // values into both values and saved so sliders reflect actual device state.
   useEffect(() => {
     if (!lastPongConfig) return;
     const patch: Partial<AppSettings> = {
       maxSpeed: lastPongConfig.maxSpeed,
-      flashDelay: lastPongConfig.flashDelay,
-      flashDuration: lastPongConfig.flashDuration,
     };
     setValues((prev) => ({ ...prev, ...patch }));
     setSaved((prev) => ({ ...prev, ...patch }));
@@ -628,7 +717,6 @@ function SpeedCameraTab() {
 
       setSaved({ ...values });
       if (values.maxSpeed !== undefined) setMaxSpeedInStore(values.maxSpeed);
-      if (values.pictureDelay !== undefined) setPictureDelayInStore(values.pictureDelay);
       toast.success("Settings saved");
     } catch {
       toast.error("Failed to save settings");
@@ -730,9 +818,6 @@ function SpeedCameraTab() {
       })}
 
       <div className="flex items-center justify-end gap-2 pt-2">
-        <Button variant="outline" onClick={() => setCalibOpen(true)}>
-          Auto-Calibrate
-        </Button>
         <Button
           onClick={handleSave}
           disabled={!isDirty || saving || !connectedPort}
@@ -741,17 +826,6 @@ function SpeedCameraTab() {
           {saving ? "Saving…" : "Save Settings"}
         </Button>
       </div>
-
-      <CalibrationWizard
-        open={calibOpen}
-        onOpenChange={(open) => {
-          setCalibOpen(open);
-          if (!open) {
-            // Reload settings after wizard closes so sliders reflect any applied values
-            loadFromDb().catch(() => {});
-          }
-        }}
-      />
     </div>
   );
 }
@@ -800,25 +874,6 @@ function LapTimerTab() {
         </Select>
       </section>
 
-      {/* Flash settings */}
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold">Flash</h2>
-        <ToggleSetting
-          label="Flash on session start (first car)"
-          description="Trigger the flash when the first car passes at the start of a lap."
-          checked={lapSettings.flashOnStart}
-          disabled={saving === "lapFlashOnStart"}
-          onChange={(v) => handleUpdate("lapFlashOnStart", v ? "true" : "false")}
-        />
-        <ToggleSetting
-          label="Flash on lap end"
-          description="Trigger the flash when a lap is completed."
-          checked={lapSettings.flashOnLapEnd}
-          disabled={saving === "lapFlashOnLapEnd"}
-          onChange={(v) => handleUpdate("lapFlashOnLapEnd", v ? "true" : "false")}
-        />
-      </section>
-
       {/* Image capture */}
       <section className="space-y-4">
         <h2 className="text-sm font-semibold">Image Capture</h2>
@@ -854,18 +909,6 @@ function LapTimerTab() {
             <SelectItem value="reverse">Reverse only (sensor 2 → sensor 1)</SelectItem>
           </SelectContent>
         </Select>
-      </section>
-
-      {/* Auto-flash */}
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold">Auto Flash</h2>
-        <ToggleSetting
-          label="ESP fires flash autonomously"
-          description="The firmware triggers the flash at the exact lap boundary without waiting for a host command. Recommended for maximum timing precision. When off, the companion app sends the flash command instead."
-          checked={lapSettings.autoFlash}
-          disabled={saving === "lapAutoFlash"}
-          onChange={(v) => handleUpdate("lapAutoFlash", v ? "true" : "false")}
-        />
       </section>
     </div>
   );

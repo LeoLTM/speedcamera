@@ -18,13 +18,11 @@ const EspLegalSchema = z.object({
 
 export const EspPongConfigSchema = z.object({
   maxSpeed: z.number().positive(),
-  flashDelay: z.number().nonnegative(),
-  flashDuration: z.number().positive(),
   sensorDistance: z.number().positive(),
   debugEnabled: z.boolean(),
   lapMode: z.enum(["single", "multi"]),
   lapActive: z.boolean(),
-  lapAutoFlash: z.boolean(),
+  lapAutoFlash: z.boolean().optional(),
   lapDirFilter: z.enum(["both", "forward", "reverse"]),
 });
 
@@ -48,7 +46,6 @@ const EspConfigErrorSchema = z.object({
 const EspReadySchema      = z.object({ status: z.literal("ready") });
 const EspMeasuringSchema  = z.object({ status: z.literal("measuring") });
 const EspTimeoutSchema    = z.object({ status: z.literal("timeout") });
-const EspFlashSchema      = z.object({ status: z.literal("flash") });
 const EspJsonErrorSchema  = z.object({ status: z.literal("jsonError") });
 
 // ─── Lap Timer Messages ───────────────────────────────────────────────────────
@@ -79,7 +76,6 @@ export const EspMessageSchema = z.discriminatedUnion("status", [
   EspReadySchema,
   EspMeasuringSchema,
   EspTimeoutSchema,
-  EspFlashSchema,
   EspJsonErrorSchema,
   EspLapWaitingSchema,
   EspLapStoppedSchema,
@@ -93,11 +89,8 @@ export type EspPongConfig = z.infer<typeof EspPongConfigSchema>;
 // ─── Outgoing: Host → ESP ─────────────────────────────────────────────────────
 
 export const EspCommandSchema = z.discriminatedUnion("command", [
-  z.object({ command: z.literal("flash") }),
   z.object({ command: z.literal("ping") }),
   z.object({ command: z.literal("setMaxSpeed"),      value: z.number().min(1).max(250) }),
-  z.object({ command: z.literal("setFlashDelay"),    value: z.number().min(0).max(5000) }),
-  z.object({ command: z.literal("setFlashDuration"), value: z.number().min(1).max(10000) }),
   z.object({ command: z.literal("setDebug"),         value: z.union([z.literal(0), z.literal(1)]) }),
   z.object({ command: z.literal("startLapSession"),  mode: z.enum(["single", "multi"]), autoFlash: z.boolean().optional(), dirFilter: z.enum(["both", "forward", "reverse"]).optional() }),
   z.object({ command: z.literal("stopLapSession") }),

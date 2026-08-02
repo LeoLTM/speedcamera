@@ -7,7 +7,6 @@
 // order of µs, well below the minimum inter-sensor time at maximum speed.
 constexpr int sensor1  = 16; // GPIO 16, D0
 constexpr int sensor2  = 12; // GPIO 12, D6
-constexpr int flashPin = 13; // GPIO 13, D7
 
 // ─── Fixed Constants ──────────────────────────────────────────────────────────
 constexpr float sensorDistance    = 135.0f; // Distance between light barriers (mm)

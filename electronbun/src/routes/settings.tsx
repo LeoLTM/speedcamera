@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { getRpc } from "@/lib/rpc";
 import { useAppStore } from "@/stores/useAppStore";
-import type { AppSettings, PortInfo, HwControl, CameraInfo, EspPongConfig } from "@/shared/types";
+import type { AppSettings, PortInfo, HwControl, EspPongConfig } from "@/shared/types";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   RefreshIcon,
@@ -646,7 +646,6 @@ const SERIAL_SYNC: Partial<Record<keyof AppSettings, string>> = {
 
 function SpeedCameraTab() {
   const setMaxSpeedInStore = useAppStore((s) => s.setMaxSpeed);
-  const setPictureDelayInStore = useAppStore((s) => s.setPictureDelay);
   const connectedPort = useAppStore((s) => s.connectedPort);
   const lastPongConfig = useAppStore((s) => s.lastPongConfig);
 
@@ -655,7 +654,6 @@ function SpeedCameraTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [calibOpen, setCalibOpen] = useState(false);
 
   const loadFromDb = useCallback(async () => {
     const settings = await getRpc().request.getSettings({});

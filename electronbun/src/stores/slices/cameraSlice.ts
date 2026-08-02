@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import type { CameraStatusPayload, MfsConfigResult } from "@/shared/types";
+import type { CameraStatusPayload, MfsConfigResult, AppSettings } from "@/shared/types";
 import { getRpc } from "@/lib/rpc";
 
 export interface CameraSlice {
@@ -34,7 +34,7 @@ export interface CameraSlice {
   clearMfsResult: () => void;
 }
 
-export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> = (set, get) => ({
+export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> = (set) => ({
   cameraConnected: false,
   cameraVendor: null,
   cameraModel: null,
@@ -103,7 +103,7 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
             await getRpc().request.setCameraFeatureInt({ feature: key.charAt(0).toUpperCase() + key.slice(1), value });
         }
     }
-    await getRpc().request.saveSetting({ key, value: value.toString() });
+    await getRpc().request.saveSetting({ key: key as keyof AppSettings, value: value.toString() });
     set({ [key]: value } as Partial<CameraSlice>);
   },
 

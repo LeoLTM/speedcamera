@@ -339,7 +339,7 @@ function CameraTab() {
     try {
       const text = await file.text();
       await applyMfsConfig(text, saveAsDefault);
-    } catch (err) {
+    } catch {
       toast.error("Failed to apply config file");
     } finally {
       setMfsLoading(false);

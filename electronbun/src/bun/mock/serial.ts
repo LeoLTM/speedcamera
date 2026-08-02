@@ -10,11 +10,11 @@ const MOCK_PORT_PATH = "/dev/mock-speedcamera";
 
 // ─── Serial API (mirrors src/bun/serial.ts) ───────────────────────────────────
 
-let onSpeeding: ((msg: any) => void) | null = null;
+let onSpeeding: ((msg: unknown) => void) | null = null;
 
 export function initSerial(
   push: (payload: SerialStatusPayload) => void,
-  onSpeedingCapture?: (msg: any) => void
+  onSpeedingCapture?: (msg: unknown) => void
 ): void {
   pushToView = push;
   onSpeeding = onSpeedingCapture || null;

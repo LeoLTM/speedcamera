@@ -1,12 +1,12 @@
 import { SerialPort, list, readlineParser } from "bun-serialport";
 import type { PortInfo, SerialStatusPayload } from "../shared/types";
-import { EspMessageSchema, EspCommandSchema } from "../shared/schemas";
+import { EspMessageSchema, EspCommandSchema, type EspMessage } from "../shared/schemas";
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
 let activePort: SerialPort | null = null;
 let pushToView: ((payload: SerialStatusPayload) => void) | null = null;
-let onSpeeding: ((msg: any) => void) | null = null;
+let onSpeeding: ((msg: EspMessage) => void) | null = null;
 
 // ─── Initialization ───────────────────────────────────────────────────────────
 
@@ -16,7 +16,7 @@ let onSpeeding: ((msg: any) => void) | null = null;
  */
 export function initSerial(
   push: (payload: SerialStatusPayload) => void,
-  onSpeedingCapture?: (msg: any) => void
+  onSpeedingCapture?: (msg: EspMessage) => void
 ): void {
   pushToView = push;
   onSpeeding = onSpeedingCapture || null;

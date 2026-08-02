@@ -40,7 +40,7 @@ export function initCamera() {
     
     try {
       camera.autoPacketSize();
-    } catch (e) {
+    } catch {
       console.warn("[industrial-camera] autoPacketSize not supported/needed");
     }
 
@@ -67,26 +67,32 @@ export function initCamera() {
     if (camera.isFeatureAvailable("LineSelector")) {
       try {
         camera.setStringFeature("LineSelector", "Line1");
-      } catch (e) {}
+      } catch {
+        /* ignore */
+      }
 
       try {
         camera.setStringFeature("LineMode", "Strobe");
-      } catch (e) {}
+      } catch {
+        /* ignore */
+      }
 
       try {
         camera.setStringFeature("LineSource", "ExposureActive");
-      } catch (e) {}
+      } catch {
+        /* ignore */
+      }
 
       try {
         if (camera.isFeatureAvailable("StrobeEnable")) {
           try { camera.setBooleanFeature("StrobeEnable", true); }
-          catch(e) { camera.setIntegerFeature("StrobeEnable", 1); }
+          catch { camera.setIntegerFeature("StrobeEnable", 1); }
           
           camera.setIntegerFeature("StrobeLineDuration", strobeDuration);
           camera.setIntegerFeature("StrobeLineDelay", 0);
           camera.setIntegerFeature("StrobeLinePreDelay", 0);
         }
-      } catch (e) {
+      } catch {
         console.warn("[industrial-camera] Standard Strobe features missing, relying on LineSource = ExposureActive");
       }
     }
@@ -96,30 +102,36 @@ export function initCamera() {
         if (exposureAuto === "Off") {
             camera.setExposureTime(exposure);
         }
-    } catch (e) {}
+    } catch {
+        /* ignore */
+    }
     
     try {
         camera.setStringFeature("GainAuto", gainAuto);
         if (gainAuto === "Off") {
             camera.setGain(gain);
         }
-    } catch (e) {}
+    } catch {
+        /* ignore */
+    }
 
     // additional features based on DB
     if (settings.frameRate) {
         try { 
             camera.setBooleanFeature("AcquisitionFrameRateEnable", true);
             camera.setFrameRate(Number(settings.frameRate)); 
-        } catch (e) {}
+        } catch {
+            /* ignore */
+        }
     }
     if (settings.cameraWidth) {
-        try { camera.setIntegerFeature("Width", Number(settings.cameraWidth)); } catch (e) {}
+        try { camera.setIntegerFeature("Width", Number(settings.cameraWidth)); } catch { /* ignore */ }
     }
     if (settings.cameraHeight) {
-        try { camera.setIntegerFeature("Height", Number(settings.cameraHeight)); } catch (e) {}
+        try { camera.setIntegerFeature("Height", Number(settings.cameraHeight)); } catch { /* ignore */ }
     }
     if (settings.blackLevel !== undefined && settings.blackLevel !== null && settings.blackLevel.toString() !== "") {
-        try { camera.setIntegerFeature("BlackLevel", Number(settings.blackLevel)); } catch (e) {}
+        try { camera.setIntegerFeature("BlackLevel", Number(settings.blackLevel)); } catch { /* ignore */ }
     }
 
     stream = camera.createStream(5);
@@ -137,12 +149,12 @@ export function initCamera() {
 
 export function disconnectCamera() {
   if (stream) {
-    try { stream.stopAcquisition(); } catch (e) {}
-    try { stream.dispose(); } catch (e) {}
+    try { stream.stopAcquisition(); } catch { /* ignore */ }
+    try { stream.dispose(); } catch { /* ignore */ }
     stream = null;
   }
   if (camera) {
-    try { camera.dispose(); } catch (e) {}
+    try { camera.dispose(); } catch { /* ignore */ }
     camera = null;
   }
   isConnected = false;
@@ -245,16 +257,16 @@ export async function startSetupStream(pushFrame: (base64: string) => void) {
   if (!camera || !stream || !isConnected) return;
   setupStreamLoopActive = true;
 
-  try { stream.stopAcquisition(); } catch (e) {}
+  try { stream.stopAcquisition(); } catch { /* ignore */ }
 
-  try { camera.setIntegerFeature("StrobeEnable", 0); } catch (e) {}
-  try { camera.setStringFeature("TriggerMode", "Off"); } catch (e) {}
-  try { camera.setStringFeature("GainAuto", "Continuous"); } catch (e) {}
-  try { camera.setStringFeature("ExposureAuto", "Continuous"); } catch (e) {}
+  try { camera.setIntegerFeature("StrobeEnable", 0); } catch { /* ignore */ }
+  try { camera.setStringFeature("TriggerMode", "Off"); } catch { /* ignore */ }
+  try { camera.setStringFeature("GainAuto", "Continuous"); } catch { /* ignore */ }
+  try { camera.setStringFeature("ExposureAuto", "Continuous"); } catch { /* ignore */ }
   
   // Disable strobe properly by turning off StrobeEnable and unlinking LineSource
-  try { camera.setBooleanFeature("StrobeEnable", false); } catch (e) {
-    try { camera.setIntegerFeature("StrobeEnable", 0); } catch (e) {}
+  try { camera.setBooleanFeature("StrobeEnable", false); } catch {
+    try { camera.setIntegerFeature("StrobeEnable", 0); } catch { /* ignore */ }
   }
   
   if (camera.isFeatureAvailable("LineSelector")) {
@@ -262,11 +274,11 @@ export async function startSetupStream(pushFrame: (base64: string) => void) {
       try { 
         camera.setStringFeature("LineSelector", line); 
         camera.setStringFeature("LineSource", "Off");
-      } catch(e) {}
+      } catch { /* ignore */ }
     }
   }
 
-  try { stream.startAcquisition(); } catch (e) {}
+  try { stream.startAcquisition(); } catch { /* ignore */ }
 
   pumpSetupFrames(pushFrame);
 }
@@ -310,35 +322,35 @@ export function stopSetupStream() {
   setupStreamLoopActive = false;
   if (!camera || !stream || !isConnected) return;
 
-  try { stream.stopAcquisition(); } catch (e) {}
+  try { stream.stopAcquisition(); } catch { /* ignore */ }
 
   // Restore settings to those saved in DB
   const settings = getSettings();
-  try { camera.setIntegerFeature("StrobeEnable", 1); } catch (e) {}
-  try { camera.setStringFeature("TriggerMode", "On"); } catch (e) {}
+  try { camera.setIntegerFeature("StrobeEnable", 1); } catch { /* ignore */ }
+  try { camera.setStringFeature("TriggerMode", "On"); } catch { /* ignore */ }
   const exposureAuto = settings.exposureAuto || "Off";
   const gainAuto = settings.gainAuto || "Off";
-  try { camera.setStringFeature("GainAuto", gainAuto); } catch (e) {}
-  try { camera.setStringFeature("ExposureAuto", exposureAuto); } catch (e) {}
+  try { camera.setStringFeature("GainAuto", gainAuto); } catch { /* ignore */ }
+  try { camera.setStringFeature("ExposureAuto", exposureAuto); } catch { /* ignore */ }
   
   // Restore strobe
-  try { camera.setBooleanFeature("StrobeEnable", true); } catch (e) {
-    try { camera.setIntegerFeature("StrobeEnable", 1); } catch (e) {}
+  try { camera.setBooleanFeature("StrobeEnable", true); } catch {
+    try { camera.setIntegerFeature("StrobeEnable", 1); } catch { /* ignore */ }
   }
   
   if (camera.isFeatureAvailable("LineSelector")) {
-    try { camera.setStringFeature("LineSelector", "Line1"); } catch(e) {}
-    try { camera.setStringFeature("LineSource", "ExposureActive"); } catch(e) {}
+    try { camera.setStringFeature("LineSelector", "Line1"); } catch { /* ignore */ }
+    try { camera.setStringFeature("LineSource", "ExposureActive"); } catch { /* ignore */ }
   }
 
   if (gainAuto === "Off") {
-    try { camera.setGain(Number(settings.cameraGain) || 0); } catch (e) {}
+    try { camera.setGain(Number(settings.cameraGain) || 0); } catch { /* ignore */ }
   }
   if (exposureAuto === "Off") {
-    try { camera.setExposureTime(Number(settings.cameraExposure) || 5000); } catch (e) {}
+    try { camera.setExposureTime(Number(settings.cameraExposure) || 5000); } catch { /* ignore */ }
   }
 
-  try { stream.startAcquisition(); } catch (e) {}
+  try { stream.startAcquisition(); } catch { /* ignore */ }
 }
 
 export function setPixelFormat(format: string) {
@@ -346,7 +358,7 @@ export function setPixelFormat(format: string) {
   
   const wasAcquiring = !!stream;
   if (wasAcquiring) {
-    try { stream!.stopAcquisition(); } catch (e) {}
+    try { stream!.stopAcquisition(); } catch { /* ignore */ }
   }
 
   if (format === "Color") {
@@ -358,7 +370,7 @@ export function setPixelFormat(format: string) {
         console.log(`[industrial-camera] Set PixelFormat to ${fmt}`);
         success = true;
         break;
-      } catch (e) {}
+      } catch { /* ignore */ }
     }
     if (!success) {
       console.error("[industrial-camera] Failed to set PixelFormat for Color. No formats accepted.");
@@ -373,7 +385,7 @@ export function setPixelFormat(format: string) {
   }
 
   if (wasAcquiring) {
-    try { stream!.startAcquisition(); } catch (e) {}
+    try { stream!.startAcquisition(); } catch { /* ignore */ }
   }
 }
 
@@ -382,7 +394,7 @@ export function getPixelFormat(): string {
   try {
     const fmt = camera.getStringFeature("PixelFormat");
     return (fmt.startsWith("Bayer") || fmt.startsWith("RGB")) ? "Color" : "Mono";
-  } catch (e) {
+  } catch {
     return "Mono";
   }
 }

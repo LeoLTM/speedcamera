@@ -34,7 +34,7 @@ function SetupPage() {
     }
     try {
       await startSetupStream();
-    } catch (e) {
+    } catch {
       toast.error("Failed to start setup stream");
     }
   };
@@ -42,7 +42,7 @@ function SetupPage() {
   const handleStop = async () => {
     try {
       await stopSetupStream();
-    } catch (e) {
+    } catch {
       toast.error("Failed to stop setup stream");
     }
   };

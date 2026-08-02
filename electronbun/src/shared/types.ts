@@ -49,6 +49,8 @@ export interface AppSettings {
   teableSyncEnabled: string; // "true" | "false"
   // GitHub access
   githubToken: string;
+  // Poliscan skin
+  skinMeasuringLocation: string; // e.g. "BAB 2 Km 81,2, Ri. Hannover"
 }
 
 export interface PortInfo {
@@ -280,6 +282,14 @@ export type SpeedcameraRPC = {
       getImageData: {
         params: { imagePath: string };
         response: string; // data-URL base64
+      };
+      getSkinnedImageData: {
+        params: { violationId: number };
+        response: string; // data-URL base64 of skinned image
+      };
+      exportSkinnedImages: {
+        params: { violationIds: number[]; targetDir: string };
+        response: { exported: number; failed: number };
       };
 
       // DB – settings

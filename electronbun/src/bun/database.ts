@@ -44,6 +44,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   teableTableId: "",
   teableSyncEnabled: "false",
   githubToken: "",
+  // Poliscan skin
+  skinMeasuringLocation: "",
 };
 
 // ─── Database setup (lazy) ───────────────────────────────────────────────────
@@ -276,6 +278,8 @@ export function getSettings(): AppSettings {
     teableTableId: map.teableTableId ?? DEFAULT_SETTINGS.teableTableId,
     teableSyncEnabled: map.teableSyncEnabled ?? DEFAULT_SETTINGS.teableSyncEnabled,
     githubToken: map.githubToken ?? DEFAULT_SETTINGS.githubToken,
+    // Poliscan skin
+    skinMeasuringLocation: map.skinMeasuringLocation ?? DEFAULT_SETTINGS.skinMeasuringLocation,
   };
 }
 

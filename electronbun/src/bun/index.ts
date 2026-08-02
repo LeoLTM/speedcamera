@@ -18,6 +18,7 @@ import {
   deleteLap,
 } from "./database";
 import { saveImage, readImageAsDataUrl, deleteImage } from "./filestore";
+import { renderPoliscanSkin } from "./skin-renderer";
 import {
   initCamera,
   disconnectCamera,
@@ -150,6 +151,39 @@ const rpc = BrowserView.defineRPC<SpeedcameraRPC>({
       getImageData: async ({ imagePath }) => {
         const data = await readImageAsDataUrl(imagePath);
         return data ?? "";
+      },
+
+      getSkinnedImageData: async ({ violationId }) => {
+        const v = getViolationById(violationId);
+        if (!v) return "";
+        const settings = getSettings();
+        const buf = await renderPoliscanSkin(v.imagePath, v, {
+          measuringLocation: settings.skinMeasuringLocation,
+        });
+        return `data:image/png;base64,${buf.toString("base64")}`;
+      },
+
+      exportSkinnedImages: async ({ violationIds, targetDir }) => {
+        const settings = getSettings();
+        let exported = 0;
+        let failed = 0;
+        for (const id of violationIds) {
+          try {
+            const v = getViolationById(id);
+            if (!v) { failed++; continue; }
+            const buf = await renderPoliscanSkin(v.imagePath, v, {
+              measuringLocation: settings.skinMeasuringLocation,
+            });
+            const ts = new Date(v.timestamp).toISOString().replace(/[:.]/g, "-");
+            const outPath = `${targetDir}/violation-${v.id}-${ts}.png`;
+            await Bun.write(outPath, buf);
+            exported++;
+          } catch (err) {
+            console.error(`[skin-export] Failed to export violation ${id}:`, err);
+            failed++;
+          }
+        }
+        return { exported, failed };
       },
 
       // ── Settings ────────────────────────────────────────────────────────────

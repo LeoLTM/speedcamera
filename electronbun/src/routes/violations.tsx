@@ -4,7 +4,8 @@ import { toast } from "sonner";
 import { RootRoute } from "./__root";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -24,6 +25,7 @@ import {
   ArrowRight01Icon,
   ArrowUpBigIcon,
   ArrowDownBigIcon,
+  Image01Icon,
 } from "@hugeicons/core-free-icons";
 
 export const ViolationsRoute = createRoute({
@@ -48,6 +50,10 @@ function ViolationsPage() {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [skinEnabled, setSkinEnabled] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportDir, setExportDir] = useState("");
+  const [exportingImages, setExportingImages] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
@@ -128,6 +134,30 @@ function ViolationsPage() {
       toast.error("Failed to export CSV");
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleExportImages = async () => {
+    if (!exportDir.trim()) {
+      toast.error("Please enter an export directory");
+      return;
+    }
+    setExportingImages(true);
+    try {
+      // ponytail: export selected if any, else all on current page
+      const ids = selected.size > 0
+        ? [...selected]
+        : violations.map((v) => v.id);
+      const result = await getRpc().request.exportSkinnedImages({
+        violationIds: ids,
+        targetDir: exportDir.trim(),
+      });
+      toast.success(`Exported ${result.exported} images${result.failed ? `, ${result.failed} failed` : ""}`);
+      setExportDialogOpen(false);
+    } catch {
+      toast.error("Failed to export images");
+    } finally {
+      setExportingImages(false);
     }
   };
 
@@ -214,6 +244,23 @@ function ViolationsPage() {
             <HugeiconsIcon icon={Download01Icon} strokeWidth={2} />
             {exporting ? "Exporting…" : "Export CSV"}
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setExportDialogOpen(true)}
+            disabled={total === 0}
+          >
+            <HugeiconsIcon icon={Image01Icon} strokeWidth={2} />
+            Export Images
+          </Button>
+          <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
+            <Switch
+              checked={skinEnabled}
+              onCheckedChange={setSkinEnabled}
+              aria-label="Toggle Poliscan skin"
+            />
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Poliscan Skin</span>
+          </div>
           <Select
             value={String(limit)}
             onValueChange={(v) => {
@@ -308,6 +355,7 @@ function ViolationsPage() {
                   key={v.id}
                   violation={v}
                   selected={selected.has(v.id)}
+                  skinEnabled={skinEnabled}
                   onToggleSelect={() => toggleSelect(v.id)}
                   onDelete={() => handleDelete(v.id)}
                   onImageClick={(url) => setLightboxUrl(url)}
@@ -365,6 +413,38 @@ function ViolationsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Export Images Dialog */}
+      <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Export Skinned Images</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {selected.size > 0
+              ? `Export ${selected.size} selected violation(s) with Poliscan skin.`
+              : `Export all ${violations.length} violations on this page with Poliscan skin.`}
+          </p>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Export Directory</label>
+            <input
+              type="text"
+              value={exportDir}
+              onChange={(e) => setExportDir(e.target.value)}
+              placeholder="/home/user/exports"
+              className="w-full h-8 px-3 text-sm rounded-lg border border-input bg-input/30 focus:outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExportDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleExportImages} disabled={exportingImages || !exportDir.trim()}>
+              {exportingImages ? "Exporting…" : "Export"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -374,6 +454,7 @@ function ViolationsPage() {
 interface ViolationRowProps {
   violation: Violation;
   selected: boolean;
+  skinEnabled: boolean;
   onToggleSelect: () => void;
   onDelete: () => void;
   onImageClick: (url: string) => void;
@@ -382,6 +463,7 @@ interface ViolationRowProps {
 function ViolationRow({
   violation,
   selected,
+  skinEnabled,
   onToggleSelect,
   onDelete,
   onImageClick,
@@ -392,13 +474,16 @@ function ViolationRow({
 
   useEffect(() => {
     let cancelled = false;
-    getRpc()
-      .request.getImageData({ imagePath: violation.imagePath })
+    setImageLoading(true);
+    const fetchImage = skinEnabled
+      ? getRpc().request.getSkinnedImageData({ violationId: violation.id })
+      : getRpc().request.getImageData({ imagePath: violation.imagePath });
+    fetchImage
       .then((data) => { if (!cancelled) setImageData(data); })
       .catch(() => { if (!cancelled) setImageData(null); })
       .finally(() => { if (!cancelled) setImageLoading(false); });
     return () => { cancelled = true; };
-  }, [violation.imagePath]);
+  }, [violation.imagePath, violation.id, skinEnabled]);
 
   const over = (violation.measuredSpeed - violation.maxSpeed).toFixed(1);
   const formattedTime = new Date(violation.timestamp).toLocaleString(undefined, {

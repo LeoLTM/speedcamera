@@ -693,7 +693,8 @@ function SpeedCameraTab() {
     }
   }, [loadFromDb, connectedPort]);
 
-  const isDirty = SPEED_CAMERA_FIELDS.some(({ key }) => values[key] !== saved[key]);
+  const isDirty = SPEED_CAMERA_FIELDS.some(({ key }) => values[key] !== saved[key])
+    || (values.skinMeasuringLocation ?? "") !== (saved.skinMeasuringLocation ?? "");
 
   const handleSave = async () => {
     setSaving(true);
@@ -703,6 +704,14 @@ function SpeedCameraTab() {
           getRpc().request.saveSetting({ key, value: String(values[key]) })
         )
       );
+
+      // Save measuring location (non-ESP setting)
+      if ((values.skinMeasuringLocation ?? "") !== (saved.skinMeasuringLocation ?? "")) {
+        await getRpc().request.saveSetting({
+          key: "skinMeasuringLocation",
+          value: String(values.skinMeasuringLocation ?? ""),
+        });
+      }
 
       // Sync changed values to the ESP over serial
       await Promise.all(
@@ -816,6 +825,23 @@ function SpeedCameraTab() {
           </div>
         );
       })}
+
+      {/* Measuring Location (Poliscan skin) */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Measuring Location (Messort)</label>
+        <p className="text-xs text-muted-foreground -mt-1">
+          Shown in Poliscan skin bottom bar. e.g. "BAB 2 Km 81,2, Ri. Hannover"
+        </p>
+        <input
+          type="text"
+          value={(values.skinMeasuringLocation as string) ?? ""}
+          onChange={(e) =>
+            setValues((prev) => ({ ...prev, skinMeasuringLocation: e.target.value }))
+          }
+          placeholder="e.g. BAB 2 Km 81,2, Ri. Hannover"
+          className="w-full h-8 px-3 text-sm rounded-lg border border-input bg-input/30 focus:outline-none focus:ring-2 focus:ring-ring/50 focus:border-ring"
+        />
+      </div>
 
       <div className="flex items-center justify-end gap-2 pt-2">
         <Button

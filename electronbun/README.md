@@ -8,6 +8,12 @@ A remake of the speedcamera app using electronbun.
 # Install dependencies
 bun install
 
+# Start development server
+bun run start
+
+# Start development server with a mock speedcamera device (for testing)
+bun run start:mock
+
 # Development without HMR (uses bundled assets)
 bun run dev
 
@@ -18,7 +24,7 @@ bun run dev:hmr
 bun run build
 
 # Build for production release
-bun run build:prod
+bun run build:stable
 ```
 
 ## How HMR Works

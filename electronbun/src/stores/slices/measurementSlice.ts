@@ -4,7 +4,6 @@ import type { CameraSlice } from "./cameraSlice";
 import type { SystemSlice } from "./systemSlice";
 import type { LapSlice } from "./lapSlice";
 import { getRpc } from "@/lib/rpc";
-import { playBeep } from "@/lib/sound";
 import { toast } from "sonner";
 
 export interface MeasurementSlice {

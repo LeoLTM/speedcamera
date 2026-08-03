@@ -11,7 +11,13 @@ export default {
 			entrypoint: "src/bun/index.ts",
 			// serialport has native bindings — keep it external so Bun loads
 			// the pre-built .node addon from node_modules at runtime
-			external: ["serialport", "@serialport/bindings-cpp"],
+			external: [
+				"serialport",
+				"@serialport/bindings-cpp",
+				"sharp",
+				"@img/sharp-linux-x64",
+				"@img/sharp-libvips-linux-x64",
+			],
 			// Replace process.env.MOCK_MODE at build time.
 			// When MOCK_MODE is not set (stable / canary builds) this inlines an
 			// empty string, and Bun's dead-code elimination removes every mock
@@ -28,7 +34,6 @@ export default {
 			// esptool standalone binary (downloaded by CI, gitignored)
 			"resources/esptool": "resources/esptool",
 			"vendor/libaravis-0.8.so": "resources/libaravis-0.8.so",
-			"vendor/libaravis-0.8.so": "bin/libaravis-0.8.so",
 		},
 		// Ignore Vite output in watch mode — HMR handles view rebuilds separately
 		watchIgnore: ["dist/**"],

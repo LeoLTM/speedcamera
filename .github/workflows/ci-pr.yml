@@ -35,7 +35,7 @@ jobs:
 
   build:
     needs: [changes, test]
-    if: !cancelled() && !failure() && (needs.changes.outputs.electronbun == 'true' || needs.changes.outputs.arduino == 'true')
+    if: ${{ !cancelled() && !failure() && (needs.changes.outputs.electronbun == 'true' || needs.changes.outputs.arduino == 'true') }}
     uses: ./.github/workflows/_build.yml
     with:
       version: ''

@@ -5,6 +5,9 @@ function resolveAravisPath(): string | undefined {
   const candidates = [
     join(import.meta.dir, "..", "resources", "libaravis-0.8.so"),
     join(import.meta.dir, "..", "..", "resources", "libaravis-0.8.so"),
+    join(import.meta.dir, "..", "bin", "libaravis-0.8.so"),
+    join(import.meta.dir, "libaravis-0.8.so"),
+    join(process.cwd(), "vendor", "libaravis-0.8.so"),
   ];
   return candidates.find((p) => existsSync(p));
 }

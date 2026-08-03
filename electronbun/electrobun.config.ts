@@ -28,6 +28,7 @@ export default {
 			// esptool standalone binary (downloaded by CI, gitignored)
 			"resources/esptool": "resources/esptool",
 			"vendor/libaravis-0.8.so": "resources/libaravis-0.8.so",
+			"vendor/libaravis-0.8.so": "bin/libaravis-0.8.so",
 		},
 		// Ignore Vite output in watch mode — HMR handles view rebuilds separately
 		watchIgnore: ["dist/**"],

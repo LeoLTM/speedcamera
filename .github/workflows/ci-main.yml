@@ -1,4 +1,4 @@
-name: CI - electronbun
+name: CI - Main & Release
 
 on:
   push:
@@ -6,24 +6,45 @@ on:
       - main
     paths:
       - 'electronbun/**'
-      - '.github/workflows/ci-main.yml'
-      - '.github/workflows/_test.yml'
-      - '.github/workflows/_build.yml'
-      - '.github/workflows/_deploy.yml'
+      - 'arduino/**'
+      - '.github/workflows/**'
     tags:
       - 'v*'
   workflow_dispatch:
 
 jobs:
+  changes:
+    name: Detect Changed Paths
+    runs-on: ubuntu-latest
+    outputs:
+      electronbun: ${{ steps.filter.outputs.electronbun == 'true' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+      arduino: ${{ steps.filter.outputs.arduino == 'true' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            electronbun:
+              - 'electronbun/**'
+              - '.github/workflows/**'
+            arduino:
+              - 'arduino/**'
+              - '.github/workflows/**'
+
   test:
+    needs: changes
+    if: needs.changes.outputs.electronbun == 'true'
     uses: ./.github/workflows/_test.yml
     secrets: inherit
 
   build:
+    needs: [changes, test]
+    if: !cancelled() && !failure() && (needs.changes.outputs.electronbun == 'true' || needs.changes.outputs.arduino == 'true')
     uses: ./.github/workflows/_build.yml
-    needs: test
     with:
       version: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+      build-app: ${{ needs.changes.outputs.electronbun == 'true' }}
+      build-firmware: ${{ needs.changes.outputs.arduino == 'true' }}
     secrets: inherit
 
   deploy:

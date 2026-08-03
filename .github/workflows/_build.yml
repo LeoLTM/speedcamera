@@ -7,6 +7,14 @@ on:
         description: 'Release version tag (e.g. v1.2.0 or v1.2.0-canary). Empty string for non-release builds.'
         type: string
         default: ''
+      build-app:
+        description: 'Build electronbun app'
+        type: boolean
+        default: true
+      build-firmware:
+        description: 'Build arduino firmware'
+        type: boolean
+        default: true
 
 defaults:
   run:
@@ -15,6 +23,7 @@ defaults:
 jobs:
   build:
     name: Build (${{ matrix.platform }})
+    if: inputs.build-app
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -71,6 +80,7 @@ jobs:
 
   arduino-build:
     name: Arduino — Build Firmware
+    if: inputs.build-firmware
     runs-on: ubuntu-latest
     defaults:
       run:

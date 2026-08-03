@@ -342,6 +342,35 @@ const rpc = BrowserView.defineRPC<SpeedcameraRPC>({
       syncLapToTeable: ({ lap, session }) => syncLapToTeable(lap, session),
 
       // ── Updater ─────────────────────────────────────────────────────────────
+      getLocalVersion: async () => {
+        const info = await Updater.getLocalInfo();
+        return { version: info.version, channel: info.channel, hash: info.hash };
+      },
+
+      checkForUpdate: async () => {
+        const channel = await Updater.localInfo.channel();
+        if (channel === "dev") {
+          return {
+            version: (await Updater.getLocalInfo()).version,
+            hash: (await Updater.getLocalInfo()).hash,
+            updateAvailable: false,
+            updateReady: false,
+            error: "Updates disabled in dev channel",
+          };
+        }
+        return Updater.checkForUpdate();
+      },
+
+      downloadUpdate: async () => {
+        try {
+          await Updater.downloadUpdate();
+          return { ok: true };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return { ok: false, error: msg };
+        }
+      },
+
       applyUpdate: async () => {
         await Updater.applyUpdate();
       },
@@ -425,28 +454,16 @@ if (process.env.MOCK_MODE) {
 }
 
 // ─── Auto-updater ─────────────────────────────────────────────────────────────
+// ponytail: no silent startup auto-check. User triggers via About page menu.
+// Stable channel only — canary builds on GitHub Releases /latest won't resolve.
 
-async function checkAndNotifyUpdate(): Promise<void> {
-  const channel = await Updater.localInfo.channel();
-  if (channel === "dev") return;
-
-  try {
-    const info = await Updater.checkForUpdate();
-    if (!info.updateAvailable) return;
-
-    console.log(`[updater] Update available: ${info.version} — downloading…`);
-    await Updater.downloadUpdate();
-
-    if (Updater.updateInfo()?.updateReady) {
-      console.log(`[updater] Update ready: ${info.version}`);
-      mainWindow.webview.rpc?.send.updateAvailable({ version: info.version });
-    }
-  } catch (err) {
-    console.error("[updater] Update check failed:", err);
-  }
-}
-
-void checkAndNotifyUpdate();
+Updater.onStatusChange((entry) => {
+  mainWindow.webview.rpc?.send.updateProgress({
+    status: entry.status,
+    message: entry.message,
+    progress: entry.details?.progress,
+  });
+});
 
 console.log("[index] Speedcamera started");
 

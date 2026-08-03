@@ -6,8 +6,9 @@ import { createSystemSlice, type SystemSlice } from "./slices/systemSlice";
 import { createLapSlice, type LapSlice } from "./slices/lapSlice";
 import { createTeableSlice, type TeableSlice } from "./slices/teableSlice";
 import { createFlasherSlice, type FlasherSlice } from "./slices/flasherSlice";
+import { createUpdaterSlice, type UpdaterSlice } from "./slices/updaterSlice";
 
-export type AppStore = CameraSlice & SerialSlice & MeasurementSlice & SystemSlice & LapSlice & TeableSlice & FlasherSlice;
+export type AppStore = CameraSlice & SerialSlice & MeasurementSlice & SystemSlice & LapSlice & TeableSlice & FlasherSlice & UpdaterSlice;
 
 export const useAppStore = create<AppStore>()((...a) => ({
   ...createCameraSlice(...a),
@@ -17,5 +18,6 @@ export const useAppStore = create<AppStore>()((...a) => ({
   ...createLapSlice(...a),
   ...createTeableSlice(...a),
   ...createFlasherSlice(...a),
+  ...createUpdaterSlice(...a),
 }));
 

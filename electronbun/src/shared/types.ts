@@ -445,6 +445,24 @@ export type SpeedcameraRPC = {
       };
 
       // Updater
+      getLocalVersion: {
+        params: Record<string, never>;
+        response: { version: string; channel: string; hash: string };
+      };
+      checkForUpdate: {
+        params: Record<string, never>;
+        response: {
+          version: string;
+          hash: string;
+          updateAvailable: boolean;
+          updateReady: boolean;
+          error: string;
+        };
+      };
+      downloadUpdate: {
+        params: Record<string, never>;
+        response: { ok: boolean; error?: string };
+      };
       applyUpdate: {
         params: Record<string, never>;
         response: void;
@@ -482,6 +500,12 @@ export type SpeedcameraRPC = {
       cameraStatus: CameraStatusPayload;
       // Bun notifies the view that a new app version is ready to install
       updateAvailable: { version: string };
+      // Bun streams updater status events to the view
+      updateProgress: {
+        status: string;
+        message: string;
+        progress?: number;
+      };
       // Bun streams esptool progress events to the view
       flashProgress: FlashProgressPayload;
       // Push setup live stream frame

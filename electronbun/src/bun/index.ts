@@ -1,3 +1,14 @@
+if (typeof self !== "undefined") {
+  self.addEventListener("unhandledrejection", (event) => {
+    const reason = (event as { reason?: unknown }).reason;
+    console.error("[bun/index] Unhandled Rejection:", reason ?? event);
+  });
+  self.addEventListener("error", (event) => {
+    const err = (event as { error?: unknown; message?: string }).error ?? (event as { message?: string }).message;
+    console.error("[bun/index] Unhandled Error:", err ?? event);
+  });
+}
+
 import "./env";
 import path from "path";
 import { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";

@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join, dirname } from "path";
 import { tmpdir } from "os";
 import { existsSync } from "fs";
 import type { GithubRelease, FlashProgressPayload } from "../shared/types";
@@ -15,9 +15,15 @@ const TAG_PATTERN = /^v\d+\.\d+\.\d+(-canary)?$/;
 // Tries paths in order: packaged app, dev build layout, system PATH fallback
 
 function resolveEsptoolPath(): string {
+  const binDir = dirname(process.execPath || process.argv[0] || "");
   const candidates = [
+    join(process.cwd(), "..", "Resources", "resources", "esptool"),
+    join(process.cwd(), "..", "resources", "esptool"),
+    join(binDir, "..", "Resources", "resources", "esptool"),
+    join(binDir, "..", "resources", "esptool"),
     join(import.meta.dir, "..", "resources", "esptool"),
     join(import.meta.dir, "..", "..", "resources", "esptool"),
+    join(process.cwd(), "resources", "esptool"),
   ];
   return candidates.find((p) => existsSync(p)) ?? "esptool";
 }

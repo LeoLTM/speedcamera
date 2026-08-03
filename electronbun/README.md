@@ -58,6 +58,53 @@ When you run `bun run dev` (without HMR):
 └── package.json
 ```
 
+## Installation, Upgrading & Uninstallation (Linux)
+
+### System Dependencies
+- **Debian / Ubuntu**: `sudo apt update && sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 zstd`
+- **Fedora**: `sudo dnf install webkit2gtk4.1 gtk3 zstd`
+
+### Installing
+Use `stable-linux-x64-Speedcamera-Setup.tar.gz` (do NOT use `.tar.zst`, which is for auto-updates):
+
+```bash
+# 1. Extract archive & enter folder
+tar -xzf stable-linux-x64-Speedcamera-Setup.tar.gz
+cd stable-linux-x64-Speedcamera-Setup/
+
+# 2. Run app / installer
+chmod +x Speedcamera-Setup
+./Speedcamera-Setup
+
+# 3. (Optional) Integrate desktop launcher
+mkdir -p ~/.local/share/Speedcamera
+cp -r * ~/.local/share/Speedcamera/
+```
+
+Create `~/.local/share/applications/speedcamera.desktop`:
+```ini
+[Desktop Entry]
+Name=Speedcamera
+Exec=/home/YOUR_USERNAME/.local/share/Speedcamera/Speedcamera
+Icon=/home/YOUR_USERNAME/.local/share/Speedcamera/icon.png
+Type=Application
+Categories=Utility;
+Terminal=false
+```
+
+### Upgrading
+- **Automatic**: Background updates occur automatically via Electrobun's `Updater` API (fetching `.tar.zst` / `.patch` releases).
+- **Manual**: Unpack the new `stable-linux-x64-Speedcamera-Setup.tar.gz` and overwrite existing files in `~/.local/share/Speedcamera/`. User data/config (`~/.config/com.speedcamera.app/`) is preserved across updates.
+
+### Uninstallation
+```bash
+# Remove app binaries & desktop shortcut
+rm -rf ~/.local/share/Speedcamera/ ~/.local/share/applications/speedcamera.desktop
+
+# Remove user data, config, cache, and logs
+rm -rf ~/.config/com.speedcamera.app/ ~/.local/share/com.speedcamera.app/ ~/.cache/com.speedcamera.app/
+```
+
 ## File Locations
 
 - DB path: `/home/<your_username>/.local/share/com.speedcamera.app/dev/speedcamera.db`

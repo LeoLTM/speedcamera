@@ -9,20 +9,11 @@ export default {
 	build: {
 		bun: {
 			entrypoint: "src/bun/index.ts",
-			// serialport has native bindings — keep it external so Bun loads
-			// the pre-built .node addon from node_modules at runtime
+			// Keep native binaries external, but let Bun bundle sharp's JS dependencies (detect-libc, semver)
 			external: [
-				"serialport",
-				"@serialport/bindings-cpp",
-				"sharp",
 				"@img/sharp-linux-x64",
 				"@img/sharp-libvips-linux-x64",
 			],
-			// Replace process.env.MOCK_MODE at build time.
-			// When MOCK_MODE is not set (stable / canary builds) this inlines an
-			// empty string, and Bun's dead-code elimination removes every mock
-			// import and the mock controller window — mock files are physically
-			// absent from the final bundle.
 			define: {
 				"process.env.MOCK_MODE": JSON.stringify(process.env.MOCK_MODE ?? ""),
 			},
@@ -34,6 +25,7 @@ export default {
 			// esptool standalone binary (downloaded by CI, gitignored)
 			"resources/esptool": "resources/esptool",
 			"vendor/libaravis-0.8.so": "resources/libaravis-0.8.so",
+			"node_modules/@img": "node_modules/@img",
 		},
 		// Ignore Vite output in watch mode — HMR handles view rebuilds separately
 		watchIgnore: ["dist/**"],
@@ -53,5 +45,7 @@ export default {
 		// ponytail: GitHub Releases /latest only resolves stable (non-prerelease).
 		// Canary builds skip update checks in code, so this URL is fine for stable.
 		baseUrl: "https://github.com/LeoLTM/speedcamera/releases/latest/download",
+		// Skip expensive patch generation during local builds unless GENERATE_PATCH=true
+		generatePatch: Boolean(process.env.CI || process.env.GENERATE_PATCH === "true"),
 	},
 } satisfies ElectrobunConfig;

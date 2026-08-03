@@ -65,44 +65,45 @@ When you run `bun run dev` (without HMR):
 - **Fedora**: `sudo dnf install webkit2gtk4.1 gtk3 zstd`
 
 ### Installing
-Use `stable-linux-x64-Speedcamera-Setup.tar.gz` (do NOT use `.tar.zst`, which is for auto-updates):
+1. Unpack `stable-linux-x64-Speedcamera-Setup.tar.gz` and run the self-extractor (`installer` or `Speedcamera-Setup`):
 
 ```bash
-# 1. Extract archive & enter folder
 tar -xzf stable-linux-x64-Speedcamera-Setup.tar.gz
 cd stable-linux-x64-Speedcamera-Setup/
-
-# 2. Run app / installer
-chmod +x Speedcamera-Setup
-./Speedcamera-Setup
-
-# 3. (Optional) Integrate desktop launcher
-mkdir -p ~/.local/share/Speedcamera
-cp -r * ~/.local/share/Speedcamera/
+chmod +x installer  # or Speedcamera-Setup
+./installer
 ```
 
-Create `~/.local/share/applications/speedcamera.desktop`:
+*The installer automatically unpacks the app into `~/.local/share/com.speedcamera.app/stable/app/`.*
+
+2. Create a desktop shortcut in `~/.local/share/applications/speedcamera.desktop`:
+
 ```ini
 [Desktop Entry]
 Name=Speedcamera
-Exec=/home/YOUR_USERNAME/.local/share/Speedcamera/Speedcamera
-Icon=/home/YOUR_USERNAME/.local/share/Speedcamera/icon.png
+Exec=/home/YOUR_USERNAME/.local/share/com.speedcamera.app/stable/app/bin/launcher
 Type=Application
 Categories=Utility;
 Terminal=false
 ```
+*(Replace `YOUR_USERNAME` with your Linux username or `$USER`)*
+
+3. (Optional) Refresh application launcher cache:
+```bash
+update-desktop-database ~/.local/share/applications
+```
 
 ### Upgrading
 - **Automatic**: Background updates occur automatically via Electrobun's `Updater` API (fetching `.tar.zst` / `.patch` releases).
-- **Manual**: Unpack the new `stable-linux-x64-Speedcamera-Setup.tar.gz` and overwrite existing files in `~/.local/share/Speedcamera/`. User data/config (`~/.config/com.speedcamera.app/`) is preserved across updates.
+- **Manual**: Run `./installer` from a newly downloaded release archive. It will update the application in `~/.local/share/com.speedcamera.app/stable/app/` while keeping user data (`~/.config/com.speedcamera.app/`) intact.
 
 ### Uninstallation
 ```bash
-# Remove app binaries & desktop shortcut
-rm -rf ~/.local/share/Speedcamera/ ~/.local/share/applications/speedcamera.desktop
+# Remove desktop shortcut
+rm -f ~/.local/share/applications/speedcamera.desktop
 
-# Remove user data, config, cache, and logs
-rm -rf ~/.config/com.speedcamera.app/ ~/.local/share/com.speedcamera.app/ ~/.cache/com.speedcamera.app/
+# Remove installed app, user data, config, cache, and logs
+rm -rf ~/.local/share/com.speedcamera.app/ ~/.config/com.speedcamera.app/ ~/.cache/com.speedcamera.app/
 ```
 
 ## File Locations

@@ -43,4 +43,9 @@ export default {
 			bundleCEF: false,
 		},
 	},
+	release: {
+		// ponytail: GitHub Releases /latest only resolves stable (non-prerelease).
+		// Canary builds skip update checks in code, so this URL is fine for stable.
+		baseUrl: "https://github.com/LeoLTM/speedcamera/releases/latest/download",
+	},
 } satisfies ElectrobunConfig;

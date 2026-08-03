@@ -1,5 +1,4 @@
 import { Electroview } from "electrobun/view";
-import { toast } from "sonner";
 import type { SpeedcameraRPC } from "@/shared/types";
 import { useAppStore } from "@/stores/useAppStore";
 
@@ -21,14 +20,10 @@ const _rpc = Electroview.defineRPC<SpeedcameraRPC>({
       cameraStatus: (payload) => useAppStore.getState().setCameraStatus(payload),
       liveFrame: (payload) => useAppStore.getState().setLiveFrame(payload),
       updateAvailable: ({ version }) => {
-        toast.info(`Update available: v${version}`, {
-          duration: Infinity,
-          action: {
-            label: "Restart to update",
-            onClick: () => void getRpc().request.applyUpdate({}),
-          },
-        });
+        useAppStore.getState().setUpdateVersion(version);
+        useAppStore.getState().setUpdatePhase("ready");
       },
+      updateProgress: (payload) => useAppStore.getState().handleUpdateProgress(payload),
     },
   },
 });

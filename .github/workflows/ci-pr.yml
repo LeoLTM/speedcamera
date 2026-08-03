@@ -5,18 +5,40 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'electronbun/**'
-      - '.github/workflows/ci-pr.yml'
-      - '.github/workflows/_test.yml'
-      - '.github/workflows/_build.yml'
+      - 'arduino/**'
+      - '.github/workflows/**'
 
 jobs:
+  changes:
+    name: Detect Changed Paths
+    runs-on: ubuntu-latest
+    outputs:
+      electronbun: ${{ steps.filter.outputs.electronbun }}
+      arduino: ${{ steps.filter.outputs.arduino }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            electronbun:
+              - 'electronbun/**'
+              - '.github/workflows/**'
+            arduino:
+              - 'arduino/**'
+              - '.github/workflows/**'
+
   test:
+    needs: changes
+    if: needs.changes.outputs.electronbun == 'true'
     uses: ./.github/workflows/_test.yml
     secrets: inherit
 
   build:
+    needs: [changes, test]
+    if: ${{ !cancelled() && !failure() && (needs.changes.outputs.electronbun == 'true' || needs.changes.outputs.arduino == 'true') }}
     uses: ./.github/workflows/_build.yml
-    needs: test
     with:
       version: ''
+      build-app: ${{ needs.changes.outputs.electronbun == 'true' }}
+      build-firmware: ${{ needs.changes.outputs.arduino == 'true' }}
     secrets: inherit

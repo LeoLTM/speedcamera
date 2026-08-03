@@ -1,16 +1,8 @@
 import { cn } from "@/lib/utils";
+import { formatDuration } from "@/lib/format";
 import { useAppStore } from "@/stores/useAppStore";
 import { useLiveLapTimer } from "@/hooks/useLiveLapTimer";
 import type { Lap } from "@/shared/types";
-
-function formatDuration(ms: number): string {
-  const total = Math.round(ms);
-  const totalSeconds = Math.floor(total / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  const millis = total % 1000;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
-}
 
 function formatDurationParts(ms: number) {
   const total = Math.round(ms);

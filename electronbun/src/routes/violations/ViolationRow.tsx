@@ -7,7 +7,6 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Skeleton } from "@/components/ui/skeleton";
 import type { Violation } from "@/shared/types";
 import { useViolationImage } from "./useViolationImage";
 

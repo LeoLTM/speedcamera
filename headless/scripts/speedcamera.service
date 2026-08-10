@@ -1,0 +1,21 @@
+[Unit]
+Description=Speedcamera Headless Daemon & Web Server
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/speedcamera/headless
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOST=0.0.0.0
+Environment=DATA_DIR=/home/pi/.speedcamera
+ExecStart=/home/pi/.bun/bin/bun src/server/index.ts
+Restart=always
+RestartSec=3
+KillSignal=SIGINT
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

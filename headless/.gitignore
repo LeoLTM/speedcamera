@@ -1,0 +1,11 @@
+# Node modules
+node_modules
+
+# Build output
+dist
+build
+target
+artifacts
+
+# Bundled native binaries (downloaded by CI, not committed)
+resources/

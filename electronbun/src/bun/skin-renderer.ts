@@ -55,7 +55,7 @@ export async function renderPoliscanSkin(
   ctx.fillText(`${violation.maxSpeed} km/h`, 260, valY);
   ctx.fillText(`${violation.measuredSpeed} km/h`, 400, valY);
 
-  const dirText = violation.direction === "forward" ? "ankommend" : "abgehend";
+  const dirText = violation.direction === "forward" ? "abgehend" : "ankommend";
   ctx.fillText(dirText, 530, valY);
 
   // ── Source image ────────────────────────────────────────────────────────────

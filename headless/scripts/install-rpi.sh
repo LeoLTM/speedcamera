@@ -11,7 +11,7 @@ sudo apt-get update
 sudo apt-get install -y \
   libaravis-0.8-0 \
   libaravis-dev \
-  python3-esptool \
+  esptool \
   network-manager \
   curl \
   unzip \

@@ -71,7 +71,7 @@ chmod +x scripts/install-rpi.sh
 ```
 
 This script will automatically:
-1. Install system libraries (`libaravis-0.8-0`, `python3-esptool`, `network-manager`).
+1. Install system libraries (`libaravis-0.8-0`, `esptool`, `network-manager`).
 2. Install the **Bun** ARM64 runtime.
 3. Build the production React web bundle.
 4. Configure the dual-subnet network interfaces (`scripts/setup-network.sh`):

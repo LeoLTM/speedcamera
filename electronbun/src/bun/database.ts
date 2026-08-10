@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { Utils } from "electrobun/bun";
 import path from "path";
+import { existsSync, mkdirSync } from "fs";
 import type {
   Violation,
   SaveViolationInput,
@@ -57,7 +58,12 @@ let _db: Database | null = null;
 function getDb(): Database {
   if (_db) return _db;
 
-  const dbPath = path.join(Utils.paths.userData, "speedcamera.db");
+  const userDataDir = Utils.paths.userData;
+  if (!existsSync(userDataDir)) {
+    mkdirSync(userDataDir, { recursive: true });
+  }
+
+  const dbPath = path.join(userDataDir, "speedcamera.db");
   const db = new Database(dbPath, { create: true });
 
   db.run("PRAGMA journal_mode = WAL");

@@ -11,7 +11,7 @@ impl MockCamera {
         Self { connected: true }
     }
 
-    pub fn status(&self) -> CameraStatusPayload {
+    pub fn status(&self, is_streaming: bool) -> CameraStatusPayload {
         CameraStatusPayload {
             connected: self.connected,
             vendor: if self.connected {
@@ -29,6 +29,7 @@ impl MockCamera {
             } else {
                 None
             },
+            is_streaming,
         }
     }
 

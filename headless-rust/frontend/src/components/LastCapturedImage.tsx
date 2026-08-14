@@ -1,15 +1,31 @@
 import { useEffect, useState } from "react";
 import { getRpc } from "@/lib/rpc";
 import { useAppStore } from "@/stores/useAppStore";
+import { useBackendEvent } from "@/hooks/useBackendEvent";
 import { Image as ImageIcon } from "lucide-react";
 
 export function LastCapturedImage() {
   const lastViolation = useAppStore((s) => s.lastViolation);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
 
+  const loadImage = (imagePath: string) => {
+    getRpc()
+      .request.getImageData({ imagePath })
+      .then((src) => {
+        setImageSrc(`${src}&_t=${Date.now()}`);
+      })
+      .catch(() => setImageSrc(null));
+  };
+
+  useBackendEvent("violation", (v) => {
+    if (v && v.imagePath) {
+      loadImage(v.imagePath);
+    }
+  });
+
   useEffect(() => {
-    if (lastViolation) {
-      getRpc().request.getImageData({ imagePath: lastViolation.imagePath }).then(setImageSrc).catch(() => setImageSrc(null));
+    if (lastViolation && lastViolation.imagePath) {
+      loadImage(lastViolation.imagePath);
     } else {
       setImageSrc(null);
     }

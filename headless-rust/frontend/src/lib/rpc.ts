@@ -1,5 +1,6 @@
-import type { SpeedcameraRPC } from "@/shared/types";
+import type { SpeedcameraRPC, Violation, SerialStatusPayload, CameraStatusPayload, FlashProgressPayload } from "@/shared/types";
 import { useAppStore } from "@/stores/useAppStore";
+import { toast } from "sonner";
 
 type RequestMap = SpeedcameraRPC["bun"]["requests"];
 type PushMessageMap = SpeedcameraRPC["webview"]["messages"];
@@ -12,6 +13,8 @@ export type SpeedcameraClientRPC = {
   };
 };
 
+type EventCallback<T = any> = (payload: T) => void;
+
 class WebSocketRpcClient {
   private ws: WebSocket | null = null;
   private reqIdCounter = 0;
@@ -21,10 +24,17 @@ class WebSocketRpcClient {
       resolve: (val: any) => void;
       reject: (err: any) => void;
       timer: ReturnType<typeof setTimeout>;
+      method: string;
     }
   >();
+  private messageQueue: string[] = [];
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private reconnectDelay = 500;
+  private maxReconnectDelay = 5000;
   private isConnecting = false;
+  private isExplicitlyClosed = false;
+
+  private listeners = new Map<string, Set<EventCallback>>();
 
   constructor() {
     this.connect();
@@ -37,8 +47,10 @@ class WebSocketRpcClient {
     return `${protocol}//${host}/ws/rpc`;
   }
 
-  private connect() {
+  public connect() {
     if (typeof window === "undefined" || this.isConnecting) return;
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
+
     this.isConnecting = true;
 
     try {
@@ -49,13 +61,23 @@ class WebSocketRpcClient {
       ws.onopen = () => {
         console.log("[rpc-client] Connected to speedcamera daemon");
         this.isConnecting = false;
+        this.reconnectDelay = 500;
+        this.emit("connectionChange", true);
+
+        // Flush any queued messages
+        while (this.messageQueue.length > 0) {
+          const queued = this.messageQueue.shift();
+          if (queued && ws.readyState === WebSocket.OPEN) {
+            ws.send(queued);
+          }
+        }
       };
 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          
-          // Case 1: Response to a pending request
+
+          // Case 1: Response to a pending RPC request
           if (data.id !== undefined && this.pendingRequests.has(data.id)) {
             const pending = this.pendingRequests.get(data.id)!;
             this.pendingRequests.delete(data.id);
@@ -80,31 +102,86 @@ class WebSocketRpcClient {
       };
 
       ws.onerror = (err) => {
-        console.warn("[rpc-client] WebSocket error:", err);
+        console.warn("[rpc-client] WebSocket transport error:", err);
+        this.isConnecting = false;
       };
 
-      ws.onclose = () => {
-        console.log("[rpc-client] Disconnected. Reconnecting in 2s...");
+      ws.onclose = (event) => {
+        console.log(`[rpc-client] Disconnected (code: ${event.code}). Reconnecting in ${this.reconnectDelay}ms...`);
         this.isConnecting = false;
         this.ws = null;
-        if (!this.reconnectTimeout) {
+        this.emit("connectionChange", false);
+
+        if (!this.isExplicitlyClosed && !this.reconnectTimeout) {
           this.reconnectTimeout = setTimeout(() => {
             this.reconnectTimeout = null;
+            this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, this.maxReconnectDelay);
             this.connect();
-          }, 2000);
+          }, this.reconnectDelay);
         }
       };
     } catch (err) {
       this.isConnecting = false;
-      console.error("[rpc-client] Connection failed:", err);
+      console.error("[rpc-client] Failed to create WebSocket connection:", err);
+      if (!this.reconnectTimeout) {
+        this.reconnectTimeout = setTimeout(() => {
+          this.reconnectTimeout = null;
+          this.connect();
+        }, this.reconnectDelay);
+      }
+    }
+  }
+
+  public on<K extends keyof PushMessageMap | "connectionChange">(
+    event: K,
+    callback: EventCallback<K extends keyof PushMessageMap ? PushMessageMap[K] : boolean>
+  ): () => void {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, new Set());
+    }
+    this.listeners.get(event)!.add(callback);
+
+    // Return unbind function for clean useEffect hook integration
+    return () => {
+      this.off(event, callback);
+    };
+  }
+
+  public off<K extends keyof PushMessageMap | "connectionChange">(
+    event: K,
+    callback: EventCallback<K extends keyof PushMessageMap ? PushMessageMap[K] : boolean>
+  ) {
+    const set = this.listeners.get(event);
+    if (set) {
+      set.delete(callback);
+      if (set.size === 0) {
+        this.listeners.delete(event);
+      }
+    }
+  }
+
+  private emit<K extends keyof PushMessageMap | "connectionChange">(
+    event: K,
+    payload: K extends keyof PushMessageMap ? PushMessageMap[K] : boolean
+  ) {
+    const set = this.listeners.get(event);
+    if (set) {
+      for (const callback of set) {
+        try {
+          callback(payload);
+        } catch (err) {
+          console.error(`[rpc-client] Error in listener for '${String(event)}':`, err);
+        }
+      }
     }
   }
 
   private handlePushEvent<K extends keyof PushMessageMap>(event: K, payload: PushMessageMap[K]) {
+    // 1. Notify global Zustand store
     const store = useAppStore.getState();
     switch (event) {
       case "serialStatus": {
-        const serialPayload = payload as any;
+        const serialPayload = payload as SerialStatusPayload;
         if (serialPayload?.status === "CONNECTED") {
           const port = serialPayload.port || store.selectedPort || "connected";
           store.setConnectedPort(port);
@@ -115,17 +192,28 @@ class WebSocketRpcClient {
         store.handleSerialStatus(serialPayload);
         break;
       }
-      case "flashProgress":
-        store.handleFlashProgress(payload as any);
+      case "cameraStatus": {
+        const camPayload = payload as CameraStatusPayload;
+        store.setCameraStatus(camPayload);
         break;
-      case "cameraStatus":
-        store.setCameraStatus(payload as any);
-        break;
+      }
       case "liveFrame":
-        store.setLiveFrame(payload as any);
+        store.setLiveFrame(payload as string);
         break;
-      case "violation":
-        store.setLastViolation(payload as any);
+      case "violation": {
+        const violationPayload = payload as Violation;
+        store.setLastViolation(violationPayload);
+        toast.error(
+          `⚡ Violation recorded: ${violationPayload.measuredSpeed} km/h (Limit: ${violationPayload.maxSpeed} km/h)`,
+          {
+            description: `Captured at ${new Date(violationPayload.timestamp).toLocaleTimeString()}`,
+            duration: 4000,
+          }
+        );
+        break;
+      }
+      case "flashProgress":
+        store.handleFlashProgress(payload as FlashProgressPayload);
         break;
       case "updateAvailable":
         store.setUpdateVersion((payload as any).version);
@@ -137,6 +225,9 @@ class WebSocketRpcClient {
       default:
         break;
     }
+
+    // 2. Dispatch to custom pub-sub event listeners
+    this.emit(event, payload);
   }
 
   public call(method: string, params: any): Promise<any> {
@@ -149,33 +240,29 @@ class WebSocketRpcClient {
         }
       }, 10000);
 
-      this.pendingRequests.set(id, { resolve, reject, timer });
+      this.pendingRequests.set(id, { resolve, reject, timer, method });
+      const payloadStr = JSON.stringify({ id, method, params });
 
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ id, method, params }));
+        this.ws.send(payloadStr);
       } else {
-        // If websocket not ready yet, wait briefly or connect
-        const checkInterval = setInterval(() => {
-          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            clearInterval(checkInterval);
-            this.ws.send(JSON.stringify({ id, method, params }));
-          }
-        }, 100);
-
-        // Cancel retry if request times out
-        setTimeout(() => clearInterval(checkInterval), 9500);
+        // Queue message and ensure connection is active
+        this.messageQueue.push(payloadStr);
+        if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+          this.connect();
+        }
       }
     });
   }
 }
 
-const client = new WebSocketRpcClient();
+export const rpcClient = new WebSocketRpcClient();
 
 // Proxy accessor so `getRpc().request.someMethod(params)` works transparently
 const rpcProxy: SpeedcameraClientRPC = {
   request: new Proxy({} as any, {
     get(_target, prop: string) {
-      return (params: any = {}) => client.call(prop, params);
+      return (params: any = {}) => rpcClient.call(prop, params);
     },
   }),
 };
@@ -183,3 +270,4 @@ const rpcProxy: SpeedcameraClientRPC = {
 export function getRpc(): SpeedcameraClientRPC {
   return rpcProxy;
 }
+

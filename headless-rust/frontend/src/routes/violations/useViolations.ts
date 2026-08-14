@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { getRpc } from "@/lib/rpc";
+import { useBackendEvent } from "@/hooks/useBackendEvent";
 import type { Violation, ViolationQuery } from "@/shared/types";
 
 export const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
@@ -82,6 +83,21 @@ export function useViolations(): ViolationsState {
   useEffect(() => {
     void fetchViolations();
   }, [fetchViolations]);
+
+  // Real-time listener for newly captured violations
+  useBackendEvent("violation", (newViolation) => {
+    // If on first page and no active filter, prepend directly for zero-latency UI update
+    if (page === 1 && !dateFrom && !dateTo && !minSpeed) {
+      setViolations((prev) => {
+        if (prev.some((v) => v.id === newViolation.id)) return prev;
+        return [newViolation, ...prev.slice(0, limit - 1)];
+      });
+      setTotal((prev) => prev + 1);
+    } else {
+      // Otherwise trigger refetch to keep pagination counts consistent
+      void fetchViolations();
+    }
+  });
 
   const deleteViolation = useCallback(async (id: number) => {
     try {

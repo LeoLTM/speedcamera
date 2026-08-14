@@ -118,6 +118,7 @@ export interface CameraStatusPayload {
   vendor: string | null;
   model: string | null;
   serial: string | null;
+  isStreaming: boolean;
 }
 
 export interface ViolationQuery {

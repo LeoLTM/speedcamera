@@ -70,6 +70,7 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
     cameraVendor: status.vendor,
     cameraModel: status.model,
     cameraSerial: status.serial,
+    setupStreamActive: status.isStreaming,
   }),
   
   connectCamera: async () => {
@@ -83,6 +84,7 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
       cameraVendor: status.vendor,
       cameraModel: status.model,
       cameraSerial: status.serial,
+      setupStreamActive: status.isStreaming,
     });
   },
   

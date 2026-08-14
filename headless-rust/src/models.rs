@@ -154,6 +154,7 @@ pub struct CameraStatusPayload {
     pub vendor: Option<String>,
     pub model: Option<String>,
     pub serial: Option<String>,
+    pub is_streaming: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

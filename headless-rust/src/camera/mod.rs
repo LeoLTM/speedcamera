@@ -64,8 +64,9 @@ impl CameraService {
     }
 
     pub fn get_status(&self) -> CameraStatusPayload {
+        let is_streaming = self.setup_stream_active.load(Ordering::SeqCst);
         if self.mock_mode {
-            return self.mock_camera.lock().unwrap().status();
+            return self.mock_camera.lock().unwrap().status(is_streaming);
         }
 
         let is_conn = self.is_connected.load(Ordering::SeqCst);
@@ -100,6 +101,7 @@ impl CameraService {
                     vendor,
                     model,
                     serial,
+                    is_streaming,
                 }
             }
         } else {
@@ -108,6 +110,7 @@ impl CameraService {
                 vendor: None,
                 model: None,
                 serial: None,
+                is_streaming: false,
             }
         }
     }
@@ -362,6 +365,7 @@ impl CameraService {
         }
 
         self.setup_stream_active.store(true, Ordering::SeqCst);
+        let _ = self.status_sender.send(self.get_status());
         let this = self.clone();
 
         tokio::task::spawn_blocking(move || {
@@ -566,6 +570,7 @@ impl CameraService {
             }
         }
         println!("[camera] Setup preview stream stopped, restored triggered capture mode");
+        let _ = self.status_sender.send(self.get_status());
     }
 
     pub fn apply_mfs_config(&self, mfs_content: &str) -> MfsConfigResult {

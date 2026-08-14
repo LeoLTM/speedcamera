@@ -101,26 +101,47 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             let input: SaveViolationInput =
                 serde_json::from_value(params).map_err(|e| e.to_string())?;
 
-            let raw_png = if let Some(ref b64) = input.image_base64 {
-                let clean = b64.trim_start_matches("data:image/png;base64,");
-                base64::engine::general_purpose::STANDARD
-                    .decode(clean)
-                    .map_err(|e| e.to_string())?
-            } else {
-                ctx.camera
-                    .capture_frame()
-                    .ok_or_else(|| "Failed to capture frame from industrial camera".to_string())?
-            };
+            let cam = ctx.camera.clone();
+            let store = ctx.store.clone();
+            let db = ctx.db.clone();
+            let v_tx = ctx.violation_tx.clone();
 
-            let image_path = ctx
-                .store
-                .save_image_bytes(&raw_png, "png")
-                .map_err(|e| e.to_string())?;
+            let v = tokio::task::spawn_blocking(move || -> Result<Violation, String> {
+                let (raw_bytes, ext) = if let Some(ref b64) = input.image_base64 {
+                    let clean = if let Some(pos) = b64.find(',') {
+                        &b64[pos + 1..]
+                    } else {
+                        b64
+                    };
+                    let decoded = base64::engine::general_purpose::STANDARD
+                        .decode(clean.trim())
+                        .map_err(|e| e.to_string())?;
+                    let ext = if decoded.starts_with(&[0xFF, 0xD8, 0xFF]) {
+                        "jpg"
+                    } else {
+                        "png"
+                    };
+                    (decoded, ext)
+                } else {
+                    let jpg = cam
+                        .capture_frame_jpeg(90)
+                        .ok_or_else(|| "Failed to capture frame from industrial camera".to_string())?;
+                    (jpg, "jpg")
+                };
 
-            let conn = ctx.db.lock();
-            let v = crate::db::violations::insert_violation(&conn, &input, &image_path)
-                .map_err(|e| e.to_string())?;
-            let _ = ctx.violation_tx.send(v.clone());
+                let image_path = store
+                    .save_image_bytes(&raw_bytes, ext)
+                    .map_err(|e| e.to_string())?;
+
+                let conn = db.lock();
+                let violation = crate::db::violations::insert_violation(&conn, &input, &image_path)
+                    .map_err(|e| e.to_string())?;
+                let _ = v_tx.send(violation.clone());
+                Ok(violation)
+            })
+            .await
+            .map_err(|e| e.to_string())??;
+
             Ok(serde_json::to_value(v).unwrap())
         }
 
@@ -225,38 +246,53 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         "exportSkinnedImages" => {
             let ids = params["violationIds"]
                 .as_array()
-                .ok_or("Missing violationIds")?;
-            let target_dir = params["targetDir"].as_str().ok_or("Missing targetDir")?;
+                .ok_or("Missing violationIds")?
+                .clone();
+            let target_dir = params["targetDir"].as_str().ok_or("Missing targetDir")?.to_string();
 
-            let conn = ctx.db.lock();
-            let settings = crate::db::settings::get_settings(&conn).map_err(|e| e.to_string())?;
+            let db = ctx.db.clone();
+            let store = ctx.store.clone();
 
-            let mut exported = 0;
-            let mut failed = 0;
+            let res = tokio::task::spawn_blocking(move || -> Result<ExportSkinnedResult, String> {
+                let conn = db.lock();
+                let settings = crate::db::settings::get_settings(&conn).map_err(|e| e.to_string())?;
 
-            for val in ids {
-                if let Some(id) = val.as_i64() {
-                    if let Ok(Some(v)) = crate::db::violations::get_violation_by_id(&conn, id) {
-                        if let Some(bytes) = ctx.store.read_image(&v.image_path) {
-                            if let Some(skinned) = render_poliscan_skin(
-                                &bytes,
-                                &v,
-                                &settings.skin_measuring_location,
-                            ) {
-                                let out_path = Path::new(target_dir)
-                                    .join(format!("violation-{}-{}.png", v.id, v.timestamp.replace(":", "-")));
-                                if std::fs::write(out_path, skinned).is_ok() {
-                                    exported += 1;
-                                    continue;
+                let mut exported = 0;
+                let mut failed = 0;
+
+                for val in ids {
+                    if let Some(id) = val.as_i64() {
+                        if let Ok(Some(v)) = crate::db::violations::get_violation_by_id(&conn, id) {
+                            if let Some(bytes) = store.read_image(&v.image_path) {
+                                if let Some(skinned) = render_poliscan_skin(
+                                    &bytes,
+                                    &v,
+                                    &settings.skin_measuring_location,
+                                ) {
+                                    let ext = if skinned.starts_with(&[0xFF, 0xD8, 0xFF]) {
+                                        "jpg"
+                                    } else {
+                                        "png"
+                                    };
+                                    let out_path = Path::new(&target_dir)
+                                        .join(format!("violation-{}-{}.{}", v.id, v.timestamp.replace(":", "-"), ext));
+                                    if std::fs::write(out_path, skinned).is_ok() {
+                                        exported += 1;
+                                        continue;
+                                    }
                                 }
                             }
                         }
+                        failed += 1;
                     }
-                    failed += 1;
                 }
-            }
 
-            Ok(serde_json::to_value(ExportSkinnedResult { exported, failed }).unwrap())
+                Ok(ExportSkinnedResult { exported, failed })
+            })
+            .await
+            .map_err(|e| e.to_string())??;
+
+            Ok(serde_json::to_value(res).unwrap())
         }
 
         // ─── Settings ─────────────────────────────────────────────────────────
@@ -304,14 +340,25 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
 
         // ─── Camera HW ────────────────────────────────────────────────────────
         "connectCamera" => {
-            let conn = ctx.db.lock();
-            let settings = crate::db::settings::get_settings(&conn).unwrap_or_default();
-            ctx.camera.connect(&settings);
+            let cam = ctx.camera.clone();
+            let db = ctx.db.clone();
+            tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                let settings = crate::db::settings::get_settings(&conn).unwrap_or_default();
+                cam.connect(&settings);
+            })
+            .await
+            .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
         "disconnectCamera" => {
-            ctx.camera.disconnect();
+            let cam = ctx.camera.clone();
+            tokio::task::spawn_blocking(move || {
+                cam.disconnect();
+            })
+            .await
+            .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
@@ -321,9 +368,20 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         }
 
         "captureFrame" => {
-            if let Some(png_bytes) = ctx.camera.capture_frame() {
-                let b64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
-                Ok(Value::String(b64))
+            let cam = ctx.camera.clone();
+            let b64 = tokio::task::spawn_blocking(move || {
+                if let Some(jpg_bytes) = cam.capture_frame_jpeg(90) {
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&jpg_bytes);
+                    Some(format!("data:image/jpeg;base64,{}", b64))
+                } else {
+                    None
+                }
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+
+            if let Some(data) = b64 {
+                Ok(Value::String(data))
             } else {
                 Ok(Value::Null)
             }
@@ -367,9 +425,15 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         }
 
         "stopSetupStream" => {
-            let conn = ctx.db.lock();
-            let settings = crate::db::settings::get_settings(&conn).unwrap_or_default();
-            ctx.camera.stop_setup_stream(&settings);
+            let cam = ctx.camera.clone();
+            let db = ctx.db.clone();
+            tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                let settings = crate::db::settings::get_settings(&conn).unwrap_or_default();
+                cam.stop_setup_stream(&settings);
+            })
+            .await
+            .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 

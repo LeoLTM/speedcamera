@@ -76,10 +76,12 @@ pub fn render_poliscan_skin(
     draw_text_mut(&mut canvas, value_color, 200, (bottom_y + 15) as i32, scale_sm, &font, &img_nr);
     draw_text_mut(&mut canvas, value_color, 420, (bottom_y + 15) as i32, scale_sm, &font, loc_str);
 
-    // Encode to PNG buffer
+    // Encode to fast high-quality JPEG buffer (<10ms)
     let mut out = Vec::new();
     let mut cursor = Cursor::new(&mut out);
-    canvas.write_to(&mut cursor, image::ImageFormat::Png).ok()?;
+    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, 90);
+    encoder.encode(canvas.as_raw(), src_w, total_h, image::ExtendedColorType::Rgb8).ok()?;
 
     Some(out)
 }
+

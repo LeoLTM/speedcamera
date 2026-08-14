@@ -37,7 +37,12 @@ pub fn get_image(
 ) -> Result<(ContentType, Vec<u8>), Status> {
     let p = path.ok_or(Status::BadRequest)?;
     let bytes = store.read_image(&p).ok_or(Status::NotFound)?;
-    Ok((ContentType::PNG, bytes))
+    let content_type = if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        ContentType::JPEG
+    } else {
+        ContentType::PNG
+    };
+    Ok((content_type, bytes))
 }
 
 #[rocket::get("/skinned-image?<violationId>")]
@@ -63,8 +68,15 @@ pub fn get_skinned_image(
     )
     .ok_or(Status::InternalServerError)?;
 
-    Ok((ContentType::PNG, rendered))
+    let content_type = if rendered.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        ContentType::JPEG
+    } else {
+        ContentType::PNG
+    };
+
+    Ok((content_type, rendered))
 }
+
 
 #[rocket::get("/<file..>", rank = 20)]
 pub fn static_assets(file: std::path::PathBuf) -> Result<EmbeddedFile, Status> {

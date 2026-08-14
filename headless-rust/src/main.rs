@@ -97,8 +97,8 @@ async fn main() -> Result<(), rocket::Error> {
                 let v_tx = pipeline_violation_tx.clone();
 
                 tokio::task::spawn_blocking(move || {
-                    if let Some(png_bytes) = cam.capture_frame() {
-                        if let Ok(img_path) = store_clone.save_image_bytes(&png_bytes, "png") {
+                    if let Some(jpg_bytes) = cam.capture_frame_jpeg(90) {
+                        if let Ok(img_path) = store_clone.save_image_bytes(&jpg_bytes, "jpg") {
                             let conn = db_clone.lock();
                             let settings = db::settings::get_settings(&conn).unwrap_or_default();
                             let input = SaveViolationInput {

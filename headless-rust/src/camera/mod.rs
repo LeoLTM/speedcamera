@@ -162,6 +162,11 @@ impl CameraService {
             if arv_camera_is_gv_device(cam) != 0 {
                 let packet_size = arv_camera_gv_auto_packet_size(cam, &mut err);
                 println!("[camera] GigE Vision auto packet size set to: {} bytes", packet_size);
+
+                // Set GevSCPD (Stream Channel Packet Delay) to 2000 ticks
+                // This spaces out UDP packets to prevent NIC packet storms and SSH stalls
+                Self::set_feature_int_internal(cam, "GevSCPD", 2000);
+                println!("[camera] GigE Vision GevSCPD packet delay set to: 2000");
             }
 
             // Configure Trigger mode & strobe
@@ -200,7 +205,7 @@ impl CameraService {
                 );
             }
 
-            // Create Stream with 8 pre-allocated buffers for robust throughput
+            // Create Stream with 24 pre-allocated buffers for robust throughput without underruns
             let stream = arv_camera_create_stream(cam, null_mut(), null_mut(), &mut err);
             if stream.is_null() {
                 println!("[camera] Failed to create stream");
@@ -209,10 +214,11 @@ impl CameraService {
             }
 
             let payload_size = Self::get_feature_int_internal(cam, "PayloadSize").max(1024 * 1024);
-            for _ in 0..8 {
+            for _ in 0..24 {
                 let buf = arv_buffer_new_allocate(payload_size as usize);
                 arv_stream_push_buffer(stream, buf);
             }
+
 
             // ── Start Acquisition ─────────────────────────────────────────────
             // Critical: Tells camera and Aravis engine to start receiving packets
@@ -270,75 +276,84 @@ impl CameraService {
         let _ = self.status_sender.send(self.get_status());
     }
 
+    #[allow(dead_code)]
     pub fn capture_frame(&self) -> Option<Vec<u8>> {
+        self.capture_frame_jpeg(90)
+    }
+
+
+    pub fn capture_frame_jpeg(&self, quality: u8) -> Option<Vec<u8>> {
         if self.mock_mode {
-            return self.mock_camera.lock().unwrap().capture_frame();
+            return self.mock_camera.lock().unwrap().capture_jpeg_frame();
         }
 
         if !self.is_connected.load(Ordering::SeqCst) {
             return None;
         }
 
-        let cam = *self.camera_ptr.lock().unwrap();
-        let stream = *self.stream_ptr.lock().unwrap();
-        if cam.is_null() || stream.is_null() {
-            return None;
-        }
+        // Grab buffer & raw pixel data with minimal mutex holding time
+        let (raw_vec, width, height, pixel_format) = {
+            let cam = *self.camera_ptr.lock().unwrap();
+            let stream = *self.stream_ptr.lock().unwrap();
+            if cam.is_null() || stream.is_null() {
+                return None;
+            }
 
-        unsafe {
-            // Flush any stale buffers lingering in stream output queue
-            loop {
-                let stale = arv_stream_try_pop_buffer(stream);
-                if stale.is_null() {
-                    break;
+            unsafe {
+                // Flush any stale buffers lingering in stream output queue
+                loop {
+                    let stale = arv_stream_try_pop_buffer(stream);
+                    if stale.is_null() {
+                        break;
+                    }
+                    arv_stream_push_buffer(stream, stale);
                 }
-                arv_stream_push_buffer(stream, stale);
-            }
 
-            // Software trigger
-            let mut err = null_mut();
-            let trigger_cmd = CString::new("TriggerSoftware").unwrap();
-            arv_camera_execute_command(cam, trigger_cmd.as_ptr(), &mut err);
-            if !err.is_null() {
-                let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                println!("[camera] TriggerSoftware failed: {}", msg);
-                g_error_free(err);
-            }
+                // Software trigger
+                let mut err = null_mut();
+                let trigger_cmd = CString::new("TriggerSoftware").unwrap();
+                arv_camera_execute_command(cam, trigger_cmd.as_ptr(), &mut err);
+                if !err.is_null() {
+                    let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                    println!("[camera] TriggerSoftware failed: {}", msg);
+                    g_error_free(err);
+                }
 
-            // Wait up to 1.5 seconds for completed frame
-            let buffer = arv_stream_timeout_pop_buffer(stream, 1_500_000);
-            if buffer.is_null() {
-                println!("[camera] Capture frame timed out");
-                return None;
-            }
+                // Wait up to 1.5 seconds for completed frame
+                let buffer = arv_stream_timeout_pop_buffer(stream, 1_500_000);
+                if buffer.is_null() {
+                    println!("[camera] Capture frame timed out");
+                    return None;
+                }
 
-            let status = arv_buffer_get_status(buffer);
-            if status != ARV_BUFFER_STATUS_SUCCESS {
-                println!(
-                    "[camera] Capture buffer failed with status: {} ({})",
-                    buffer_status_name(status),
-                    status
-                );
+                let status = arv_buffer_get_status(buffer);
+                if status != ARV_BUFFER_STATUS_SUCCESS {
+                    println!(
+                        "[camera] Capture buffer failed with status: {} ({})",
+                        buffer_status_name(status),
+                        status
+                    );
+                    arv_stream_push_buffer(stream, buffer);
+                    return None;
+                }
+
+                let width = arv_buffer_get_image_width(buffer) as u32;
+                let height = arv_buffer_get_image_height(buffer) as u32;
+                let pixel_format = arv_buffer_get_image_pixel_format(buffer);
+                let mut size: usize = 0;
+                let data_ptr = arv_buffer_get_data(buffer, &mut size);
+
+                let raw_vec = std::slice::from_raw_parts(data_ptr, size).to_vec();
+
+                // Recycle buffer immediately back to stream pool
                 arv_stream_push_buffer(stream, buffer);
-                return None;
+
+                (raw_vec, width, height, pixel_format)
             }
+        }; // Mutex on camera_ptr and stream_ptr is released immediately here!
 
-            let width = arv_buffer_get_image_width(buffer) as u32;
-            let height = arv_buffer_get_image_height(buffer) as u32;
-            let pixel_format = arv_buffer_get_image_pixel_format(buffer);
-            let mut size: usize = 0;
-            let data_ptr = arv_buffer_get_data(buffer, &mut size);
-
-            let raw_slice = std::slice::from_raw_parts(data_ptr, size);
-
-            // Convert to PNG buffer
-            let png_bytes = Self::raw_buffer_to_png(raw_slice, width, height, pixel_format);
-
-            // Recycle buffer back to stream pool
-            arv_stream_push_buffer(stream, buffer);
-
-            png_bytes
-        }
+        // Perform fast JPEG conversion outside of camera mutex lock (<10ms)
+        Self::raw_buffer_to_jpeg(&raw_vec, width, height, pixel_format, quality)
     }
 
     pub fn start_setup_stream(self: &Arc<Self>) {
@@ -407,6 +422,8 @@ impl CameraService {
 
             println!("[camera] Setup preview stream active");
 
+            let is_encoding = Arc::new(AtomicBool::new(false));
+
             while this.setup_stream_active.load(Ordering::SeqCst) {
                 if this.mock_mode {
                     if let Some(jpeg) = this.mock_camera.lock().unwrap().capture_jpeg_preview() {
@@ -428,28 +445,44 @@ impl CameraService {
                     if !buffer.is_null() {
                         let status = arv_buffer_get_status(buffer);
                         if status == ARV_BUFFER_STATUS_SUCCESS {
-                            let width = arv_buffer_get_image_width(buffer) as u32;
-                            let height = arv_buffer_get_image_height(buffer) as u32;
-                            let pixel_format = arv_buffer_get_image_pixel_format(buffer);
-                            let mut size: usize = 0;
-                            let data_ptr = arv_buffer_get_data(buffer, &mut size);
+                            // If previous frame is still encoding, drop intermediate frame to keep queue empty
+                            if !is_encoding.swap(true, Ordering::SeqCst) {
+                                let width = arv_buffer_get_image_width(buffer) as u32;
+                                let height = arv_buffer_get_image_height(buffer) as u32;
+                                let pixel_format = arv_buffer_get_image_pixel_format(buffer);
+                                let mut size: usize = 0;
+                                let data_ptr = arv_buffer_get_data(buffer, &mut size);
 
-                            let slice = std::slice::from_raw_parts(data_ptr, size);
+                                let slice_vec = std::slice::from_raw_parts(data_ptr, size).to_vec();
 
-                            if let Some(jpeg) =
-                                Self::raw_buffer_to_downscaled_jpeg(slice, width, height, pixel_format)
-                            {
-                                let b64 =
-                                    base64::engine::general_purpose::STANDARD.encode(&jpeg);
-                                let _ = this.frame_sender.send(b64);
+                                // Recycle buffer immediately back to Aravis pool
+                                arv_stream_push_buffer(stream, buffer);
+
+                                let encoder_flag = is_encoding.clone();
+                                let tx = this.frame_sender.clone();
+                                tokio::task::spawn_blocking(move || {
+                                    if let Some(jpeg) = Self::raw_buffer_to_downscaled_jpeg(
+                                        &slice_vec,
+                                        width,
+                                        height,
+                                        pixel_format,
+                                    ) {
+                                        let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
+                                        let _ = tx.send(b64);
+                                    }
+                                    encoder_flag.store(false, Ordering::SeqCst);
+                                });
+                            } else {
+                                // Encoder busy: recycle buffer instantly to prevent underruns
+                                arv_stream_push_buffer(stream, buffer);
                             }
+                        } else {
+                            // Status not SUCCESS: recycle buffer back to pool
+                            arv_stream_push_buffer(stream, buffer);
                         }
-                        arv_stream_push_buffer(stream, buffer);
-                        // Throttle stream loop to ~12 FPS
-                        std::thread::sleep(std::time::Duration::from_millis(75));
                     } else {
-                        // No buffer waiting, brief yield
-                        std::thread::sleep(std::time::Duration::from_millis(20));
+                        // No buffer ready, brief yield to prevent tight spin
+                        std::thread::sleep(std::time::Duration::from_millis(5));
                     }
                 }
             }
@@ -896,6 +929,7 @@ impl CameraService {
         Some(rgb)
     }
 
+    #[allow(dead_code)]
     fn raw_buffer_to_png(
         raw: &[u8],
         width: u32,
@@ -906,6 +940,32 @@ impl CameraService {
         let mut buf = Vec::new();
         let mut cursor = Cursor::new(&mut buf);
         dynamic_img.write_to(&mut cursor, image::ImageFormat::Png).ok()?;
+        Some(buf)
+    }
+
+    fn raw_buffer_to_jpeg(
+        raw: &[u8],
+        width: u32,
+        height: u32,
+        pixel_format: u32,
+        quality: u8,
+    ) -> Option<Vec<u8>> {
+        let dynamic_img = Self::raw_to_dynamic_image(raw, width, height, pixel_format)?;
+        let mut buf = Vec::new();
+        let mut cursor = Cursor::new(&mut buf);
+        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, quality);
+        match dynamic_img {
+            DynamicImage::ImageRgb8(rgb) => {
+                encoder.encode(rgb.as_raw(), width, height, image::ExtendedColorType::Rgb8).ok()?;
+            }
+            DynamicImage::ImageLuma8(luma) => {
+                encoder.encode(luma.as_raw(), width, height, image::ExtendedColorType::L8).ok()?;
+            }
+            _ => {
+                let rgb = dynamic_img.to_rgb8();
+                encoder.encode(rgb.as_raw(), width, height, image::ExtendedColorType::Rgb8).ok()?;
+            }
+        }
         Some(buf)
     }
 
@@ -920,10 +980,23 @@ impl CameraService {
 
         let mut buf = Vec::new();
         let mut cursor = Cursor::new(&mut buf);
-        resized.write_to(&mut cursor, image::ImageFormat::Jpeg).ok()?;
+        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, 60);
+        match resized {
+            DynamicImage::ImageRgb8(rgb) => {
+                encoder.encode(rgb.as_raw(), rgb.width(), rgb.height(), image::ExtendedColorType::Rgb8).ok()?;
+            }
+            DynamicImage::ImageLuma8(luma) => {
+                encoder.encode(luma.as_raw(), luma.width(), luma.height(), image::ExtendedColorType::L8).ok()?;
+            }
+            _ => {
+                let rgb = resized.to_rgb8();
+                encoder.encode(rgb.as_raw(), rgb.width(), rgb.height(), image::ExtendedColorType::Rgb8).ok()?;
+            }
+        }
 
         Some(buf)
     }
+
 
     fn set_feature_str_internal(cam: *mut ArvCamera, feature: &str, value: &str) -> bool {
         unsafe {

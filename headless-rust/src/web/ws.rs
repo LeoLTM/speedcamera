@@ -101,15 +101,24 @@ pub fn ws_rpc(
                     }
 
                     // Live frame broadcast
-                    Ok(b64_frame) = live_frame_rx.recv() => {
-                        let msg = json!({
-                            "event": "liveFrame",
-                            "payload": b64_frame
-                        });
-                        if stream.send(Message::Text(msg.to_string())).await.is_err() {
-                            break;
+                    res = live_frame_rx.recv() => {
+                        match res {
+                            Ok(b64_frame) => {
+                                let msg = json!({
+                                    "event": "liveFrame",
+                                    "payload": b64_frame
+                                });
+                                if stream.send(Message::Text(msg.to_string())).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                // Expected when live frames exceed client WebSocket consumption rate
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                         }
                     }
+
 
                     // Violation broadcast
                     Ok(v) = violation_rx.recv() => {

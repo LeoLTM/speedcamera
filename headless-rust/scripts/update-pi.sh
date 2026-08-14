@@ -147,6 +147,8 @@ RestartSec=2
 KillSignal=SIGINT
 LimitNOFILE=65536
 LimitMEMLOCK=infinity
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
 
 [Install]
 WantedBy=multi-user.target

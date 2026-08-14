@@ -13,8 +13,74 @@ pub struct GError {
     pub message: *const c_char,
 }
 
+// ─── ArvBufferStatus Constants ────────────────────────────────────────────────
 pub const ARV_BUFFER_STATUS_SUCCESS: i32 = 0;
+pub const ARV_BUFFER_STATUS_CLEARED: i32 = 1;
+pub const ARV_BUFFER_STATUS_TIMEOUT: i32 = 2;
+pub const ARV_BUFFER_STATUS_MISSING_PACKETS: i32 = 3;
+pub const ARV_BUFFER_STATUS_WRONG_PACKET_ID: i32 = 4;
+pub const ARV_BUFFER_STATUS_SIZE_MISMATCH: i32 = 5;
+pub const ARV_BUFFER_STATUS_FILLING: i32 = 6;
+pub const ARV_BUFFER_STATUS_ABORTED: i32 = 7;
 
+pub fn buffer_status_name(status: i32) -> &'static str {
+    match status {
+        ARV_BUFFER_STATUS_SUCCESS => "SUCCESS",
+        ARV_BUFFER_STATUS_CLEARED => "CLEARED",
+        ARV_BUFFER_STATUS_TIMEOUT => "TIMEOUT",
+        ARV_BUFFER_STATUS_MISSING_PACKETS => "MISSING_PACKETS",
+        ARV_BUFFER_STATUS_WRONG_PACKET_ID => "WRONG_PACKET_ID",
+        ARV_BUFFER_STATUS_SIZE_MISMATCH => "SIZE_MISMATCH",
+        ARV_BUFFER_STATUS_FILLING => "FILLING",
+        ARV_BUFFER_STATUS_ABORTED => "ABORTED",
+        _ => "UNKNOWN",
+    }
+}
+
+// ─── GenICam PFNC Pixel Formats ───────────────────────────────────────────────
+pub const ARV_PIXEL_FORMAT_MONO_8: u32 = 0x01080001;
+pub const ARV_PIXEL_FORMAT_MONO_10: u32 = 0x01100003;
+pub const ARV_PIXEL_FORMAT_MONO_12: u32 = 0x01100005;
+pub const ARV_PIXEL_FORMAT_MONO_14: u32 = 0x01100025;
+pub const ARV_PIXEL_FORMAT_MONO_16: u32 = 0x01100007;
+
+pub const ARV_PIXEL_FORMAT_BAYER_GR_8: u32 = 0x01080008;
+pub const ARV_PIXEL_FORMAT_BAYER_RG_8: u32 = 0x01080009;
+pub const ARV_PIXEL_FORMAT_BAYER_GB_8: u32 = 0x0108000a;
+pub const ARV_PIXEL_FORMAT_BAYER_BG_8: u32 = 0x0108000b;
+
+pub const ARV_PIXEL_FORMAT_BAYER_GR_12: u32 = 0x01100010;
+pub const ARV_PIXEL_FORMAT_BAYER_RG_12: u32 = 0x01100011;
+pub const ARV_PIXEL_FORMAT_BAYER_GB_12: u32 = 0x01100012;
+pub const ARV_PIXEL_FORMAT_BAYER_BG_12: u32 = 0x01100013;
+
+pub const ARV_PIXEL_FORMAT_RGB_8_PACKED: u32 = 0x02180014;
+pub const ARV_PIXEL_FORMAT_BGR_8_PACKED: u32 = 0x02180015;
+pub const ARV_PIXEL_FORMAT_YUV_422_PACKED: u32 = 0x02100032;
+
+pub fn pixel_format_name(format: u32) -> &'static str {
+    match format {
+        ARV_PIXEL_FORMAT_MONO_8 => "Mono8",
+        ARV_PIXEL_FORMAT_MONO_10 => "Mono10",
+        ARV_PIXEL_FORMAT_MONO_12 => "Mono12",
+        ARV_PIXEL_FORMAT_MONO_14 => "Mono14",
+        ARV_PIXEL_FORMAT_MONO_16 => "Mono16",
+        ARV_PIXEL_FORMAT_BAYER_GR_8 => "BayerGR8",
+        ARV_PIXEL_FORMAT_BAYER_RG_8 => "BayerRG8",
+        ARV_PIXEL_FORMAT_BAYER_GB_8 => "BayerGB8",
+        ARV_PIXEL_FORMAT_BAYER_BG_8 => "BayerBG8",
+        ARV_PIXEL_FORMAT_BAYER_GR_12 => "BayerGR12",
+        ARV_PIXEL_FORMAT_BAYER_RG_12 => "BayerRG12",
+        ARV_PIXEL_FORMAT_BAYER_GB_12 => "BayerGB12",
+        ARV_PIXEL_FORMAT_BAYER_BG_12 => "BayerBG12",
+        ARV_PIXEL_FORMAT_RGB_8_PACKED => "RGB8Packed",
+        ARV_PIXEL_FORMAT_BGR_8_PACKED => "BGR8Packed",
+        ARV_PIXEL_FORMAT_YUV_422_PACKED => "YUV422Packed",
+        _ => "UnknownPixelFormat",
+    }
+}
+
+// ─── Aravis C Functions ───────────────────────────────────────────────────────
 unsafe extern "C" {
     pub fn arv_update_device_list();
     pub fn arv_get_n_devices() -> u32;
@@ -89,7 +155,14 @@ unsafe extern "C" {
         err: *mut *mut GError,
     );
 
+    pub fn arv_camera_is_gv_device(cam: *mut ArvCamera) -> i32;
     pub fn arv_camera_gv_auto_packet_size(cam: *mut ArvCamera, err: *mut *mut GError) -> u32;
+    pub fn arv_camera_gv_set_packet_size(
+        cam: *mut ArvCamera,
+        packet_size: i32,
+        err: *mut *mut GError,
+    );
+    pub fn arv_camera_gv_get_packet_size(cam: *mut ArvCamera, err: *mut *mut GError) -> i32;
 
     pub fn arv_camera_create_stream(
         cam: *mut ArvCamera,
@@ -98,9 +171,18 @@ unsafe extern "C" {
         err: *mut *mut GError,
     ) -> *mut ArvStream;
 
+    pub fn arv_camera_start_acquisition(cam: *mut ArvCamera, err: *mut *mut GError);
+    pub fn arv_camera_stop_acquisition(cam: *mut ArvCamera, err: *mut *mut GError);
+
     pub fn arv_stream_push_buffer(stream: *mut ArvStream, buffer: *mut ArvBuffer);
     pub fn arv_stream_try_pop_buffer(stream: *mut ArvStream) -> *mut ArvBuffer;
     pub fn arv_stream_timeout_pop_buffer(stream: *mut ArvStream, timeout_us: u64) -> *mut ArvBuffer;
+    pub fn arv_stream_get_statistics(
+        stream: *mut ArvStream,
+        n_completed_buffers: *mut u64,
+        n_failures: *mut u64,
+        n_underruns: *mut u64,
+    );
 
     pub fn arv_buffer_new_allocate(size: usize) -> *mut ArvBuffer;
     pub fn arv_buffer_get_data(buffer: *mut ArvBuffer, size: *mut usize) -> *const u8;

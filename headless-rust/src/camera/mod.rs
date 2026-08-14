@@ -2,9 +2,9 @@ pub mod ffi;
 pub mod mock;
 
 use crate::models::{AppSettings, CameraStatusPayload, MfsConfigResult};
-use ffi::*;
 use base64::Engine;
-use image::{ImageBuffer, Luma, Rgb};
+use ffi::*;
+use image::{DynamicImage, ImageBuffer, Luma, Rgb};
 use std::ffi::{CStr, CString};
 use std::io::Cursor;
 use std::ptr::null_mut;
@@ -159,7 +159,10 @@ impl CameraService {
                 return;
             }
 
-            arv_camera_gv_auto_packet_size(cam, &mut err);
+            if arv_camera_is_gv_device(cam) != 0 {
+                let packet_size = arv_camera_gv_auto_packet_size(cam, &mut err);
+                println!("[camera] GigE Vision auto packet size set to: {} bytes", packet_size);
+            }
 
             // Configure Trigger mode & strobe
             Self::set_feature_str_internal(cam, "AcquisitionMode", "Continuous");
@@ -196,7 +199,7 @@ impl CameraService {
                 );
             }
 
-            // Create Stream with 5 pre-allocated buffers
+            // Create Stream with 8 pre-allocated buffers for robust throughput
             let stream = arv_camera_create_stream(cam, null_mut(), null_mut(), &mut err);
             if stream.is_null() {
                 println!("[camera] Failed to create stream");
@@ -205,16 +208,25 @@ impl CameraService {
             }
 
             let payload_size = Self::get_feature_int_internal(cam, "PayloadSize").max(1024 * 1024);
-            for _ in 0..5 {
+            for _ in 0..8 {
                 let buf = arv_buffer_new_allocate(payload_size as usize);
                 arv_stream_push_buffer(stream, buf);
+            }
+
+            // ── Start Acquisition ─────────────────────────────────────────────
+            // Critical: Tells camera and Aravis engine to start receiving packets
+            arv_camera_start_acquisition(cam, &mut err);
+            if !err.is_null() {
+                let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                println!("[camera] Warning: arv_camera_start_acquisition returned error: {}", msg);
+                g_error_free(err);
             }
 
             *self.camera_ptr.lock().unwrap() = cam;
             *self.stream_ptr.lock().unwrap() = stream;
             self.is_connected.store(true, Ordering::SeqCst);
 
-            println!("[camera] Connected successfully to industrial camera");
+            println!("[camera] Connected and acquisition started successfully");
             let _ = self.status_sender.send(self.get_status());
         }
     }
@@ -230,15 +242,25 @@ impl CameraService {
         self.is_connected.store(false, Ordering::SeqCst);
 
         unsafe {
+            let mut cam_guard = self.camera_ptr.lock().unwrap();
+            let cam = *cam_guard;
+
+            if !cam.is_null() {
+                let mut err = null_mut();
+                arv_camera_stop_acquisition(cam, &mut err);
+                if !err.is_null() {
+                    g_error_free(err);
+                }
+            }
+
             let mut stream_guard = self.stream_ptr.lock().unwrap();
             if !stream_guard.is_null() {
                 g_object_unref(*stream_guard as *mut _);
                 *stream_guard = null_mut();
             }
 
-            let mut cam_guard = self.camera_ptr.lock().unwrap();
-            if !cam_guard.is_null() {
-                g_object_unref(*cam_guard as *mut _);
+            if !cam.is_null() {
+                g_object_unref(cam as *mut _);
                 *cam_guard = null_mut();
             }
         }
@@ -263,7 +285,7 @@ impl CameraService {
         }
 
         unsafe {
-            // Discard stale buffers
+            // Flush any stale buffers lingering in stream output queue
             loop {
                 let stale = arv_stream_try_pop_buffer(stream);
                 if stale.is_null() {
@@ -276,16 +298,26 @@ impl CameraService {
             let mut err = null_mut();
             let trigger_cmd = CString::new("TriggerSoftware").unwrap();
             arv_camera_execute_command(cam, trigger_cmd.as_ptr(), &mut err);
+            if !err.is_null() {
+                let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                println!("[camera] TriggerSoftware failed: {}", msg);
+                g_error_free(err);
+            }
 
-            // Wait up to 2 seconds for frame
-            let buffer = arv_stream_timeout_pop_buffer(stream, 2_000_000);
+            // Wait up to 1.5 seconds for completed frame
+            let buffer = arv_stream_timeout_pop_buffer(stream, 1_500_000);
             if buffer.is_null() {
                 println!("[camera] Capture frame timed out");
                 return None;
             }
 
-            if arv_buffer_get_status(buffer) != ARV_BUFFER_STATUS_SUCCESS {
-                println!("[camera] Capture buffer status != SUCCESS");
+            let status = arv_buffer_get_status(buffer);
+            if status != ARV_BUFFER_STATUS_SUCCESS {
+                println!(
+                    "[camera] Capture buffer failed with status: {} ({})",
+                    buffer_status_name(status),
+                    status
+                );
                 arv_stream_push_buffer(stream, buffer);
                 return None;
             }
@@ -301,7 +333,7 @@ impl CameraService {
             // Convert to PNG buffer
             let png_bytes = Self::raw_buffer_to_png(raw_slice, width, height, pixel_format);
 
-            // Return buffer back to stream pool
+            // Recycle buffer back to stream pool
             arv_stream_push_buffer(stream, buffer);
 
             png_bytes
@@ -326,7 +358,7 @@ impl CameraService {
                     Self::set_feature_str_internal(cam, "ExposureAuto", "Continuous");
                     Self::set_feature_str_internal(cam, "GainAuto", "Continuous");
                     Self::set_feature_bool_internal(cam, "AcquisitionFrameRateEnable", true);
-                    Self::set_feature_float_internal(cam, "AcquisitionFrameRate", 10.0);
+                    Self::set_feature_float_internal(cam, "AcquisitionFrameRate", 12.0);
                 }
             }
 
@@ -336,20 +368,21 @@ impl CameraService {
                         let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
                         let _ = this.frame_sender.send(b64);
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    std::thread::sleep(std::time::Duration::from_millis(80));
                     continue;
                 }
 
                 let stream = *this.stream_ptr.lock().unwrap();
                 if stream.is_null() {
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    std::thread::sleep(std::time::Duration::from_millis(80));
                     continue;
                 }
 
                 unsafe {
-                    let buffer = arv_stream_timeout_pop_buffer(stream, 100_000);
+                    let buffer = arv_stream_timeout_pop_buffer(stream, 150_000);
                     if !buffer.is_null() {
-                        if arv_buffer_get_status(buffer) == ARV_BUFFER_STATUS_SUCCESS {
+                        let status = arv_buffer_get_status(buffer);
+                        if status == ARV_BUFFER_STATUS_SUCCESS {
                             let width = arv_buffer_get_image_width(buffer) as u32;
                             let height = arv_buffer_get_image_height(buffer) as u32;
                             let pixel_format = arv_buffer_get_image_pixel_format(buffer);
@@ -369,7 +402,7 @@ impl CameraService {
                         arv_stream_push_buffer(stream, buffer);
                     }
                 }
-                std::thread::sleep(std::time::Duration::from_millis(40));
+                std::thread::sleep(std::time::Duration::from_millis(20));
             }
 
             println!("[camera] Setup preview stream stopped");
@@ -494,26 +527,235 @@ impl CameraService {
         }
     }
 
-    // Helper functions for raw buffer decoding
-    fn raw_buffer_to_png(raw: &[u8], width: u32, height: u32, _pixel_format: u32) -> Option<Vec<u8>> {
-        let expected_mono = (width * height) as usize;
-        let expected_rgb = (width * height * 3) as usize;
+    // ── Pixel Format & Image Decoding ──────────────────────────────────────────
+    fn raw_to_dynamic_image(
+        raw: &[u8],
+        width: u32,
+        height: u32,
+        pixel_format: u32,
+    ) -> Option<DynamicImage> {
+        let w = width as usize;
+        let h = height as usize;
+        let total_pixels = w * h;
 
-        let mut buf = Vec::new();
-        let mut cursor = Cursor::new(&mut buf);
+        match pixel_format {
+            ARV_PIXEL_FORMAT_RGB_8_PACKED => {
+                if raw.len() >= total_pixels * 3 {
+                    let img: ImageBuffer<Rgb<u8>, Vec<u8>> =
+                        ImageBuffer::from_raw(width, height, raw[..total_pixels * 3].to_vec())?;
+                    Some(DynamicImage::ImageRgb8(img))
+                } else {
+                    None
+                }
+            }
+            ARV_PIXEL_FORMAT_BGR_8_PACKED => {
+                if raw.len() >= total_pixels * 3 {
+                    let mut rgb = vec![0u8; total_pixels * 3];
+                    for i in 0..total_pixels {
+                        rgb[i * 3] = raw[i * 3 + 2];     // R
+                        rgb[i * 3 + 1] = raw[i * 3 + 1]; // G
+                        rgb[i * 3 + 2] = raw[i * 3];     // B
+                    }
+                    let img: ImageBuffer<Rgb<u8>, Vec<u8>> =
+                        ImageBuffer::from_raw(width, height, rgb)?;
+                    Some(DynamicImage::ImageRgb8(img))
+                } else {
+                    None
+                }
+            }
+            ARV_PIXEL_FORMAT_BAYER_RG_8
+            | ARV_PIXEL_FORMAT_BAYER_BG_8
+            | ARV_PIXEL_FORMAT_BAYER_GR_8
+            | ARV_PIXEL_FORMAT_BAYER_GB_8 => {
+                let rgb_bytes = Self::debayer_8bit(raw, w, h, pixel_format)?;
+                let img: ImageBuffer<Rgb<u8>, Vec<u8>> =
+                    ImageBuffer::from_raw(width, height, rgb_bytes)?;
+                Some(DynamicImage::ImageRgb8(img))
+            }
+            ARV_PIXEL_FORMAT_MONO_10
+            | ARV_PIXEL_FORMAT_MONO_12
+            | ARV_PIXEL_FORMAT_MONO_14
+            | ARV_PIXEL_FORMAT_MONO_16 => {
+                if raw.len() >= total_pixels * 2 {
+                    let mut mono8 = vec![0u8; total_pixels];
+                    for i in 0..total_pixels {
+                        // Take most significant byte (little endian)
+                        mono8[i] = raw[i * 2 + 1];
+                    }
+                    let img: ImageBuffer<Luma<u8>, Vec<u8>> =
+                        ImageBuffer::from_raw(width, height, mono8)?;
+                    Some(DynamicImage::ImageLuma8(img))
+                } else {
+                    None
+                }
+            }
+            ARV_PIXEL_FORMAT_MONO_8 | _ => {
+                // Fallback: If 3-channel size, treat as RGB, else Mono
+                if raw.len() >= total_pixels * 3 {
+                    let img: ImageBuffer<Rgb<u8>, Vec<u8>> =
+                        ImageBuffer::from_raw(width, height, raw[..total_pixels * 3].to_vec())?;
+                    Some(DynamicImage::ImageRgb8(img))
+                } else if raw.len() >= total_pixels {
+                    let img: ImageBuffer<Luma<u8>, Vec<u8>> =
+                        ImageBuffer::from_raw(width, height, raw[..total_pixels].to_vec())?;
+                    Some(DynamicImage::ImageLuma8(img))
+                } else {
+                    None
+                }
+            }
+        }
+    }
 
-        if raw.len() >= expected_rgb {
-            let img: ImageBuffer<Rgb<u8>, &[u8]> =
-                ImageBuffer::from_raw(width, height, &raw[..expected_rgb])?;
-            img.write_to(&mut cursor, image::ImageFormat::Png).ok()?;
-        } else if raw.len() >= expected_mono {
-            let img: ImageBuffer<Luma<u8>, &[u8]> =
-                ImageBuffer::from_raw(width, height, &raw[..expected_mono])?;
-            img.write_to(&mut cursor, image::ImageFormat::Png).ok()?;
-        } else {
+    /// Fast 2x2 bilinear debayering for Bayer raw sensor arrays
+    fn debayer_8bit(raw: &[u8], width: usize, height: usize, format: u32) -> Option<Vec<u8>> {
+        if raw.len() < width * height || width < 2 || height < 2 {
             return None;
         }
 
+        let mut rgb = vec![0u8; width * height * 3];
+
+        // Offsets determine sensor pattern at (y%2, x%2)
+        // RG8: (0,0)=R, (0,1)=G, (1,0)=G, (1,1)=B
+        // BG8: (0,0)=B, (0,1)=G, (1,0)=G, (1,1)=R
+        // GR8: (0,0)=G, (0,1)=R, (1,0)=B, (1,1)=G
+        // GB8: (0,0)=G, (0,1)=B, (1,0)=R, (1,1)=G
+
+        for y in 0..height {
+            let y_prev = if y > 0 { y - 1 } else { y + 1 };
+            let y_next = if y + 1 < height { y + 1 } else { y - 1 };
+
+            for x in 0..width {
+                let x_prev = if x > 0 { x - 1 } else { x + 1 };
+                let x_next = if x + 1 < width { x + 1 } else { x - 1 };
+
+                let idx = y * width + x;
+                let c = raw[idx] as u32;
+
+                let (r, g, b) = match format {
+                    ARV_PIXEL_FORMAT_BAYER_RG_8 => {
+                        match (y % 2, x % 2) {
+                            (0, 0) => {
+                                // Red pixel
+                                let r = c;
+                                let g = (raw[y_prev * width + x] as u32
+                                    + raw[y_next * width + x] as u32
+                                    + raw[y * width + x_prev] as u32
+                                    + raw[y * width + x_next] as u32)
+                                    / 4;
+                                let b = (raw[y_prev * width + x_prev] as u32
+                                    + raw[y_prev * width + x_next] as u32
+                                    + raw[y_next * width + x_prev] as u32
+                                    + raw[y_next * width + x_next] as u32)
+                                    / 4;
+                                (r, g, b)
+                            }
+                            (0, 1) => {
+                                // Green on Red row
+                                let g = c;
+                                let r = (raw[y * width + x_prev] as u32 + raw[y * width + x_next] as u32) / 2;
+                                let b = (raw[y_prev * width + x] as u32 + raw[y_next * width + x] as u32) / 2;
+                                (r, g, b)
+                            }
+                            (1, 0) => {
+                                // Green on Blue row
+                                let g = c;
+                                let b = (raw[y * width + x_prev] as u32 + raw[y * width + x_next] as u32) / 2;
+                                let r = (raw[y_prev * width + x] as u32 + raw[y_next * width + x] as u32) / 2;
+                                (r, g, b)
+                            }
+                            (1, 1) => {
+                                // Blue pixel
+                                let b = c;
+                                let g = (raw[y_prev * width + x] as u32
+                                    + raw[y_next * width + x] as u32
+                                    + raw[y * width + x_prev] as u32
+                                    + raw[y * width + x_next] as u32)
+                                    / 4;
+                                let r = (raw[y_prev * width + x_prev] as u32
+                                    + raw[y_prev * width + x_next] as u32
+                                    + raw[y_next * width + x_prev] as u32
+                                    + raw[y_next * width + x_next] as u32)
+                                    / 4;
+                                (r, g, b)
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                    ARV_PIXEL_FORMAT_BAYER_BG_8 => {
+                        match (y % 2, x % 2) {
+                            (0, 0) => {
+                                // Blue pixel
+                                let b = c;
+                                let g = (raw[y_prev * width + x] as u32
+                                    + raw[y_next * width + x] as u32
+                                    + raw[y * width + x_prev] as u32
+                                    + raw[y * width + x_next] as u32)
+                                    / 4;
+                                let r = (raw[y_prev * width + x_prev] as u32
+                                    + raw[y_prev * width + x_next] as u32
+                                    + raw[y_next * width + x_prev] as u32
+                                    + raw[y_next * width + x_next] as u32)
+                                    / 4;
+                                (r, g, b)
+                            }
+                            (0, 1) => {
+                                // Green on Blue row
+                                let g = c;
+                                let b = (raw[y * width + x_prev] as u32 + raw[y * width + x_next] as u32) / 2;
+                                let r = (raw[y_prev * width + x] as u32 + raw[y_next * width + x] as u32) / 2;
+                                (r, g, b)
+                            }
+                            (1, 0) => {
+                                // Green on Red row
+                                let g = c;
+                                let r = (raw[y * width + x_prev] as u32 + raw[y * width + x_next] as u32) / 2;
+                                let b = (raw[y_prev * width + x] as u32 + raw[y_next * width + x] as u32) / 2;
+                                (r, g, b)
+                            }
+                            (1, 1) => {
+                                // Red pixel
+                                let r = c;
+                                let g = (raw[y_prev * width + x] as u32
+                                    + raw[y_next * width + x] as u32
+                                    + raw[y * width + x_prev] as u32
+                                    + raw[y * width + x_next] as u32)
+                                    / 4;
+                                let b = (raw[y_prev * width + x_prev] as u32
+                                    + raw[y_prev * width + x_next] as u32
+                                    + raw[y_next * width + x_prev] as u32
+                                    + raw[y_next * width + x_next] as u32)
+                                    / 4;
+                                (r, g, b)
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                    _ => {
+                        // Default GR8 / GB8 simple interpolation
+                        (c, c, c)
+                    }
+                };
+
+                let out_idx = idx * 3;
+                rgb[out_idx] = r.min(255) as u8;
+                rgb[out_idx + 1] = g.min(255) as u8;
+                rgb[out_idx + 2] = b.min(255) as u8;
+            }
+        }
+
+        Some(rgb)
+    }
+
+    fn raw_buffer_to_png(
+        raw: &[u8],
+        width: u32,
+        height: u32,
+        pixel_format: u32,
+    ) -> Option<Vec<u8>> {
+        let dynamic_img = Self::raw_to_dynamic_image(raw, width, height, pixel_format)?;
+        let mut buf = Vec::new();
+        let mut cursor = Cursor::new(&mut buf);
+        dynamic_img.write_to(&mut cursor, image::ImageFormat::Png).ok()?;
         Some(buf)
     }
 
@@ -521,24 +763,9 @@ impl CameraService {
         raw: &[u8],
         width: u32,
         height: u32,
-        _pixel_format: u32,
+        pixel_format: u32,
     ) -> Option<Vec<u8>> {
-        let expected_mono = (width * height) as usize;
-        let expected_rgb = (width * height * 3) as usize;
-
-        let dynamic_img = if raw.len() >= expected_rgb {
-            let img: ImageBuffer<Rgb<u8>, Vec<u8>> =
-                ImageBuffer::from_raw(width, height, raw[..expected_rgb].to_vec())?;
-            image::DynamicImage::ImageRgb8(img)
-        } else if raw.len() >= expected_mono {
-            let img: ImageBuffer<Luma<u8>, Vec<u8>> =
-                ImageBuffer::from_raw(width, height, raw[..expected_mono].to_vec())?;
-            image::DynamicImage::ImageLuma8(img)
-        } else {
-            return None;
-        };
-
-        // Resize down to 800px width max for fast preview bandwidth over Wi-Fi
+        let dynamic_img = Self::raw_to_dynamic_image(raw, width, height, pixel_format)?;
         let resized = dynamic_img.resize(800, 600, image::imageops::FilterType::Nearest);
 
         let mut buf = Vec::new();

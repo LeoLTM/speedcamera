@@ -4,7 +4,7 @@ pub mod protocol;
 use crate::models::{PortInfo, SerialStatusPayload};
 use protocol::EspMessage;
 use std::io::{BufRead, BufReader, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
@@ -14,6 +14,7 @@ pub struct SerialService {
     mock_serial: Mutex<Option<mock::MockSerial>>,
     active_port: Mutex<Option<Box<dyn serialport::SerialPort>>>,
     active_path: Mutex<String>,
+    session_id: Arc<AtomicU64>,
     is_running: Arc<AtomicBool>,
     status_sender: broadcast::Sender<SerialStatusPayload>,
 }
@@ -27,6 +28,7 @@ impl SerialService {
             mock_serial: Mutex::new(None),
             active_port: Mutex::new(None),
             active_path: Mutex::new(String::new()),
+            session_id: Arc::new(AtomicU64::new(0)),
             is_running: Arc::new(AtomicBool::new(true)),
             status_sender: status_tx,
         });
@@ -97,13 +99,26 @@ impl SerialService {
             return;
         }
 
-        let mut current_path = self.active_path.lock().unwrap();
-        *current_path = port_path.to_string();
+        // Invalidate previous session and close previous port handles
+        let session = self.session_id.fetch_add(1, Ordering::SeqCst) + 1;
+        {
+            let mut current_path = self.active_path.lock().unwrap();
+            *current_path = port_path.to_string();
+            let mut port_guard = self.active_port.lock().unwrap();
+            *port_guard = None;
+        }
 
         let this = self.clone();
         let path = port_path.to_string();
 
         tokio::task::spawn_blocking(move || {
+            // Give OS 50ms to release the descriptor from any previous reader thread
+            std::thread::sleep(Duration::from_millis(50));
+
+            if this.session_id.load(Ordering::SeqCst) != session {
+                return;
+            }
+
             let builder = serialport::new(&path, 115_200).timeout(Duration::from_millis(500));
             match builder.open() {
                 Ok(port) => {
@@ -123,12 +138,15 @@ impl SerialService {
                     let mut reader = BufReader::new(reader_port);
                     let mut line_buf = String::new();
 
-                    while this.is_running.load(Ordering::SeqCst) {
+                    while this.is_running.load(Ordering::SeqCst)
+                        && this.session_id.load(Ordering::SeqCst) == session
+                    {
                         line_buf.clear();
                         match reader.read_line(&mut line_buf) {
                             Ok(0) => {
-                                // EOF / disconnected
-                                std::thread::sleep(Duration::from_millis(50));
+                                // EOF: Serial hardware disconnected or reset
+                                println!("[serial] EOF on {} (device disconnected)", path);
+                                break;
                             }
                             Ok(_) => {
                                 let trimmed = line_buf.trim();
@@ -137,31 +155,70 @@ impl SerialService {
                                 }
                             }
                             Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                                // Timeout is normal for non-blocking read
+                                // Expected timeout when idle
                             }
                             Err(e) => {
-                                println!("[serial] Read error: {}", e);
+                                println!("[serial] Read error on {}: {}", path, e);
                                 break;
                             }
                         }
                     }
 
-                    println!("[serial] Port {} closed", path);
-                    *this.active_port.lock().unwrap() = None;
-                    let _ = this.status_sender.send(SerialStatusPayload::Disconnected);
+                    // Only clean up state if this session is still the active one
+                    if this.session_id.load(Ordering::SeqCst) == session {
+                        println!("[serial] Port {} closed / disconnected", path);
+                        *this.active_port.lock().unwrap() = None;
+                        let _ = this.status_sender.send(SerialStatusPayload::Disconnected);
+
+                        // Trigger auto-reconnect if not explicitly closed by user
+                        let configured_path = this.active_path.lock().unwrap().clone();
+                        if !configured_path.is_empty() && configured_path == path {
+                            this.schedule_auto_reconnect(session, configured_path);
+                        }
+                    }
                 }
                 Err(e) => {
                     println!("[serial] Failed to open {}: {}", path, e);
-                    let _ = this.status_sender.send(SerialStatusPayload::Disconnected);
+                    if this.session_id.load(Ordering::SeqCst) == session {
+                        let _ = this.status_sender.send(SerialStatusPayload::Disconnected);
+                        let configured_path = this.active_path.lock().unwrap().clone();
+                        if !configured_path.is_empty() && configured_path == path {
+                            this.schedule_auto_reconnect(session, configured_path);
+                        }
+                    }
                 }
             }
         });
     }
 
+    fn schedule_auto_reconnect(self: &Arc<Self>, session: u64, path: String) {
+        let this = self.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+
+            if !this.is_running.load(Ordering::SeqCst)
+                || this.session_id.load(Ordering::SeqCst) != session
+            {
+                return;
+            }
+
+            let configured = this.active_path.lock().unwrap().clone();
+            if configured.is_empty() || configured != path {
+                return;
+            }
+
+            println!("[serial] Attempting auto-reconnect to {}...", path);
+            this.open_port(&path);
+        });
+    }
+
     pub fn close_port(&self) {
+        // Invalidate current session so reader thread terminates immediately
+        self.session_id.fetch_add(1, Ordering::SeqCst);
         *self.active_port.lock().unwrap() = None;
         *self.active_path.lock().unwrap() = String::new();
         let _ = self.status_sender.send(SerialStatusPayload::Disconnected);
+        println!("[serial] Port manually closed");
     }
 
     pub fn send_command(&self, json: &str) {
@@ -176,7 +233,7 @@ impl SerialService {
         if let Some(ref mut port) = *guard {
             let mut data = json.as_bytes().to_vec();
             data.push(b'\n');
-            if let Err(e) = port.write_all(&data) {
+            if let Err(e) = port.write_all(&data).and_then(|_| port.flush()) {
                 println!("[serial] Failed to write command: {}", e);
             }
         }

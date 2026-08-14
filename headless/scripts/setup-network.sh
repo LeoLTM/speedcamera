@@ -1,67 +1,139 @@
 #!/usr/bin/env bash
 set -e
 
+MODE="${1:-status}"
+
 echo "========================================================="
-echo " Speedcamera Network Configuration (Dual Subnet Setup)"
-echo "========================================================="
-echo ""
-echo " Architecture:"
-echo "  1. Camera LAN (eth0)   -> Static IP 192.168.1.100/24 (Subnet 192.168.1.0/24 for GigE camera)"
-echo "  2. Hotspot AP (wlan0)  -> Static IP 192.168.4.1/24   (Subnet 192.168.4.0/24 for Web UI clients)"
+echo " Speedcamera Network Manager"
 echo "========================================================="
 
-# Detect Ethernet Interface (eth0, end0, etc.)
+# Detect Ethernet Interface (eth0, end0, enp*, etc.)
 ETH_IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -E '^(eth|end|enp)' | head -n 1 || echo "eth0")
-# Detect Wi-Fi Interface (wlan0, wifi0, etc.)
+# Detect Wi-Fi Interface (wlan0, wifi0, wlp*, etc.)
 WIFI_IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -E '^(wlan|wifi|wlp)' | head -n 1 || echo "wlan0")
 
 echo "[*] Detected Interfaces:"
-echo "    Ethernet (Camera LAN): ${ETH_IFACE}"
-echo "    Wireless (Hotspot AP): ${WIFI_IFACE}"
+echo "    Ethernet (Camera LAN):    ${ETH_IFACE}"
+echo "    Wireless (Hotspot/Wi-Fi): ${WIFI_IFACE}"
 echo ""
 
-# 1. Configure Ethernet Camera LAN (192.168.1.100/24)
-echo "[1/2] Configuring Camera LAN on ${ETH_IFACE}..."
-echo "      Setting static IPv4: 192.168.1.100/24 (Camera subnet)..."
+# For modifying operations, request sudo privileges
+if [ "$MODE" != "status" ]; then
+  sudo -v || { echo "Error: Sudo privileges required to change network configuration." >&2; exit 1; }
+fi
 
-sudo nmcli connection delete "Speedcamera-CameraLAN" 2>/dev/null || true
+case "$MODE" in
+  field|ap)
+    echo ">>> Applying FIELD MODE (Standalone Offline Dual-Subnet):"
+    echo "    1. Camera LAN (${ETH_IFACE}) -> Static IP 192.168.1.100/24"
+    echo "    2. Hotspot AP (${WIFI_IFACE}) -> Static IP 192.168.4.1/24 (SSID: speedcamera)"
+    echo "    NOTE: In this mode, Pi operates standalone/offline."
+    echo ""
 
-sudo nmcli connection add type ethernet \
-  ifname "${ETH_IFACE}" \
-  con-name "Speedcamera-CameraLAN" \
-  autoconnect yes \
-  ipv4.method manual \
-  ipv4.addresses 192.168.1.100/24 \
-  ipv4.never-default yes
+    # Configure Ethernet Camera LAN
+    echo "[1/2] Configuring Camera LAN on ${ETH_IFACE}..."
+    sudo nmcli connection delete "Speedcamera-CameraLAN" 2>/dev/null || true
+    sudo nmcli connection add type ethernet \
+      ifname "${ETH_IFACE}" \
+      con-name "Speedcamera-CameraLAN" \
+      autoconnect yes \
+      ipv4.method manual \
+      ipv4.addresses 192.168.1.100/24 \
+      ipv4.never-default yes
+    sudo nmcli connection up "Speedcamera-CameraLAN" 2>/dev/null || echo "Note: Ethernet link active when camera cable is connected."
 
-sudo nmcli connection up "Speedcamera-CameraLAN" || echo "Note: Ethernet link will come up when camera cable is connected."
+    # Configure Wi-Fi Hotspot AP
+    echo "[2/2] Configuring Wi-Fi Hotspot AP on ${WIFI_IFACE}..."
+    SSID="speedcamera"
+    PASS="speedcamerapass"
+    sudo nmcli connection delete "Speedcamera-Hotspot" 2>/dev/null || true
+    sudo nmcli connection delete "Speedcamera-ClientWiFi" 2>/dev/null || true
+    sudo nmcli connection add type wifi \
+      ifname "${WIFI_IFACE}" \
+      con-name "Speedcamera-Hotspot" \
+      autoconnect yes \
+      ssid "${SSID}" \
+      mode ap \
+      802-11-wireless.band bg \
+      ipv4.method shared \
+      ipv4.addresses 192.168.4.1/24 \
+      wifi-sec.key-mgmt wpa-psk \
+      wifi-sec.psk "${PASS}"
+    sudo nmcli connection up "Speedcamera-Hotspot" 2>/dev/null || echo "Note: Hotspot initialized."
 
-# 2. Configure Wi-Fi Hotspot AP (192.168.4.1/24)
-echo ""
-echo "[2/2] Configuring Wi-Fi Hotspot AP on ${WIFI_IFACE}..."
-SSID="speedcamera"
-PASS="speedcamerapass"
+    echo ""
+    echo "========================================================="
+    echo " Field Mode Active!"
+    echo "  • Wi-Fi Hotspot: SSID '${SSID}' (Password: '${PASS}')"
+    echo "  • Web UI:        http://192.168.4.1:3000"
+    echo "  • Camera LAN:    http://192.168.1.100:3000"
+    echo "========================================================="
+    ;;
 
-sudo nmcli connection delete "Speedcamera-Hotspot" 2>/dev/null || true
+  internet|client|wifi)
+    WIFI_SSID="$2"
+    WIFI_PASS="$3"
+    if [ -z "$WIFI_SSID" ]; then
+      echo "Usage: $0 internet <Wi-Fi-SSID> [Wi-Fi-Password]"
+      echo "Example: $0 internet MyHomeWiFi SecretPassword123"
+      exit 1
+    fi
+    echo ">>> Switching to INTERNET / CLIENT MODE (for updates/provisioning)..."
+    echo "    Connecting ${WIFI_IFACE} to Wi-Fi SSID: ${WIFI_SSID}"
 
-sudo nmcli connection add type wifi \
-  ifname "${WIFI_IFACE}" \
-  con-name "Speedcamera-Hotspot" \
-  autoconnect yes \
-  ssid "${SSID}" \
-  mode ap \
-  802-11-wireless.band bg \
-  ipv4.method shared \
-  ipv4.addresses 192.168.4.1/24 \
-  wifi-sec.key-mgmt wpa-psk \
-  wifi-sec.psk "${PASS}"
+    sudo nmcli connection delete "Speedcamera-Hotspot" 2>/dev/null || true
+    sudo nmcli connection delete "Speedcamera-ClientWiFi" 2>/dev/null || true
 
-sudo nmcli connection up "Speedcamera-Hotspot" || echo "Note: Run 'sudo nmcli connection up Speedcamera-Hotspot' once wireless interface is ready."
+    if [ -n "$WIFI_PASS" ]; then
+      sudo nmcli dev wifi connect "${WIFI_SSID}" password "${WIFI_PASS}" ifname "${WIFI_IFACE}" name "Speedcamera-ClientWiFi"
+    else
+      sudo nmcli dev wifi connect "${WIFI_SSID}" ifname "${WIFI_IFACE}" name "Speedcamera-ClientWiFi"
+    fi
 
-echo ""
-echo "========================================================="
-echo " Network setup complete!"
-echo "  • Industrial Camera LAN: ${ETH_IFACE} @ 192.168.1.100"
-echo "  • Wi-Fi Access Point:    ${WIFI_IFACE} @ 192.168.4.1 (SSID: ${SSID})"
-echo "  • Web UI Accessible at:  http://192.168.4.1:3000"
-echo "========================================================="
+    echo ""
+    echo ">>> Checking internet connectivity..."
+    if ping -c 2 -W 3 1.1.1.1 &>/dev/null; then
+      echo " Connected to Internet successfully!"
+    else
+      echo " Wi-Fi connected, but ping to 1.1.1.1 failed. Check gateway/DNS."
+    fi
+    ;;
+
+  dhcp|reset)
+    echo ">>> Reverting Ethernet and Wi-Fi to standard DHCP..."
+    sudo nmcli connection delete "Speedcamera-CameraLAN" 2>/dev/null || true
+    sudo nmcli connection delete "Speedcamera-Hotspot" 2>/dev/null || true
+    sudo nmcli connection delete "Speedcamera-ClientWiFi" 2>/dev/null || true
+    sudo nmcli connection delete "Speedcamera-Ethernet-DHCP" 2>/dev/null || true
+
+    sudo nmcli connection add type ethernet ifname "${ETH_IFACE}" con-name "Speedcamera-Ethernet-DHCP" autoconnect yes ipv4.method auto 2>/dev/null || true
+    sudo nmcli connection up "Speedcamera-Ethernet-DHCP" 2>/dev/null || true
+    echo "Interfaces set to standard DHCP."
+    ;;
+
+  status)
+    echo "--- Active Network Connections ---"
+    nmcli connection show --active || true
+    echo ""
+    echo "--- IP Addresses ---"
+    ip -br addr show || true
+    echo ""
+    echo "--- Internet Reachability ---"
+    if ping -c 1 -W 2 1.1.1.1 &>/dev/null; then
+      echo "Status: ONLINE (Internet reachable)"
+    else
+      echo "Status: OFFLINE (Isolated field mode or no route)"
+    fi
+    ;;
+
+  *)
+    echo "Usage: $0 {field|internet|dhcp|status}"
+    echo ""
+    echo "Commands:"
+    echo "  field                       Set Camera LAN (192.168.1.100) + Hotspot AP (192.168.4.1) [Offline]"
+    echo "  internet <SSID> [PASS]      Connect Wi-Fi to home/lab router for updates [Online]"
+    echo "  dhcp                        Reset ethernet & Wi-Fi to standard DHCP"
+    echo "  status                      Check current IP addresses and connectivity"
+    exit 1
+    ;;
+esac

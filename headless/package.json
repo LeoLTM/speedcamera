@@ -13,6 +13,9 @@
     "start:mock": "MOCK_MODE=true vite build && MOCK_MODE=true bun src/server/index.ts",
     "serve": "bun src/server/index.ts",
     "serve:mock": "MOCK_MODE=true bun src/server/index.ts",
+    "install:pi": "./scripts/install-remote.sh",
+    "deploy:pi": "./scripts/deploy-to-pi.sh",
+    "cleanup:pi": "./scripts/cleanup-remote.sh",
     "setup:esptool": "mkdir -p resources && curl -fsSL https://github.com/espressif/esptool/releases/download/v5.2.0/esptool-v5.2.0-linux-amd64.tar.gz | tar -xz --wildcards '*/esptool' --strip-components=1 && mv esptool resources/esptool && chmod +x resources/esptool"
   },
   "dependencies": {

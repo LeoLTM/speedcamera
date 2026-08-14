@@ -25,12 +25,15 @@ struct Args {
 
     #[arg(short, long, help = "HTTP server port (default: 3000)")]
     port: Option<u16>,
+
+    #[arg(short = 'H', long, help = "HTTP server bind address (default: 0.0.0.0)")]
+    host: Option<String>,
 }
 
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
     let args = Args::parse();
-    let config = AppConfig::new(args.mock, args.port);
+    let config = AppConfig::new(args.mock, args.port, args.host);
 
     println!("─────────────────────────────────────────────────────────────────");
     println!("  ⚡ Speedcamera Headless Daemon (Rust & Rocket)");

@@ -35,14 +35,14 @@ pub fn get_asset(path: &str) -> Option<EmbeddedFile> {
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("");
-        let content_type = ContentType::from_extension(ext).unwrap_or(ContentType::HTML);
+        let content_type = ContentType::from_extension(ext).unwrap_or(ContentType::Bytes);
         Some(EmbeddedFile {
             data: file.data.into_owned(),
             content_type,
         })
-    } else if let Some(index) = Asset::get("index.html") {
-        // SPA Fallback: Return index.html for client-side routing
-        Some(EmbeddedFile {
+    } else if !target.contains('.') {
+        // SPA Fallback: Return index.html only for client-side navigation routes (routes without file extensions)
+        Asset::get("index.html").map(|index| EmbeddedFile {
             data: index.data.into_owned(),
             content_type: ContentType::HTML,
         })

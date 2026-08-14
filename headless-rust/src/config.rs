@@ -11,8 +11,10 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    pub fn new(mock: bool, port_override: Option<u16>) -> Self {
-        let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    pub fn new(mock: bool, port_override: Option<u16>, host_override: Option<String>) -> Self {
+        let host = host_override
+            .or_else(|| std::env::var("HOST").ok())
+            .unwrap_or_else(|| "0.0.0.0".to_string());
         let port = port_override.unwrap_or_else(|| {
             std::env::var("PORT")
                 .ok()

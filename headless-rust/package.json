@@ -9,7 +9,12 @@
     "dev:all": "concurrently \"bun run dev\" \"cargo run -- --mock\"",
     "build": "vite build",
     "build:all": "vite build && cargo build --release",
-    "serve": "cargo run --release"
+    "serve": "cargo run --release",
+    "install:pi": "./scripts/install-remote.sh",
+    "deploy:pi": "./scripts/deploy-to-pi.sh",
+    "cleanup:pi": "./scripts/cleanup-remote.sh",
+    "test:server": "bun ./scripts/test-server.ts",
+    "setup:esptool": "mkdir -p resources && curl -fsSL https://github.com/espressif/esptool/releases/download/v5.2.0/esptool-v5.2.0-linux-amd64.tar.gz | tar -xz --wildcards '*/esptool' --strip-components=1 && mv esptool resources/esptool && chmod +x resources/esptool"
   },
   "dependencies": {
     "@fontsource-variable/figtree": "^5.2.10",

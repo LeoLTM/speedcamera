@@ -162,6 +162,7 @@ impl CameraService {
                 return;
             }
 
+            // Configure packet size & delay if GigE Vision device
             if arv_camera_is_gv_device(cam) != 0 {
                 let packet_size = arv_camera_gv_auto_packet_size(cam, &mut err);
                 println!("[camera] GigE Vision auto packet size set to: {} bytes", packet_size);
@@ -172,40 +173,72 @@ impl CameraService {
                 println!("[camera] GigE Vision GevSCPD packet delay set to: 2000");
             }
 
-            // Configure Trigger mode & strobe
-            Self::set_feature_str_internal(cam, "AcquisitionMode", "Continuous");
-            Self::set_feature_str_internal(cam, "TriggerSelector", "FrameStart");
-            Self::set_feature_str_internal(cam, "TriggerMode", "On");
-            Self::set_feature_str_internal(cam, "TriggerSource", "Software");
+            // Set PixelFormat
+            if Self::is_feature_available_internal(cam, "PixelFormat") {
+                Self::set_pixel_format_internal(cam, &settings.pixel_format);
+            }
 
-            Self::set_feature_str_internal(cam, "LineSelector", "Line1");
-            Self::set_feature_str_internal(cam, "LineMode", "Strobe");
-            Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
-            Self::set_feature_bool_internal(cam, "StrobeEnable", true);
-            Self::set_feature_int_internal(
-                cam,
-                "StrobeLineDuration",
-                settings.strobe_line_duration as i64,
-            );
+            // ── Trigger Mode & Acquisition ────────────────────────────────────
+            // Crucial: Set TriggerMode = On and TriggerSource = Software so camera
+            // does not free-run upon starting acquisition (which would strobe the flash forever).
+            if Self::is_feature_available_internal(cam, "AcquisitionMode") {
+                Self::set_feature_str_internal(cam, "AcquisitionMode", "Continuous");
+            }
+            if Self::is_feature_available_internal(cam, "TriggerSelector") {
+                Self::set_feature_str_internal(cam, "TriggerSelector", "FrameStart");
+            }
+            if Self::is_feature_available_internal(cam, "TriggerMode") {
+                Self::set_feature_str_internal(cam, "TriggerMode", "On");
+                Self::set_feature_str_internal(cam, "TriggerSource", "Software");
+            }
 
-            // Exposure & Gain
+            // ── Line & Strobe Flash Configuration ──────────────────────────────
+            // Configure Line1 as Strobe output driven by ExposureActive
+            if Self::is_feature_available_internal(cam, "LineSelector") {
+                Self::set_feature_str_internal(cam, "LineSelector", "Line1");
+                Self::set_feature_str_internal(cam, "LineMode", "Strobe");
+                Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
+                Self::set_feature_int_internal(cam, "LineInverter", 0);
+                Self::set_feature_int_internal(cam, "LineDebouncerTime", 50);
+
+                if Self::is_feature_available_internal(cam, "StrobeEnable") {
+                    if !Self::set_feature_bool_internal(cam, "StrobeEnable", true) {
+                        Self::set_feature_int_internal(cam, "StrobeEnable", 1);
+                    }
+                    Self::set_feature_int_internal(
+                        cam,
+                        "StrobeLineDuration",
+                        settings.strobe_line_duration as i64,
+                    );
+                    Self::set_feature_int_internal(cam, "StrobeLineDelay", 0);
+                    Self::set_feature_int_internal(cam, "StrobeLinePreDelay", 0);
+                }
+            }
+
+            // ── Exposure & Gain ───────────────────────────────────────────────
             Self::set_feature_str_internal(cam, "ExposureAuto", &settings.exposure_auto);
             if settings.exposure_auto == "Off" {
-                Self::set_feature_float_internal(cam, "ExposureTime", settings.camera_exposure);
+                Self::set_exposure_internal(cam, settings.camera_exposure);
             }
 
             Self::set_feature_str_internal(cam, "GainAuto", &settings.gain_auto);
             if settings.gain_auto == "Off" {
-                Self::set_feature_float_internal(cam, "Gain", settings.camera_gain);
+                Self::set_gain_internal(cam, settings.camera_gain);
             }
 
             if settings.frame_rate > 0.0 {
                 Self::set_feature_bool_internal(cam, "AcquisitionFrameRateEnable", true);
-                Self::set_feature_float_internal(
-                    cam,
-                    "AcquisitionFrameRate",
-                    settings.frame_rate,
-                );
+                Self::set_frame_rate_internal(cam, settings.frame_rate);
+            }
+
+            if settings.camera_width > 0 {
+                Self::set_feature_int_internal(cam, "Width", settings.camera_width);
+            }
+            if settings.camera_height > 0 {
+                Self::set_feature_int_internal(cam, "Height", settings.camera_height);
+            }
+            if settings.black_level >= 0.0 {
+                Self::set_feature_float_internal(cam, "BlackLevel", settings.black_level);
             }
 
             // Create Stream with 24 pre-allocated buffers for robust throughput without underruns
@@ -216,12 +249,18 @@ impl CameraService {
                 return;
             }
 
-            let payload_size = Self::get_feature_int_internal(cam, "PayloadSize").max(1024 * 1024);
-            for _ in 0..24 {
-                let buf = arv_buffer_new_allocate(payload_size as usize);
-                arv_stream_push_buffer(stream, buf);
+            let mut payload_err = null_mut();
+            let payload_size = (arv_camera_get_payload(cam, &mut payload_err) as usize)
+                .max(Self::get_feature_int_internal(cam, "PayloadSize") as usize)
+                .max(1024 * 1024);
+            if !payload_err.is_null() {
+                g_error_free(payload_err);
             }
 
+            for _ in 0..24 {
+                let buf = arv_buffer_new_allocate(payload_size);
+                arv_stream_push_buffer(stream, buf);
+            }
 
             // ── Start Acquisition ─────────────────────────────────────────────
             // Critical: Tells camera and Aravis engine to start receiving packets
@@ -313,13 +352,8 @@ impl CameraService {
                 }
 
                 // Software trigger
-                let mut err = null_mut();
-                let trigger_cmd = CString::new("TriggerSoftware").unwrap();
-                arv_camera_execute_command(cam, trigger_cmd.as_ptr(), &mut err);
-                if !err.is_null() {
-                    let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                    println!("[camera] TriggerSoftware failed: {}", msg);
-                    g_error_free(err);
+                if Self::is_feature_available_internal(cam, "TriggerSoftware") {
+                    Self::execute_command_internal(cam, "TriggerSoftware");
                 }
 
                 // Wait up to 1.5 seconds for completed frame
@@ -396,21 +430,27 @@ impl CameraService {
                         }
                     }
 
-                    // Disable strobe during setup preview
+                    // Disable strobe during setup preview so preview stream does not trigger flash
                     Self::set_feature_bool_internal(cam, "StrobeEnable", false);
                     Self::set_feature_int_internal(cam, "StrobeEnable", 0);
-                    Self::set_feature_str_internal(cam, "LineSelector", "Line1");
-                    Self::set_feature_str_internal(cam, "LineSource", "Off");
-                    Self::set_feature_str_internal(cam, "LineSelector", "Line2");
-                    Self::set_feature_str_internal(cam, "LineSource", "Off");
+                    if Self::is_feature_available_internal(cam, "LineSelector") {
+                        for line in ["Line1", "Line2"] {
+                            Self::set_feature_str_internal(cam, "LineSelector", line);
+                            Self::set_feature_str_internal(cam, "LineSource", "Off");
+                        }
+                    }
 
                     // Set free-running stream features (capped to 10 FPS to prevent GigE flood)
-                    Self::set_feature_str_internal(cam, "TriggerSelector", "FrameStart");
-                    Self::set_feature_str_internal(cam, "TriggerMode", "Off");
+                    if Self::is_feature_available_internal(cam, "TriggerSelector") {
+                        Self::set_feature_str_internal(cam, "TriggerSelector", "FrameStart");
+                    }
+                    if Self::is_feature_available_internal(cam, "TriggerMode") {
+                        Self::set_feature_str_internal(cam, "TriggerMode", "Off");
+                    }
                     Self::set_feature_str_internal(cam, "ExposureAuto", "Continuous");
                     Self::set_feature_str_internal(cam, "GainAuto", "Continuous");
                     Self::set_feature_bool_internal(cam, "AcquisitionFrameRateEnable", true);
-                    Self::set_feature_float_internal(cam, "AcquisitionFrameRate", 10.0);
+                    Self::set_frame_rate_internal(cam, 10.0);
 
                     unsafe {
                         let mut err = null_mut();
@@ -529,35 +569,49 @@ impl CameraService {
                 }
 
                 // Restore trigger mode & strobe
-                Self::set_feature_str_internal(cam, "TriggerSelector", "FrameStart");
-                Self::set_feature_str_internal(cam, "TriggerMode", "On");
-                Self::set_feature_str_internal(cam, "TriggerSource", "Software");
+                if Self::is_feature_available_internal(cam, "TriggerSelector") {
+                    Self::set_feature_str_internal(cam, "TriggerSelector", "FrameStart");
+                }
+                if Self::is_feature_available_internal(cam, "TriggerMode") {
+                    Self::set_feature_str_internal(cam, "TriggerMode", "On");
+                    Self::set_feature_str_internal(cam, "TriggerSource", "Software");
+                }
 
-                Self::set_feature_str_internal(cam, "LineSelector", "Line1");
-                Self::set_feature_str_internal(cam, "LineMode", "Strobe");
-                Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
-                Self::set_feature_bool_internal(cam, "StrobeEnable", true);
-                Self::set_feature_int_internal(
-                    cam,
-                    "StrobeLineDuration",
-                    settings.strobe_line_duration as i64,
-                );
+                if Self::is_feature_available_internal(cam, "LineSelector") {
+                    Self::set_feature_str_internal(cam, "LineSelector", "Line1");
+                    Self::set_feature_str_internal(cam, "LineMode", "Strobe");
+                    Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
+                    Self::set_feature_int_internal(cam, "LineInverter", 0);
+                    Self::set_feature_int_internal(cam, "LineDebouncerTime", 50);
+
+                    if Self::is_feature_available_internal(cam, "StrobeEnable") {
+                        if !Self::set_feature_bool_internal(cam, "StrobeEnable", true) {
+                            Self::set_feature_int_internal(cam, "StrobeEnable", 1);
+                        }
+                        Self::set_feature_int_internal(
+                            cam,
+                            "StrobeLineDuration",
+                            settings.strobe_line_duration as i64,
+                        );
+                        Self::set_feature_int_internal(cam, "StrobeLineDelay", 0);
+                        Self::set_feature_int_internal(cam, "StrobeLinePreDelay", 0);
+                    }
+                }
 
                 // Restore exposure & gain
                 Self::set_feature_str_internal(cam, "ExposureAuto", &settings.exposure_auto);
                 if settings.exposure_auto == "Off" {
-                    Self::set_feature_float_internal(cam, "ExposureTime", settings.camera_exposure);
+                    Self::set_exposure_internal(cam, settings.camera_exposure);
                 }
                 Self::set_feature_str_internal(cam, "GainAuto", &settings.gain_auto);
                 if settings.gain_auto == "Off" {
-                    Self::set_feature_float_internal(cam, "Gain", settings.camera_gain);
+                    Self::set_gain_internal(cam, settings.camera_gain);
                 }
                 if settings.frame_rate > 0.0 {
-                    Self::set_feature_float_internal(
-                        cam,
-                        "AcquisitionFrameRate",
-                        settings.frame_rate,
-                    );
+                    Self::set_feature_bool_internal(cam, "AcquisitionFrameRateEnable", true);
+                    Self::set_frame_rate_internal(cam, settings.frame_rate);
+                } else {
+                    Self::set_feature_bool_internal(cam, "AcquisitionFrameRateEnable", false);
                 }
 
                 unsafe {
@@ -573,7 +627,23 @@ impl CameraService {
         let _ = self.status_sender.send(self.get_status());
     }
 
-    pub fn apply_mfs_config(&self, mfs_content: &str) -> MfsConfigResult {
+    pub fn save_user_set(&self, user_set_name: &str, set_as_default: bool) -> bool {
+        if self.mock_mode {
+            return true;
+        }
+        let cam = *self.camera_ptr.lock().unwrap();
+        if cam.is_null() {
+            return false;
+        }
+        Self::set_feature_str_internal(cam, "UserSetSelector", user_set_name);
+        Self::execute_command_internal(cam, "UserSetSave");
+        if set_as_default {
+            Self::set_feature_str_internal(cam, "UserSetDefault", user_set_name);
+        }
+        true
+    }
+
+    pub fn apply_mfs_config(&self, mfs_content: &str, save_as_default: bool) -> MfsConfigResult {
         let mut applied = Vec::new();
         let mut failed = Vec::new();
 
@@ -592,30 +662,62 @@ impl CameraService {
             return MfsConfigResult { applied, failed };
         }
 
+        let mut pending: Vec<(String, String)> = Vec::new();
         for line in mfs_content.lines() {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
 
-            if let Some((k, v)) = line.split_once('=') {
-                let key = k.trim();
-                let val = v.trim();
-
-                let ok = if let Ok(int_val) = val.parse::<i64>() {
-                    Self::set_feature_int_internal(cam, key, int_val)
-                } else if let Ok(float_val) = val.parse::<f64>() {
-                    Self::set_feature_float_internal(cam, key, float_val)
+            let pair = if let Some((k, v)) = line.split_once('=') {
+                Some((k.trim().to_string(), v.trim().to_string()))
+            } else {
+                let mut parts = line.split_whitespace();
+                if let Some(feature) = parts.next() {
+                    let value = parts.collect::<Vec<_>>().join(" ");
+                    if !value.is_empty() {
+                        Some((feature.to_string(), value))
+                    } else {
+                        None
+                    }
                 } else {
-                    Self::set_feature_str_internal(cam, key, val)
-                };
+                    None
+                }
+            };
 
-                if ok {
-                    applied.push(line.to_string());
+            if let Some((k, v)) = pair {
+                pending.push((k, v));
+            }
+        }
+
+        // Multi-pass application (up to 3 passes to resolve GenICam feature dependencies)
+        for _pass in 0..3 {
+            let mut failed_this_pass = Vec::new();
+            for (feature, value) in pending {
+                if Self::set_feature_str_internal(cam, &feature, &value) {
+                    applied.push(format!("{}\t{}", feature, value));
                 } else {
-                    failed.push(line.to_string());
+                    failed_this_pass.push((feature, value));
                 }
             }
+
+            if failed_this_pass.len() == pending.len() {
+                pending = failed_this_pass;
+                break;
+            }
+
+            pending = failed_this_pass;
+            if pending.is_empty() {
+                break;
+            }
+        }
+
+        for (feature, value) in pending {
+            failed.push(format!("{}\t{}", feature, value));
+        }
+
+        if save_as_default {
+            self.save_user_set("UserSet1", true);
         }
 
         MfsConfigResult { applied, failed }
@@ -625,7 +727,7 @@ impl CameraService {
         if !self.mock_mode {
             let cam = *self.camera_ptr.lock().unwrap();
             if !cam.is_null() {
-                Self::set_feature_float_internal(cam, "ExposureTime", val);
+                Self::set_exposure_internal(cam, val);
             }
         }
     }
@@ -634,7 +736,7 @@ impl CameraService {
         if !self.mock_mode {
             let cam = *self.camera_ptr.lock().unwrap();
             if !cam.is_null() {
-                Self::set_feature_float_internal(cam, "Gain", val);
+                Self::set_gain_internal(cam, val);
             }
         }
     }
@@ -643,6 +745,7 @@ impl CameraService {
         if !self.mock_mode {
             let cam = *self.camera_ptr.lock().unwrap();
             if !cam.is_null() {
+                Self::set_feature_str_internal(cam, "LineSelector", "Line1");
                 Self::set_feature_int_internal(cam, "StrobeLineDuration", val);
             }
         }
@@ -652,15 +755,7 @@ impl CameraService {
         if !self.mock_mode {
             let cam = *self.camera_ptr.lock().unwrap();
             if !cam.is_null() {
-                if format == "Color" {
-                    for fmt in ["BayerBG8", "BayerRG8", "RGB8Packed", "RGB8"] {
-                        if Self::set_feature_str_internal(cam, "PixelFormat", fmt) {
-                            break;
-                        }
-                    }
-                } else {
-                    Self::set_feature_str_internal(cam, "PixelFormat", "Mono8");
-                }
+                Self::set_pixel_format_internal(cam, format);
             }
         }
     }
@@ -1003,8 +1098,58 @@ impl CameraService {
     }
 
 
-    fn set_feature_str_internal(cam: *mut ArvCamera, feature: &str, value: &str) -> bool {
+    pub fn is_feature_available_internal(cam: *mut ArvCamera, feature: &str) -> bool {
+        if cam.is_null() {
+            return false;
+        }
         unsafe {
+            let f_cstr = match CString::new(feature) {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+            let mut err = null_mut();
+            let res = arv_camera_is_feature_available(cam, f_cstr.as_ptr(), &mut err);
+            if !err.is_null() {
+                g_error_free(err);
+                false
+            } else {
+                res != 0
+            }
+        }
+    }
+
+    pub fn execute_command_internal(cam: *mut ArvCamera, command: &str) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        unsafe {
+            let cmd_cstr = match CString::new(command) {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+            let mut err = null_mut();
+            arv_camera_execute_command(cam, cmd_cstr.as_ptr(), &mut err);
+            if !err.is_null() {
+                let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                println!("[camera] Warning: execute_command({}) failed: {}", command, msg);
+                g_error_free(err);
+                false
+            } else {
+                println!("[camera] execute_command({}) succeeded", command);
+                true
+            }
+        }
+    }
+
+    fn set_feature_str_internal(cam: *mut ArvCamera, feature: &str, value: &str) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        unsafe {
+            let dev = arv_camera_get_device(cam);
+            if dev.is_null() {
+                return false;
+            }
             let f_cstr = match CString::new(feature) {
                 Ok(s) => s,
                 Err(_) => return false,
@@ -1014,85 +1159,239 @@ impl CameraService {
                 Err(_) => return false,
             };
             let mut err = null_mut();
-            arv_camera_set_string(cam, f_cstr.as_ptr(), v_cstr.as_ptr(), &mut err);
+            arv_device_set_string_feature_value(dev, f_cstr.as_ptr(), v_cstr.as_ptr(), &mut err);
             if !err.is_null() {
+                let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                println!("[camera] Warning: set_feature_str({}, {}) failed: {}", feature, value, msg);
                 g_error_free(err);
                 false
             } else {
+                println!("[camera] set_feature_str({}, {}) succeeded", feature, value);
                 true
+            }
+        }
+    }
+
+    fn get_feature_str_internal(cam: *mut ArvCamera, feature: &str) -> Option<String> {
+        if cam.is_null() {
+            return None;
+        }
+        unsafe {
+            let dev = arv_camera_get_device(cam);
+            if dev.is_null() {
+                return None;
+            }
+            let f_cstr = match CString::new(feature) {
+                Ok(s) => s,
+                Err(_) => return None,
+            };
+            let mut err = null_mut();
+            let res_ptr = arv_device_get_string_feature_value(dev, f_cstr.as_ptr(), &mut err);
+            if !err.is_null() {
+                g_error_free(err);
+                None
+            } else if !res_ptr.is_null() {
+                Some(CStr::from_ptr(res_ptr).to_string_lossy().to_string())
+            } else {
+                None
             }
         }
     }
 
     fn set_feature_int_internal(cam: *mut ArvCamera, feature: &str, value: i64) -> bool {
-        unsafe {
-            let f_cstr = match CString::new(feature) {
-                Ok(s) => s,
-                Err(_) => return false,
-            };
-            let mut err = null_mut();
-            arv_camera_set_integer(cam, f_cstr.as_ptr(), value, &mut err);
-            if !err.is_null() {
-                g_error_free(err);
-                false
-            } else {
-                true
-            }
+        if cam.is_null() {
+            return false;
         }
-    }
-
-    fn set_feature_float_internal(cam: *mut ArvCamera, feature: &str, value: f64) -> bool {
         unsafe {
-            let f_cstr = match CString::new(feature) {
-                Ok(s) => s,
-                Err(_) => return false,
-            };
-            let mut err = null_mut();
-            arv_camera_set_float(cam, f_cstr.as_ptr(), value, &mut err);
-            if !err.is_null() {
-                g_error_free(err);
-                false
-            } else {
-                true
+            let dev = arv_camera_get_device(cam);
+            if dev.is_null() {
+                return false;
             }
-        }
-    }
-
-    fn set_feature_bool_internal(cam: *mut ArvCamera, feature: &str, value: bool) -> bool {
-        unsafe {
             let f_cstr = match CString::new(feature) {
                 Ok(s) => s,
                 Err(_) => return false,
             };
             let mut err = null_mut();
-            arv_camera_set_boolean(
-                cam,
-                f_cstr.as_ptr(),
-                if value { 1 } else { 0 },
-                &mut err,
-            );
+            arv_device_set_integer_feature_value(dev, f_cstr.as_ptr(), value, &mut err);
             if !err.is_null() {
+                let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                println!("[camera] Warning: set_feature_int({}, {}) failed: {}", feature, value, msg);
                 g_error_free(err);
                 false
             } else {
+                println!("[camera] set_feature_int({}, {}) succeeded", feature, value);
                 true
             }
         }
     }
 
     fn get_feature_int_internal(cam: *mut ArvCamera, feature: &str) -> i64 {
+        if cam.is_null() {
+            return 0;
+        }
         unsafe {
+            let dev = arv_camera_get_device(cam);
+            if dev.is_null() {
+                return 0;
+            }
             let f_cstr = match CString::new(feature) {
                 Ok(s) => s,
                 Err(_) => return 0,
             };
             let mut err = null_mut();
-            let res = arv_camera_get_integer(cam, f_cstr.as_ptr(), &mut err);
+            let res = arv_device_get_integer_feature_value(dev, f_cstr.as_ptr(), &mut err);
             if !err.is_null() {
                 g_error_free(err);
                 0
             } else {
                 res
+            }
+        }
+    }
+
+    fn set_feature_float_internal(cam: *mut ArvCamera, feature: &str, value: f64) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        unsafe {
+            let dev = arv_camera_get_device(cam);
+            if dev.is_null() {
+                return false;
+            }
+            let f_cstr = match CString::new(feature) {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+            let mut err = null_mut();
+            arv_device_set_float_feature_value(dev, f_cstr.as_ptr(), value, &mut err);
+            if !err.is_null() {
+                let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                println!("[camera] Warning: set_feature_float({}, {}) failed: {}", feature, value, msg);
+                g_error_free(err);
+                false
+            } else {
+                println!("[camera] set_feature_float({}, {}) succeeded", feature, value);
+                true
+            }
+        }
+    }
+
+    fn set_feature_bool_internal(cam: *mut ArvCamera, feature: &str, value: bool) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        unsafe {
+            let dev = arv_camera_get_device(cam);
+            if dev.is_null() {
+                return false;
+            }
+            let f_cstr = match CString::new(feature) {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+            let mut err = null_mut();
+            arv_device_set_boolean_feature_value(
+                dev,
+                f_cstr.as_ptr(),
+                if value { 1 } else { 0 },
+                &mut err,
+            );
+            if !err.is_null() {
+                let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                println!("[camera] Warning: set_feature_bool({}, {}) failed: {}", feature, value, msg);
+                g_error_free(err);
+                false
+            } else {
+                println!("[camera] set_feature_bool({}, {}) succeeded", feature, value);
+                true
+            }
+        }
+    }
+
+    fn set_exposure_internal(cam: *mut ArvCamera, us: f64) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        unsafe {
+            let mut err = null_mut();
+            arv_camera_set_exposure_time(cam, us, &mut err);
+            if !err.is_null() {
+                let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                println!("[camera] Warning: arv_camera_set_exposure_time({}) failed: {}", us, msg);
+                g_error_free(err);
+                false
+            } else {
+                println!("[camera] Set exposure time to {} µs", us);
+                true
+            }
+        }
+    }
+
+    fn set_gain_internal(cam: *mut ArvCamera, gain: f64) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        unsafe {
+            let mut err = null_mut();
+            arv_camera_set_gain(cam, gain, &mut err);
+            if !err.is_null() {
+                let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                println!("[camera] Warning: arv_camera_set_gain({}) failed: {}", gain, msg);
+                g_error_free(err);
+                false
+            } else {
+                println!("[camera] Set gain to {}", gain);
+                true
+            }
+        }
+    }
+
+    fn set_frame_rate_internal(cam: *mut ArvCamera, fps: f64) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        unsafe {
+            let mut err = null_mut();
+            arv_camera_set_frame_rate(cam, fps, &mut err);
+            if !err.is_null() {
+                let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                println!("[camera] Warning: arv_camera_set_frame_rate({}) failed: {}", fps, msg);
+                g_error_free(err);
+                false
+            } else {
+                println!("[camera] Set frame rate to {} FPS", fps);
+                true
+            }
+        }
+    }
+
+    fn set_pixel_format_internal(cam: *mut ArvCamera, format: &str) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        if format == "Color" {
+            let fallbacks = [
+                "BayerBG8",
+                "BayerRG8",
+                "BayerGR8",
+                "BayerGB8",
+                "RGB8Packed",
+                "RGB8",
+            ];
+            for fmt in fallbacks {
+                if Self::set_feature_str_internal(cam, "PixelFormat", fmt) {
+                    println!("[camera] Set PixelFormat to {}", fmt);
+                    return true;
+                }
+            }
+            println!("[camera] Failed to set PixelFormat for Color");
+            false
+        } else {
+            if Self::set_feature_str_internal(cam, "PixelFormat", "Mono8") {
+                println!("[camera] Set PixelFormat to Mono8");
+                true
+            } else {
+                false
             }
         }
     }

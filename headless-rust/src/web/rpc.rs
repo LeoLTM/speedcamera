@@ -415,7 +415,8 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
 
         "applyMfsConfig" => {
             let mfs = params["mfsContent"].as_str().ok_or("Missing mfsContent")?;
-            let res = ctx.camera.apply_mfs_config(mfs);
+            let save_default = params["saveAsDefault"].as_bool().unwrap_or(false);
+            let res = ctx.camera.apply_mfs_config(mfs, save_default);
             Ok(serde_json::to_value(res).unwrap())
         }
 

@@ -114,6 +114,10 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
     } else {
         if (key === "strobeLineDuration") {
             await getRpc().request.setCameraStrobeDuration({ value });
+        } else if (key === "cameraExposure") {
+            await getRpc().request.setCameraExposure({ value });
+        } else if (key === "cameraGain") {
+            await getRpc().request.setCameraGain({ value });
         } else {
             await getRpc().request.setCameraFeatureInt({ feature: key.charAt(0).toUpperCase() + key.slice(1), value });
         }

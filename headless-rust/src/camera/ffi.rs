@@ -3,6 +3,7 @@
 use std::ffi::{c_char, c_void};
 
 pub enum ArvCamera {}
+pub enum ArvDevice {}
 pub enum ArvStream {}
 pub enum ArvBuffer {}
 
@@ -90,71 +91,91 @@ unsafe extern "C" {
     pub fn arv_get_device_serial_nbr(index: u32) -> *const c_char;
     pub fn arv_get_device_address(index: u32) -> *const c_char;
 
+    // ----- ArvCamera: construction & info -----
     pub fn arv_camera_new(name: *const c_char, err: *mut *mut GError) -> *mut ArvCamera;
     pub fn arv_camera_get_vendor_name(cam: *mut ArvCamera, err: *mut *mut GError) -> *const c_char;
     pub fn arv_camera_get_model_name(cam: *mut ArvCamera, err: *mut *mut GError) -> *const c_char;
     pub fn arv_camera_get_device_id(cam: *mut ArvCamera, err: *mut *mut GError) -> *const c_char;
+    pub fn arv_camera_get_device(cam: *mut ArvCamera) -> *mut ArvDevice;
 
     pub fn arv_camera_is_feature_available(
         cam: *mut ArvCamera,
         feature: *const c_char,
         err: *mut *mut GError,
     ) -> i32;
-
-    pub fn arv_camera_set_string(
-        cam: *mut ArvCamera,
-        feature: *const c_char,
-        value: *const c_char,
-        err: *mut *mut GError,
-    );
-    pub fn arv_camera_get_string(
-        cam: *mut ArvCamera,
-        feature: *const c_char,
-        err: *mut *mut GError,
-    ) -> *const c_char;
-
-    pub fn arv_camera_set_integer(
-        cam: *mut ArvCamera,
-        feature: *const c_char,
-        value: i64,
-        err: *mut *mut GError,
-    );
-    pub fn arv_camera_get_integer(
-        cam: *mut ArvCamera,
-        feature: *const c_char,
-        err: *mut *mut GError,
-    ) -> i64;
-
-    pub fn arv_camera_set_float(
-        cam: *mut ArvCamera,
-        feature: *const c_char,
-        value: f64,
-        err: *mut *mut GError,
-    );
-    pub fn arv_camera_get_float(
-        cam: *mut ArvCamera,
-        feature: *const c_char,
-        err: *mut *mut GError,
-    ) -> f64;
-
-    pub fn arv_camera_set_boolean(
-        cam: *mut ArvCamera,
-        feature: *const c_char,
-        value: i32,
-        err: *mut *mut GError,
-    );
-    pub fn arv_camera_get_boolean(
-        cam: *mut ArvCamera,
-        feature: *const c_char,
-        err: *mut *mut GError,
-    ) -> i32;
-
     pub fn arv_camera_execute_command(
         cam: *mut ArvCamera,
         feature: *const c_char,
         err: *mut *mut GError,
     );
 
+    // ----- ArvCamera: exposure, gain, framerate, format, payload -----
+    pub fn arv_camera_set_exposure_time(cam: *mut ArvCamera, us: f64, err: *mut *mut GError);
+    pub fn arv_camera_get_exposure_time(cam: *mut ArvCamera, err: *mut *mut GError) -> f64;
+    pub fn arv_camera_set_gain(cam: *mut ArvCamera, gain: f64, err: *mut *mut GError);
+    pub fn arv_camera_get_gain(cam: *mut ArvCamera, err: *mut *mut GError) -> f64;
+    pub fn arv_camera_set_frame_rate(cam: *mut ArvCamera, fps: f64, err: *mut *mut GError);
+    pub fn arv_camera_get_frame_rate(cam: *mut ArvCamera, err: *mut *mut GError) -> f64;
+    pub fn arv_camera_set_pixel_format(cam: *mut ArvCamera, format: u32, err: *mut *mut GError);
+    pub fn arv_camera_get_pixel_format(cam: *mut ArvCamera, err: *mut *mut GError) -> u32;
+    pub fn arv_camera_get_payload(cam: *mut ArvCamera, err: *mut *mut GError) -> u32;
+
+    // ----- ArvDevice: generic GenICam feature access -----
+    pub fn arv_device_set_string_feature_value(
+        device: *mut ArvDevice,
+        feature: *const c_char,
+        value: *const c_char,
+        err: *mut *mut GError,
+    );
+    pub fn arv_device_get_string_feature_value(
+        device: *mut ArvDevice,
+        feature: *const c_char,
+        err: *mut *mut GError,
+    ) -> *const c_char;
+
+    pub fn arv_device_set_integer_feature_value(
+        device: *mut ArvDevice,
+        feature: *const c_char,
+        value: i64,
+        err: *mut *mut GError,
+    );
+    pub fn arv_device_get_integer_feature_value(
+        device: *mut ArvDevice,
+        feature: *const c_char,
+        err: *mut *mut GError,
+    ) -> i64;
+
+    pub fn arv_device_set_float_feature_value(
+        device: *mut ArvDevice,
+        feature: *const c_char,
+        value: f64,
+        err: *mut *mut GError,
+    );
+    pub fn arv_device_get_float_feature_value(
+        device: *mut ArvDevice,
+        feature: *const c_char,
+        err: *mut *mut GError,
+    ) -> f64;
+
+    pub fn arv_device_set_boolean_feature_value(
+        device: *mut ArvDevice,
+        feature: *const c_char,
+        value: i32,
+        err: *mut *mut GError,
+    );
+    pub fn arv_device_get_boolean_feature_value(
+        device: *mut ArvDevice,
+        feature: *const c_char,
+        err: *mut *mut GError,
+    ) -> i32;
+
+    pub fn arv_device_set_features_from_string(
+        device: *mut ArvDevice,
+        string: *const c_char,
+        err: *mut *mut GError,
+    ) -> i32;
+
+    // ----- GigE Vision specifics -----
     pub fn arv_camera_is_gv_device(cam: *mut ArvCamera) -> i32;
     pub fn arv_camera_gv_auto_packet_size(cam: *mut ArvCamera, err: *mut *mut GError) -> u32;
     pub fn arv_camera_gv_set_packet_size(
@@ -164,6 +185,7 @@ unsafe extern "C" {
     );
     pub fn arv_camera_gv_get_packet_size(cam: *mut ArvCamera, err: *mut *mut GError) -> i32;
 
+    // ----- Stream & Acquisition -----
     pub fn arv_camera_create_stream(
         cam: *mut ArvCamera,
         callback: *const c_void,

@@ -354,11 +354,52 @@ impl CameraService {
             if !this.mock_mode {
                 let cam = *this.camera_ptr.lock().unwrap();
                 if !cam.is_null() {
+                    unsafe {
+                        let mut err = null_mut();
+                        arv_camera_stop_acquisition(cam, &mut err);
+                        if !err.is_null() {
+                            g_error_free(err);
+                        }
+                    }
+
+                    // Flush any pending buffers
+                    let stream = *this.stream_ptr.lock().unwrap();
+                    if !stream.is_null() {
+                        unsafe {
+                            loop {
+                                let stale = arv_stream_try_pop_buffer(stream);
+                                if stale.is_null() {
+                                    break;
+                                }
+                                arv_stream_push_buffer(stream, stale);
+                            }
+                        }
+                    }
+
+                    // Disable strobe during setup preview
+                    Self::set_feature_bool_internal(cam, "StrobeEnable", false);
+                    Self::set_feature_int_internal(cam, "StrobeEnable", 0);
+                    Self::set_feature_str_internal(cam, "LineSelector", "Line1");
+                    Self::set_feature_str_internal(cam, "LineSource", "Off");
+                    Self::set_feature_str_internal(cam, "LineSelector", "Line2");
+                    Self::set_feature_str_internal(cam, "LineSource", "Off");
+
+                    // Set free-running stream features
                     Self::set_feature_str_internal(cam, "TriggerMode", "Off");
                     Self::set_feature_str_internal(cam, "ExposureAuto", "Continuous");
                     Self::set_feature_str_internal(cam, "GainAuto", "Continuous");
                     Self::set_feature_bool_internal(cam, "AcquisitionFrameRateEnable", true);
-                    Self::set_feature_float_internal(cam, "AcquisitionFrameRate", 12.0);
+                    Self::set_feature_float_internal(cam, "AcquisitionFrameRate", 10.0);
+
+                    unsafe {
+                        let mut err = null_mut();
+                        arv_camera_start_acquisition(cam, &mut err);
+                        if !err.is_null() {
+                            let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                            println!("[camera] Error restarting acquisition for setup stream: {}", msg);
+                            g_error_free(err);
+                        }
+                    }
                 }
             }
 
@@ -379,7 +420,7 @@ impl CameraService {
                 }
 
                 unsafe {
-                    let buffer = arv_stream_timeout_pop_buffer(stream, 150_000);
+                    let buffer = arv_stream_timeout_pop_buffer(stream, 200_000);
                     if !buffer.is_null() {
                         let status = arv_buffer_get_status(buffer);
                         if status == ARV_BUFFER_STATUS_SUCCESS {
@@ -402,7 +443,7 @@ impl CameraService {
                         arv_stream_push_buffer(stream, buffer);
                     }
                 }
-                std::thread::sleep(std::time::Duration::from_millis(20));
+                std::thread::sleep(std::time::Duration::from_millis(30));
             }
 
             println!("[camera] Setup preview stream stopped");
@@ -415,7 +456,43 @@ impl CameraService {
         if !self.mock_mode {
             let cam = *self.camera_ptr.lock().unwrap();
             if !cam.is_null() {
+                unsafe {
+                    let mut err = null_mut();
+                    arv_camera_stop_acquisition(cam, &mut err);
+                    if !err.is_null() {
+                        g_error_free(err);
+                    }
+                }
+
+                // Flush stream buffers
+                let stream = *self.stream_ptr.lock().unwrap();
+                if !stream.is_null() {
+                    unsafe {
+                        loop {
+                            let stale = arv_stream_try_pop_buffer(stream);
+                            if stale.is_null() {
+                                break;
+                            }
+                            arv_stream_push_buffer(stream, stale);
+                        }
+                    }
+                }
+
+                // Restore trigger mode & strobe
                 Self::set_feature_str_internal(cam, "TriggerMode", "On");
+                Self::set_feature_str_internal(cam, "TriggerSource", "Software");
+
+                Self::set_feature_str_internal(cam, "LineSelector", "Line1");
+                Self::set_feature_str_internal(cam, "LineMode", "Strobe");
+                Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
+                Self::set_feature_bool_internal(cam, "StrobeEnable", true);
+                Self::set_feature_int_internal(
+                    cam,
+                    "StrobeLineDuration",
+                    settings.strobe_line_duration as i64,
+                );
+
+                // Restore exposure & gain
                 Self::set_feature_str_internal(cam, "ExposureAuto", &settings.exposure_auto);
                 if settings.exposure_auto == "Off" {
                     Self::set_feature_float_internal(cam, "ExposureTime", settings.camera_exposure);
@@ -430,6 +507,14 @@ impl CameraService {
                         "AcquisitionFrameRate",
                         settings.frame_rate,
                     );
+                }
+
+                unsafe {
+                    let mut err = null_mut();
+                    arv_camera_start_acquisition(cam, &mut err);
+                    if !err.is_null() {
+                        g_error_free(err);
+                    }
                 }
             }
         }
@@ -524,6 +609,54 @@ impl CameraService {
                     Self::set_feature_str_internal(cam, "PixelFormat", "Mono8");
                 }
             }
+        }
+    }
+
+    pub fn set_feature_str(&self, feature: &str, value: &str) -> bool {
+        if self.mock_mode {
+            return true;
+        }
+        let cam = *self.camera_ptr.lock().unwrap();
+        if !cam.is_null() {
+            Self::set_feature_str_internal(cam, feature, value)
+        } else {
+            false
+        }
+    }
+
+    pub fn set_feature_int(&self, feature: &str, value: i64) -> bool {
+        if self.mock_mode {
+            return true;
+        }
+        let cam = *self.camera_ptr.lock().unwrap();
+        if !cam.is_null() {
+            Self::set_feature_int_internal(cam, feature, value)
+        } else {
+            false
+        }
+    }
+
+    pub fn set_feature_float(&self, feature: &str, value: f64) -> bool {
+        if self.mock_mode {
+            return true;
+        }
+        let cam = *self.camera_ptr.lock().unwrap();
+        if !cam.is_null() {
+            Self::set_feature_float_internal(cam, feature, value)
+        } else {
+            false
+        }
+    }
+
+    pub fn set_feature_bool(&self, feature: &str, value: bool) -> bool {
+        if self.mock_mode {
+            return true;
+        }
+        let cam = *self.camera_ptr.lock().unwrap();
+        if !cam.is_null() {
+            Self::set_feature_bool_internal(cam, feature, value)
+        } else {
+            false
         }
     }
 

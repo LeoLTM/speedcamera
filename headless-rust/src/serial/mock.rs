@@ -46,7 +46,7 @@ impl MockSerial {
     }
 
     pub fn send_command(&self, json: &str, tx: &broadcast::Sender<SerialStatusPayload>) {
-        if json.contains("\"PING\"") {
+        if json.to_lowercase().contains("\"ping\"") {
             let _ = tx.send(SerialStatusPayload::Pong {
                 config: EspPongConfig {
                     max_speed: 30.0,

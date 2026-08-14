@@ -67,6 +67,17 @@ async fn main() -> Result<(), rocket::Error> {
     // Initialize Serial Service
     let serial = SerialService::new(config.mock_mode);
 
+    // Auto-connect configured serial port if present
+    if !config.mock_mode {
+        let conn = db.lock();
+        if let Ok(settings) = db::settings::get_settings(&conn) {
+            if !settings.selected_port.is_empty() {
+                println!("[serial] Auto-connecting configured port: {}", settings.selected_port);
+                serial.open_port(&settings.selected_port);
+            }
+        }
+    }
+
     // ─── Instant Shutter Trigger Pipeline (<10ms latency) ─────────────────────
     let pipeline_cam = camera.clone();
     let pipeline_db = db.clone();

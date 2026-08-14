@@ -278,6 +278,11 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             Ok(serde_json::to_value(ports).unwrap())
         }
 
+        "getSerialStatus" => {
+            let status = ctx.serial.get_status();
+            Ok(serde_json::to_value(status).unwrap())
+        }
+
         "openPort" => {
             let path = params["path"].as_str().ok_or("Missing port path")?;
             ctx.serial.open_port(path);
@@ -334,6 +339,20 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             Ok(Value::Null)
         }
 
+        "setCameraFeatureStr" => {
+            let feature = params["feature"].as_str().ok_or("Missing feature name")?;
+            let value = params["value"].as_str().ok_or("Missing feature value")?;
+            ctx.camera.set_feature_str(feature, value);
+            Ok(Value::Null)
+        }
+
+        "setCameraFeatureInt" => {
+            let feature = params["feature"].as_str().ok_or("Missing feature name")?;
+            let value = params["value"].as_i64().ok_or("Missing feature value")?;
+            ctx.camera.set_feature_int(feature, value);
+            Ok(Value::Null)
+        }
+
         "applyMfsConfig" => {
             let mfs = params["mfsContent"].as_str().ok_or("Missing mfsContent")?;
             let res = ctx.camera.apply_mfs_config(mfs);
@@ -386,6 +405,48 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             Ok(serde_json::to_value(user).unwrap())
         }
 
+        "saveTeableConfig" => {
+            let url = params["url"].as_str().unwrap_or("");
+            let token = params["token"].as_str().unwrap_or("");
+            let name = params["userName"].as_str().unwrap_or("");
+            let email = params["userEmail"].as_str().unwrap_or("");
+            let avatar = params["userAvatar"].as_str().unwrap_or("");
+
+            let conn = ctx.db.lock();
+            let _ = crate::db::settings::save_setting(&conn, "teableUrl", url);
+            let _ = crate::db::settings::save_setting(&conn, "teableToken", token);
+            let _ = crate::db::settings::save_setting(&conn, "teableUserName", name);
+            let _ = crate::db::settings::save_setting(&conn, "teableUserEmail", email);
+            let _ = crate::db::settings::save_setting(&conn, "teableUserAvatar", avatar);
+            Ok(Value::Null)
+        }
+
+        "removeTeableConfig" => {
+            let conn = ctx.db.lock();
+            let _ = crate::db::settings::save_setting(&conn, "teableUrl", "");
+            let _ = crate::db::settings::save_setting(&conn, "teableToken", "");
+            let _ = crate::db::settings::save_setting(&conn, "teableUserName", "");
+            let _ = crate::db::settings::save_setting(&conn, "teableUserEmail", "");
+            let _ = crate::db::settings::save_setting(&conn, "teableUserAvatar", "");
+            let _ = crate::db::settings::save_setting(&conn, "teableSpaceId", "");
+            let _ = crate::db::settings::save_setting(&conn, "teableBaseId", "");
+            let _ = crate::db::settings::save_setting(&conn, "teableTableId", "");
+            let _ = crate::db::settings::save_setting(&conn, "teableSyncEnabled", "false");
+            Ok(Value::Null)
+        }
+
+        "saveTeableTarget" => {
+            let space_id = params["spaceId"].as_str().unwrap_or("");
+            let base_id = params["baseId"].as_str().unwrap_or("");
+            let table_id = params["tableId"].as_str().unwrap_or("");
+
+            let conn = ctx.db.lock();
+            let _ = crate::db::settings::save_setting(&conn, "teableSpaceId", space_id);
+            let _ = crate::db::settings::save_setting(&conn, "teableBaseId", base_id);
+            let _ = crate::db::settings::save_setting(&conn, "teableTableId", table_id);
+            Ok(Value::Null)
+        }
+
         "listTeableSpaces" => {
             let settings = {
                 let conn = ctx.db.lock();
@@ -422,6 +483,51 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
                 .list_tables(&settings.teable_url, &settings.teable_token, base_id)
                 .await?;
             Ok(serde_json::to_value(tables).unwrap())
+        }
+
+        "verifyTeableTable" => {
+            let table_id = params["tableId"].as_str().ok_or("Missing tableId")?;
+            let settings = {
+                let conn = ctx.db.lock();
+                crate::db::settings::get_settings(&conn).map_err(|e| e.to_string())?
+            };
+            let check = ctx
+                .teable
+                .verify_table(&settings.teable_url, &settings.teable_token, table_id)
+                .await?;
+            Ok(serde_json::to_value(check).unwrap())
+        }
+
+        "ensureTeableFields" => {
+            let table_id = params["tableId"].as_str().ok_or("Missing tableId")?;
+            let settings = {
+                let conn = ctx.db.lock();
+                crate::db::settings::get_settings(&conn).map_err(|e| e.to_string())?
+            };
+            let created = ctx
+                .teable
+                .ensure_fields(&settings.teable_url, &settings.teable_token, table_id)
+                .await?;
+            Ok(serde_json::to_value(created).unwrap())
+        }
+
+        "createTeableTable" => {
+            let base_id = params["baseId"].as_str().ok_or("Missing baseId")?;
+            let table_name = params["tableName"].as_str().ok_or("Missing tableName")?;
+            let settings = {
+                let conn = ctx.db.lock();
+                crate::db::settings::get_settings(&conn).map_err(|e| e.to_string())?
+            };
+            let table = ctx
+                .teable
+                .create_table(
+                    &settings.teable_url,
+                    &settings.teable_token,
+                    base_id,
+                    table_name,
+                )
+                .await?;
+            Ok(serde_json::to_value(table).unwrap())
         }
 
         "syncLapToTeable" => {
@@ -480,7 +586,9 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         }
 
         // ─── Stubs for Window & Updater ───────────────────────────────────────
-        "minimizeWindow" | "maximizeWindow" | "closeWindow" | "cancelFlash" => Ok(Value::Null),
+        "minimizeWindow" | "maximizeWindow" | "closeWindow" | "cancelFlash" | "applyUpdate" => {
+            Ok(Value::Null)
+        }
 
         "getLocalVersion" => Ok(json!({
             "version": "0.5.0-rust",
@@ -494,6 +602,10 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             "updateAvailable": false,
             "updateReady": false,
             "error": "Native binary managed by system"
+        })),
+
+        "downloadUpdate" => Ok(json!({
+            "ok": true
         })),
 
         _ => Err(format!("Method '{}' not found", method)),

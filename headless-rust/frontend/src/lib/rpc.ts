@@ -103,9 +103,18 @@ class WebSocketRpcClient {
   private handlePushEvent<K extends keyof PushMessageMap>(event: K, payload: PushMessageMap[K]) {
     const store = useAppStore.getState();
     switch (event) {
-      case "serialStatus":
-        store.handleSerialStatus(payload as any);
+      case "serialStatus": {
+        const serialPayload = payload as any;
+        if (serialPayload?.status === "CONNECTED") {
+          const port = serialPayload.port || store.selectedPort || "connected";
+          store.setConnectedPort(port);
+          if (serialPayload.port) store.setSelectedPort(serialPayload.port);
+        } else if (serialPayload?.status === "DISCONNECTED") {
+          store.setConnectedPort("");
+        }
+        store.handleSerialStatus(serialPayload);
         break;
+      }
       case "flashProgress":
         store.handleFlashProgress(payload as any);
         break;

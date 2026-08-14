@@ -245,6 +245,13 @@ pub struct EspPongConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SerialStatusInfo {
+    pub connected: bool,
+    pub port: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "status")]
 pub enum SerialStatusPayload {
     #[serde(rename = "SPEEDING")]
@@ -288,7 +295,10 @@ pub enum SerialStatusPayload {
     #[serde(rename = "LAPSTOPPED")]
     LapStopped,
     #[serde(rename = "CONNECTED")]
-    Connected,
+    Connected {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        port: Option<String>,
+    },
     #[serde(rename = "DISCONNECTED")]
     Disconnected,
 }

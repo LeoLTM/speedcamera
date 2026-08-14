@@ -41,11 +41,18 @@ pub fn ws_rpc(
             println!("[ws] Client connected");
 
             // Push initial camera status immediately
-            let init_status = json!({
+            let init_camera = json!({
                 "event": "cameraStatus",
                 "payload": ctx.camera.get_status()
             });
-            let _ = stream.send(Message::Text(init_status.to_string())).await;
+            let _ = stream.send(Message::Text(init_camera.to_string())).await;
+
+            // Push initial serial status immediately
+            let init_serial = json!({
+                "event": "serialStatus",
+                "payload": ctx.serial.get_status_payload()
+            });
+            let _ = stream.send(Message::Text(init_serial.to_string())).await;
 
             loop {
                 tokio::select! {

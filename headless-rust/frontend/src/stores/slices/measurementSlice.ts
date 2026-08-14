@@ -45,6 +45,17 @@ export const createMeasurementSlice: StateCreator<
       return;
     }
 
+    if (payload.status === "CONNECTED") {
+      const port = (payload as any).port || get().selectedPort || "connected";
+      get().setConnectedPort(port);
+      return;
+    }
+
+    if (payload.status === "DISCONNECTED") {
+      get().setConnectedPort("");
+      return;
+    }
+
     const { systemState, appMode } = get();
     // In PASSIVE mode, ignore all serial measurements
     if (systemState === "PASSIVE") return;

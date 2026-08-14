@@ -32,6 +32,7 @@ export interface CameraSlice {
   setLiveFrame: (frame: string) => void;
   applyMfsConfig: (mfsContent: string, saveAsDefault: boolean) => Promise<void>;
   clearMfsResult: () => void;
+  loadCameraSettings: (settings: AppSettings) => void;
 }
 
 export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> = (set) => ({
@@ -52,6 +53,18 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
   setupStreamActive: false,
   liveFrame: null,
   mfsResult: null,
+  loadCameraSettings: (settings) => set({
+    cameraExposure: settings.cameraExposure ?? 5000,
+    cameraGain: settings.cameraGain ?? 0,
+    pixelFormat: settings.pixelFormat ?? "Mono",
+    exposureAuto: settings.exposureAuto ?? "Off",
+    gainAuto: settings.gainAuto ?? "Off",
+    frameRate: settings.frameRate ?? 30,
+    cameraWidth: settings.cameraWidth ?? 1280,
+    cameraHeight: settings.cameraHeight ?? 1024,
+    blackLevel: settings.blackLevel ?? 0,
+    strobeLineDuration: settings.strobeLineDuration ?? 5000,
+  }),
   setCameraStatus: (status) => set({
     cameraConnected: status.connected,
     cameraVendor: status.vendor,

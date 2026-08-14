@@ -143,10 +143,145 @@ impl TeableClient {
         Ok(list)
     }
 
-    #[allow(dead_code)]
-    pub async fn verify_table(&self, _url: &str, _token: &str, _table_id: &str) -> Result<TeableSchemaCheck, String> {
-        Ok(TeableSchemaCheck {
-            missing_fields: Vec::new(),
+    async fn list_fields(&self, url: &str, token: &str, table_id: &str) -> Result<Vec<String>, String> {
+        let base = url.trim_end_matches('/');
+        let endpoint = format!("{}/api/table/{}/field", base, table_id);
+
+        let res = self
+            .client
+            .get(&endpoint)
+            .headers(Self::headers(token))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let json: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+        let names = json
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|f| f["name"].as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(names)
+    }
+
+    pub async fn verify_table(&self, url: &str, token: &str, table_id: &str) -> Result<TeableSchemaCheck, String> {
+        let required_fields = [
+            "Session Started At",
+            "Lap Mode",
+            "Lap Number",
+            "Start Time",
+            "End Time",
+            "Duration",
+            "Speed At Start",
+            "Speed At End",
+        ];
+
+        let existing = self.list_fields(url, token, table_id).await?;
+        let existing_set: std::collections::HashSet<_> = existing.into_iter().collect();
+
+        let missing_fields = required_fields
+            .iter()
+            .filter(|f| !existing_set.contains(**f))
+            .map(|f| f.to_string())
+            .collect();
+
+        Ok(TeableSchemaCheck { missing_fields })
+    }
+
+    pub async fn ensure_fields(&self, url: &str, token: &str, table_id: &str) -> Result<Vec<String>, String> {
+        let required_fields: &[(&str, &str)] = &[
+            ("Session Started At", "singleLineText"),
+            ("Lap Mode", "singleLineText"),
+            ("Lap Number", "number"),
+            ("Start Time", "singleLineText"),
+            ("End Time", "singleLineText"),
+            ("Duration", "singleLineText"),
+            ("Speed At Start", "number"),
+            ("Speed At End", "number"),
+        ];
+
+        let existing = self.list_fields(url, token, table_id).await?;
+        let existing_set: std::collections::HashSet<_> = existing.into_iter().collect();
+
+        let base = url.trim_end_matches('/');
+        let endpoint = format!("{}/api/table/{}/field", base, table_id);
+
+        let mut created = Vec::new();
+        for (name, field_type) in required_fields {
+            if existing_set.contains(*name) {
+                continue;
+            }
+
+            let body = json!({
+                "name": name,
+                "type": field_type
+            });
+
+            let res = self
+                .client
+                .post(&endpoint)
+                .headers(Self::headers(token))
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
+
+            if res.status().is_success() {
+                created.push(name.to_string());
+            }
+        }
+
+        Ok(created)
+    }
+
+    pub async fn create_table(
+        &self,
+        url: &str,
+        token: &str,
+        base_id: &str,
+        table_name: &str,
+    ) -> Result<TeableTable, String> {
+        let base = url.trim_end_matches('/');
+        let endpoint = format!("{}/api/base/{}/table", base, base_id);
+
+        let fields = json!([
+            { "name": "Session Started At", "type": "singleLineText" },
+            { "name": "Lap Mode", "type": "singleLineText" },
+            { "name": "Lap Number", "type": "number" },
+            { "name": "Start Time", "type": "singleLineText" },
+            { "name": "End Time", "type": "singleLineText" },
+            { "name": "Duration", "type": "singleLineText" },
+            { "name": "Speed At Start", "type": "number" },
+            { "name": "Speed At End", "type": "number" }
+        ]);
+
+        let body = json!({
+            "name": table_name,
+            "fields": fields
+        });
+
+        let res = self
+            .client
+            .post(&endpoint)
+            .headers(Self::headers(token))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if !res.status().is_success() {
+            let body_text = res.text().await.unwrap_or_default();
+            return Err(format!("Failed to create table: {}", body_text));
+        }
+
+        let data: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+        Ok(TeableTable {
+            id: data["id"].as_str().unwrap_or("").to_string(),
+            name: data["name"].as_str().unwrap_or(table_name).to_string(),
         })
     }
 

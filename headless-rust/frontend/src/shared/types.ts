@@ -247,7 +247,7 @@ export type SerialStatusPayload =
   | { status: "LAPEND";   lapNumber: number; durationMs: number; speedAtStart: number; speedAtEnd: number; timestamp: number }
   | { status: "LAPWAITING" }
   | { status: "LAPSTOPPED" }
-  | { status: "CONNECTED" }
+  | { status: "CONNECTED"; port?: string }
   | { status: "DISCONNECTED" };
 
 // ─── RPC Schema Definition ────────────────────────────────────────────────────
@@ -342,6 +342,10 @@ export type SpeedcameraRPC = {
     listPorts: {
       params: Record<string, never>;
       response: PortInfo[];
+    };
+    getSerialStatus: {
+      params: Record<string, never>;
+      response: { connected: boolean; port: string | null };
     };
     openPort: {
       params: { path: string };

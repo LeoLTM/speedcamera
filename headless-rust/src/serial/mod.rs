@@ -1,7 +1,7 @@
 pub mod mock;
 pub mod protocol;
 
-use crate::models::{PortInfo, SerialStatusPayload};
+use crate::models::{PortInfo, SerialStatusInfo, SerialStatusPayload};
 use protocol::EspMessage;
 use std::io::{BufRead, BufReader, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -23,11 +23,17 @@ impl SerialService {
     pub fn new(mock_mode: bool) -> Arc<Self> {
         let (status_tx, _) = broadcast::channel(32);
 
+        let initial_path = if mock_mode {
+            "/dev/ttyUSB0 (MOCK)".to_string()
+        } else {
+            String::new()
+        };
+
         let service = Arc::new(Self {
             mock_mode,
             mock_serial: Mutex::new(None),
             active_port: Mutex::new(None),
-            active_path: Mutex::new(String::new()),
+            active_path: Mutex::new(initial_path),
             session_id: Arc::new(AtomicU64::new(0)),
             is_running: Arc::new(AtomicBool::new(true)),
             status_sender: status_tx,
@@ -43,6 +49,33 @@ impl SerialService {
 
     pub fn subscribe(&self) -> broadcast::Receiver<SerialStatusPayload> {
         self.status_sender.subscribe()
+    }
+
+    pub fn get_status(&self) -> SerialStatusInfo {
+        let active_path = self.active_path.lock().unwrap().clone();
+        let is_conn = if self.mock_mode {
+            self.mock_serial.lock().unwrap().is_some() && !active_path.is_empty()
+        } else {
+            self.active_port.lock().unwrap().is_some()
+        };
+
+        SerialStatusInfo {
+            connected: is_conn,
+            port: if is_conn && !active_path.is_empty() {
+                Some(active_path)
+            } else {
+                None
+            },
+        }
+    }
+
+    pub fn get_status_payload(&self) -> SerialStatusPayload {
+        let status = self.get_status();
+        if status.connected {
+            SerialStatusPayload::Connected { port: status.port }
+        } else {
+            SerialStatusPayload::Disconnected
+        }
     }
 
     pub fn list_ports(&self) -> Vec<PortInfo> {
@@ -95,7 +128,10 @@ impl SerialService {
     pub fn open_port(self: &Arc<Self>, port_path: &str) {
         if self.mock_mode {
             println!("[serial] Opened mock port {}", port_path);
-            let _ = self.status_sender.send(SerialStatusPayload::Connected);
+            *self.active_path.lock().unwrap() = port_path.to_string();
+            let _ = self.status_sender.send(SerialStatusPayload::Connected {
+                port: Some(port_path.to_string()),
+            });
             return;
         }
 
@@ -123,7 +159,9 @@ impl SerialService {
             match builder.open() {
                 Ok(port) => {
                     println!("[serial] Successfully opened {}", path);
-                    let _ = this.status_sender.send(SerialStatusPayload::Connected);
+                    let _ = this.status_sender.send(SerialStatusPayload::Connected {
+                        port: Some(path.clone()),
+                    });
 
                     let reader_port = match port.try_clone() {
                         Ok(p) => p,

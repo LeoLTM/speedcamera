@@ -109,6 +109,7 @@ Usage: headless-rust [OPTIONS]
 Options:
   -m, --mock         Run in mock hardware mode (no physical camera/serial required)
   -p, --port <PORT>  HTTP server port (default: 3000)
+  -H, --host <HOST>  HTTP server bind address (default: 0.0.0.0)
   -h, --help         Print help
 ```
 

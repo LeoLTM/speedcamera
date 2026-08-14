@@ -17,6 +17,7 @@ Restart=always
 RestartSec=3
 KillSignal=SIGINT
 LimitNOFILE=65536
+LimitMEMLOCK=infinity
 
 [Install]
 WantedBy=multi-user.target

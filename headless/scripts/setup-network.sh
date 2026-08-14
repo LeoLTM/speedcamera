@@ -30,6 +30,17 @@ case "$MODE" in
     echo "    NOTE: In this mode, Pi operates standalone/offline."
     echo ""
 
+    # Apply GigE Vision kernel socket buffer optimizations
+    echo "[*] Applying GigE Vision network socket buffer optimizations (64MB)..."
+    sudo bash -c 'cat > /etc/sysctl.d/60-gige-camera.conf <<EOF
+net.core.rmem_max = 67108864
+net.core.rmem_default = 33554432
+net.core.wmem_max = 67108864
+net.core.wmem_default = 33554432
+net.core.netdev_max_backlog = 10000
+EOF'
+    sudo sysctl -p /etc/sysctl.d/60-gige-camera.conf 2>/dev/null || sudo sysctl --system 2>/dev/null || true
+
     # Configure Ethernet Camera LAN
     echo "[1/2] Configuring Camera LAN on ${ETH_IFACE}..."
     sudo nmcli connection delete "Speedcamera-CameraLAN" 2>/dev/null || true
@@ -60,6 +71,10 @@ case "$MODE" in
       wifi-sec.key-mgmt wpa-psk \
       wifi-sec.psk "${PASS}"
     sudo nmcli connection up "Speedcamera-Hotspot" 2>/dev/null || echo "Note: Hotspot initialized."
+
+    # Disable Wi-Fi power saving on AP interface to eliminate latency spikes and disconnects
+    echo "[*] Disabling Wi-Fi power saving on ${WIFI_IFACE}..."
+    sudo iw dev "${WIFI_IFACE}" set power_save off 2>/dev/null || sudo iwconfig "${WIFI_IFACE}" power off 2>/dev/null || true
 
     echo ""
     echo "========================================================="

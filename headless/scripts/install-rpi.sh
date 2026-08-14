@@ -87,6 +87,17 @@ else
   echo "[1/4] Skipping apt package updates (offline mode)."
 fi
 
+# Apply GigE Vision socket buffer tuning (64MB)
+echo "[*] Configuring Linux socket buffers for GigE camera..."
+sudo bash -c 'cat > /etc/sysctl.d/60-gige-camera.conf <<EOF
+net.core.rmem_max = 67108864
+net.core.rmem_default = 33554432
+net.core.wmem_max = 67108864
+net.core.wmem_default = 33554432
+net.core.netdev_max_backlog = 10000
+EOF'
+sudo sysctl -p /etc/sysctl.d/60-gige-camera.conf 2>/dev/null || sudo sysctl --system 2>/dev/null || true
+
 # 2. Check/Install Bun runtime
 BUN_BIN=$(command -v bun || echo "${TARGET_HOME}/.bun/bin/bun")
 if [ ! -x "${BUN_BIN}" ] && ! command -v bun &> /dev/null; then
@@ -158,6 +169,7 @@ Restart=always
 RestartSec=3
 KillSignal=SIGINT
 LimitNOFILE=65536
+LimitMEMLOCK=infinity
 
 [Install]
 WantedBy=multi-user.target

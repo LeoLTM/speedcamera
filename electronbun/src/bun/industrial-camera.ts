@@ -206,7 +206,15 @@ export async function captureFrame(): Promise<string | null> {
       camera.executeCommand("TriggerSoftware");
     }
 
-    const buffer = stream.timeoutPopBuffer(2_000_000); 
+    // Non-blocking wait loop with deadline to prevent freezing the Bun event loop
+    const deadline = Date.now() + 2000;
+    let buffer = null;
+    while (Date.now() < deadline) {
+      buffer = stream.tryPopBuffer();
+      if (buffer) break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+
     if (!buffer || !buffer.isSuccess) {
       if (buffer) stream.pushBuffer(buffer);
       console.error("[industrial-camera] Capture timeout or error");
@@ -264,6 +272,12 @@ export async function startSetupStream(pushFrame: (base64: string) => void) {
   try { camera.setStringFeature("GainAuto", "Continuous"); } catch { /* ignore */ }
   try { camera.setStringFeature("ExposureAuto", "Continuous"); } catch { /* ignore */ }
   
+  // Cap camera frame rate during setup preview to 10 FPS to prevent GigE network flood
+  try {
+    camera.setBooleanFeature("AcquisitionFrameRateEnable", true);
+    camera.setFrameRate(10);
+  } catch { /* ignore */ }
+
   // Disable strobe properly by turning off StrobeEnable and unlinking LineSource
   try { camera.setBooleanFeature("StrobeEnable", false); } catch {
     try { camera.setIntegerFeature("StrobeEnable", 0); } catch { /* ignore */ }
@@ -284,15 +298,30 @@ export async function startSetupStream(pushFrame: (base64: string) => void) {
 }
 
 async function pumpSetupFrames(pushFrame: (base64: string) => void) {
+  let isProcessing = false;
+
   while (setupStreamLoopActive && stream && camera) {
     try {
-      const buffer = stream.timeoutPopBuffer(500_000);
-      if (!buffer || !buffer.isSuccess) {
-        if (buffer) stream.pushBuffer(buffer);
-        await new Promise(r => setTimeout(r, 10));
+      // Non-blocking tryPopBuffer ensures Bun event loop is never frozen by C FFI
+      const buffer = stream.tryPopBuffer();
+      if (!buffer) {
+        await new Promise((r) => setTimeout(r, 20));
         continue;
       }
 
+      if (!buffer.isSuccess) {
+        stream.pushBuffer(buffer);
+        await new Promise((r) => setTimeout(r, 20));
+        continue;
+      }
+
+      // If previous frame encoding/sending is still running, drop this frame to prevent buffer lag
+      if (isProcessing) {
+        stream.pushBuffer(buffer);
+        continue;
+      }
+
+      isProcessing = true;
       const w = buffer.width;
       const h = buffer.height;
       const fmt = buffer.pixelFormatName;
@@ -308,12 +337,22 @@ async function pumpSetupFrames(pushFrame: (base64: string) => void) {
           sharpInst = sharp(data, { raw: { width: w, height: h, channels: 1 } });
       }
 
-      // Encode as JPEG for live stream performance
-      const jpegBuffer = await sharpInst.jpeg({ quality: 80 }).toBuffer();
+      // Downscale setup preview frame to max 800px width and compress to 60% quality JPEG
+      // to avoid CPU saturation on Pi and avoid saturating Wi-Fi AP bandwidth
+      const jpegBuffer = await sharpInst
+        .resize(800, null, { fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 60 })
+        .toBuffer();
+
       pushFrame(jpegBuffer.toString("base64"));
+      isProcessing = false;
+
+      // Throttle preview delivery to ~10 FPS
+      await new Promise((r) => setTimeout(r, 50));
     } catch (e) {
+      isProcessing = false;
       console.error("Setup stream pump error", e);
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 100));
     }
   }
 }
@@ -348,6 +387,18 @@ export function stopSetupStream() {
   }
   if (exposureAuto === "Off") {
     try { camera.setExposureTime(Number(settings.cameraExposure) || 5000); } catch { /* ignore */ }
+  }
+
+  // Restore configured frame rate
+  if (settings.frameRate) {
+    try {
+      camera.setBooleanFeature("AcquisitionFrameRateEnable", true);
+      camera.setFrameRate(Number(settings.frameRate));
+    } catch { /* ignore */ }
+  } else {
+    try {
+      camera.setBooleanFeature("AcquisitionFrameRateEnable", false);
+    } catch { /* ignore */ }
   }
 
   try { stream.startAcquisition(); } catch { /* ignore */ }

@@ -38,7 +38,7 @@ for arg in "$@"; do
       echo ""
       echo "Options:"
       echo "  --app-only, --skip-network, --lan   Provision packages, Rust, Bun, binary, and service (keeps network)"
-      echo "  --field                            Provision and immediately switch to Field Mode"
+      echo "  --field                            Provision and switch to Field Mode at the very end"
       echo "  --network-only                     Only configure dual-subnet network (Hotspot AP + Camera LAN)"
       echo "  --build, --force-build             Force building release binary and frontend on the Pi"
       echo "  --help, -h                         Show this help message"
@@ -46,6 +46,14 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+run_as_user() {
+  if [ "$(whoami)" = "${TARGET_USER}" ]; then
+    env PATH="$PATH" "$@"
+  else
+    sudo -u "${TARGET_USER}" env PATH="$PATH" "$@"
+  fi
+}
 
 # Request sudo credentials early so user is prompted interactively if needed
 echo "[*] Requesting sudo credentials on Pi..."
@@ -57,37 +65,35 @@ if [ "$ONLY_NETWORK" = true ]; then
   exit 0
 fi
 
-# Pre-flight internet check
+# Pre-flight internet check: installation MUST be done in DHCP/Internet mode
 echo "[*] Checking internet connectivity..."
-HAS_INTERNET=true
 if ! ping -c 1 -W 2 1.1.1.1 &>/dev/null && ! curl -s --connect-timeout 2 https://bun.sh &>/dev/null; then
-  HAS_INTERNET=false
-  echo ">>> WARNING: No active internet connection detected on Pi!"
+  echo "Error: No active internet connection detected on Pi." >&2
+  echo "Installation must be performed in DHCP or Internet Mode (not offline Field Mode) to download system packages and build tools." >&2
+  echo "If currently in Field Mode, switch to internet mode first: ~/speedcamera/headless-rust/scripts/setup-network.sh internet <SSID> <PASS>" >&2
+  echo "or connect an Ethernet cable and run: ~/speedcamera/headless-rust/scripts/setup-network.sh dhcp" >&2
+  exit 1
 fi
 
-# 1. System packages
-if [ "$HAS_INTERNET" = true ]; then
-  echo "[1/5] Installing system packages (libaravis, glib, udev, pkg-config, esptool, NetworkManager)..."
-  sudo apt-get update
-  sudo apt-get install -y \
-    libaravis-0.8-0 \
-    libaravis-dev \
-    libglib2.0-dev \
-    libgobject-2.0-0 \
-    libudev-dev \
-    pkg-config \
-    build-essential \
-    esptool \
-    network-manager \
-    curl \
-    unzip \
-    git \
-    rsync \
-    sqlite3 \
-    libsqlite3-dev
-else
-  echo "[1/5] Skipping apt package updates (offline mode)."
-fi
+# 1. System packages (APT)
+echo "[1/5] Installing system packages (libaravis, glib, udev, pkg-config, esptool, NetworkManager)..."
+sudo apt-get update
+sudo apt-get install -y \
+  libaravis-0.8-0 \
+  libaravis-dev \
+  libglib2.0-dev \
+  libgobject-2.0-0 \
+  libudev-dev \
+  pkg-config \
+  build-essential \
+  esptool \
+  network-manager \
+  curl \
+  unzip \
+  git \
+  rsync \
+  sqlite3 \
+  libsqlite3-dev
 
 # Apply GigE Vision socket buffer tuning (64MB)
 echo "[*] Configuring Linux socket buffers for GigE camera..."
@@ -102,66 +108,55 @@ sudo sysctl -p /etc/sysctl.d/60-gige-camera.conf 2>/dev/null || sudo sysctl --sy
 
 # 2. Check/Install Rust toolchain
 echo "[2/5] Checking Rust toolchain..."
-export PATH="${TARGET_HOME}/.cargo/bin:$PATH"
+export PATH="${TARGET_HOME}/.cargo/bin:${TARGET_HOME}/.bun/bin:/usr/local/bin:/usr/bin:$PATH"
 if ! command -v cargo &> /dev/null && [ ! -x "${TARGET_HOME}/.cargo/bin/cargo" ]; then
-  if [ "$HAS_INTERNET" = true ]; then
-    echo ">>> Installing Rust toolchain via rustup..."
-    sudo -u "${TARGET_USER}" bash -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile default"
-    export PATH="${TARGET_HOME}/.cargo/bin:$PATH"
-  else
-    echo ">>> Note: Rust toolchain not found on offline Pi (relying on pre-built binary if available)."
-  fi
+  echo ">>> Installing Rust toolchain via rustup..."
+  run_as_user bash -c "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile default"
+  export PATH="${TARGET_HOME}/.cargo/bin:$PATH"
 else
   echo ">>> Rust toolchain ready: $(cargo --version 2>/dev/null || echo "${TARGET_HOME}/.cargo/bin/cargo")"
 fi
 
 # 3. Check/Install Bun runtime
 echo "[3/5] Checking Bun runtime..."
-export PATH="${TARGET_HOME}/.bun/bin:$PATH"
 BUN_BIN=$(command -v bun || echo "${TARGET_HOME}/.bun/bin/bun")
 if [ ! -x "${BUN_BIN}" ] && ! command -v bun &> /dev/null; then
-  if [ "$HAS_INTERNET" = true ]; then
-    echo ">>> Installing Bun runtime for ARM64..."
-    sudo -u "${TARGET_USER}" bash -c "curl -fsSL https://bun.sh/install | bash"
-    export BUN_INSTALL="${TARGET_HOME}/.bun"
-    export PATH="${BUN_INSTALL}/bin:$PATH"
-    BUN_BIN="${TARGET_HOME}/.bun/bin/bun"
-  else
-    echo ">>> Note: Bun not found on offline Pi (relying on pre-built frontend bundle)."
-  fi
+  echo ">>> Installing Bun runtime for ARM64..."
+  run_as_user bash -c "curl -fsSL https://bun.sh/install | bash"
+  export BUN_INSTALL="${TARGET_HOME}/.bun"
+  export PATH="${BUN_INSTALL}/bin:$PATH"
+  BUN_BIN="${TARGET_HOME}/.bun/bin/bun"
 else
   echo ">>> Bun runtime ready: ${BUN_BIN}"
 fi
 
-# 4. Binary and frontend bundle check
-echo "[4/5] Checking release binary and frontend bundle..."
+# 4. Binary and frontend bundle compilation on Pi
+echo "[4/5] Building frontend and compiling native Rust daemon on Pi..."
 cd "${PROJECT_DIR}"
 
-# Build frontend if dist/ missing and Bun is available
-if [ ! -f "${PROJECT_DIR}/dist/index.html" ]; then
-  if [ -x "${BUN_BIN}" ] || command -v bun &> /dev/null; then
-    echo ">>> Building frontend bundle..."
-    if [ "$HAS_INTERNET" = true ] && [ ! -d "node_modules" ]; then
-      sudo -u "${TARGET_USER}" env PATH="$PATH" "${BUN_BIN}" install
-    fi
-    sudo -u "${TARGET_USER}" env PATH="$PATH" "${BUN_BIN}" run build
-  else
+# Build frontend bundle
+if [ -x "${BUN_BIN}" ] || command -v bun &> /dev/null; then
+  if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules" ]; then
+    echo ">>> Installing frontend dependencies with Bun..."
+    run_as_user "${BUN_BIN}" install
+  fi
+  echo ">>> Building frontend assets with Bun..."
+  run_as_user "${BUN_BIN}" run build
+else
+  if [ ! -f "${PROJECT_DIR}/dist/index.html" ]; then
     echo "Error: Missing frontend dist/ and Bun runtime unavailable to build it." >&2
     exit 1
   fi
 fi
 
-# Build Rust binary if missing or forced
-if [ ! -f "${PROJECT_DIR}/target/release/headless-rust" ] || [ "$FORCE_BUILD" = true ]; then
-  echo ">>> Compiling native Rust release binary on Pi..."
-  if ! command -v cargo &> /dev/null && [ ! -x "${TARGET_HOME}/.cargo/bin/cargo" ]; then
-    echo "Error: Cargo not available to build release binary." >&2
-    exit 1
-  fi
-  sudo -u "${TARGET_USER}" env PATH="$PATH" cargo build --release
-else
-  echo ">>> Verified release binary at ${PROJECT_DIR}/target/release/headless-rust"
+# Build Rust binary on Pi
+CARGO_BIN=$(command -v cargo || echo "${TARGET_HOME}/.cargo/bin/cargo")
+if [ ! -x "${CARGO_BIN}" ] && ! command -v cargo &> /dev/null; then
+  echo "Error: Cargo not available to build release binary." >&2
+  exit 1
 fi
+echo ">>> Compiling native Rust release binary on Pi..."
+run_as_user "${CARGO_BIN}" build --release
 
 # 5. Systemd daemon installation
 echo "[5/5] Configuring systemd autostart service..."
@@ -203,9 +198,9 @@ echo " Daemon status: sudo systemctl status speedcamera"
 echo " Daemon logs:   sudo journalctl -u speedcamera -f"
 echo "========================================================="
 
-# Step 6: Network Mode Transition
+# Step 6: Network Mode Transition (executed ONLY after all builds & services are fully running)
 if [ "$AUTO_FIELD" = true ]; then
-  echo "[*] Switching directly to Standalone Field Mode..."
+  echo "[*] Switching network to Standalone Field Mode (Camera LAN + Hotspot AP)..."
   chmod +x "${PROJECT_DIR}/scripts/setup-network.sh"
   "${PROJECT_DIR}/scripts/setup-network.sh" field
   exit 0
@@ -224,6 +219,7 @@ if [ -t 0 ]; then
   echo "========================================================================="
   echo " FIELD NETWORK CONFIGURATION (Camera LAN + Hotspot AP)"
   echo "========================================================================="
+  echo " All software and services have been installed and built successfully."
   echo " Ready to switch Pi into Standalone Field Mode:"
   echo "  • Ethernet (eth0) -> Static IP 192.168.1.100 (GigE Camera LAN)"
   echo "  • Wi-Fi (wlan0)   -> Standalone Hotspot AP 192.168.4.1 (SSID: speedcamera)"

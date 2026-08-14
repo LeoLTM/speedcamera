@@ -118,14 +118,25 @@ sudo sysctl -p /etc/sysctl.d/60-gige-camera.conf
 
 ## Deployment Procedures
 
-All deployment and maintenance procedures can be executed directly from your development laptop over SSH:
+All deployment and maintenance procedures can be executed directly from your development laptop over SSH.
+
+> [!IMPORTANT]
+> **Internet Requirement for Build/Deploy**: Because the Pi compiles dependencies and pulls from Git, `bun run install:pi` and `bun run deploy:pi` must be executed while the Pi is in **Home LAN / DHCP** or **Client Wi-Fi Mode** (with internet access).
+> If your Pi is currently in standalone **Field Mode** (`192.168.4.1` hotspot), connect the Pi to your Wi-Fi router first via SSH:
+> ```bash
+> ssh pi@192.168.4.1 '~/speedcamera/headless-rust/scripts/setup-network.sh internet "MyHomeWiFi" "MyPassword"'
+> ```
+> Or plug in an Ethernet cable and run:
+> ```bash
+> ssh pi@192.168.4.1 '~/speedcamera/headless-rust/scripts/setup-network.sh dhcp'
+> ```
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │ Command                      │ Purpose                                 │
 ├──────────────────────────────┼─────────────────────────────────────────┤
 │ bun run install:pi [target]  │ Fresh Pi install on Home LAN / DHCP     │
-│ bun run deploy:pi [target]   │ Upgrade existing Pi (Field or Home LAN) │
+│ bun run deploy:pi [target]   │ Upgrade existing Pi (in Internet Mode)  │
 │ bun run cleanup:pi [target]  │ Complete teardown & restore DHCP network│
 └──────────────────────────────┴─────────────────────────────────────────┘
 ```
@@ -146,28 +157,30 @@ bun run install:pi pi@raspberrypi.local
 # With password prompt (if SSH keys are not configured):
 bun run install:pi pi@raspberrypi.local --password
 
-# Using direct IP and automatically switching to Field Mode at the end:
+# Using direct IP and automatically switching to Field Mode at the very end:
 bun run install:pi pi@192.168.1.50 --field
 
 # Stay in Home LAN mode (skip field network setup):
 bun run install:pi pi@raspberrypi.local --lan
+
+# Deploy a specific branch:
+bun run install:pi pi@raspberrypi.local --branch feature/headless
 ```
 
 #### What this command does:
-1. Builds the frontend bundle on your laptop (`bun run build`, ~2s).
-2. Establishes an SSH multiplexed connection (password requested once).
-3. Rsyncs the codebase and pre-built `dist/` to `~/speedcamera/headless-rust` on the Pi.
-4. Updates Pi system packages (`libaravis-0.8-0`, `libaravis-dev`, `libglib2.0-dev`, `libudev-dev`, `build-essential`, `esptool`, `network-manager`, etc.).
-5. Installs the Rust toolchain (`rustup`) and Bun runtime on the Pi if missing.
-6. Builds the release binary (`cargo build --release`) natively on Pi 5.
-7. Registers, enables, and starts the `speedcamera.service` systemd daemon.
-8. Configures the network mode (Field Mode or Home LAN Mode).
+1. Connects to the Raspberry Pi over SSH and verifies internet reachability.
+2. Clones or pulls the `speedcamera` git repository directly to `~/speedcamera` on the Pi.
+3. Updates Pi system packages (`libaravis-0.8-0`, `libaravis-dev`, `libglib2.0-dev`, `libudev-dev`, `build-essential`, `esptool`, `network-manager`, etc.).
+4. Installs the Rust toolchain (`rustup`) and Bun runtime on the Pi.
+5. Builds the frontend assets (`bun run build`) and compiles the release binary (`cargo build --release`) natively on Pi 5.
+6. Registers, enables, and starts the `speedcamera.service` systemd daemon.
+7. **Only after all software and builds succeed**: Transitions network mode to Field Mode if requested (`--field`).
 
 ---
 
 ### Scenario 2: Upgrading an Existing Installation
 
-Use this scenario to push code updates to an already configured Pi. The Pi can either be in **Field Mode** (offline Wi-Fi hotspot) or connected to your **Home LAN**.
+Use this scenario to push code updates to an already configured Pi while connected to your **Home LAN** or **Client Wi-Fi**.
 
 #### Run from your laptop:
 ```bash
@@ -176,19 +189,20 @@ cd headless-rust
 # Deploy to Pi on Home LAN:
 bun run deploy:pi pi@raspberrypi.local
 
-# Deploy to Pi in Field Mode (connected to 'speedcamera' Wi-Fi):
-bun run deploy:pi pi@192.168.4.1
-
 # With password authentication:
-bun run deploy:pi pi@192.168.4.1 --password
+bun run deploy:pi pi@raspberrypi.local --password
+
+# Force rebuild frontend & Rust binary:
+bun run deploy:pi pi@raspberrypi.local --build
 ```
 
 #### What this command does:
-1. Re-builds the frontend bundle locally (`bun run build`).
-2. Syncs changed files (`dist/`, `src/`, `Cargo.toml`, `scripts/`, etc.) to the Pi.
-3. Automatically re-compiles the Rust release binary if sources changed.
-4. Restarts `speedcamera.service` and verifies that the daemon is active and running.
-5. **Preserves existing network configuration** without causing unexpected disconnections.
+1. Connects to the Pi via SSH and verifies active internet connectivity.
+2. Runs `git pull` in `~/speedcamera` to fetch and apply the latest commits.
+3. Automatically rebuilds the frontend bundle on the Pi if frontend files changed.
+4. Automatically recompiles the native Rust release binary on the Pi if Rust code or frontend bundle changed.
+5. Restarts `speedcamera.service` and verifies that the daemon is active and running.
+6. Preserves existing network configuration without causing unexpected disconnections.
 
 ---
 

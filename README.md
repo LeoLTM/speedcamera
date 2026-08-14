@@ -17,7 +17,7 @@ An end-to-end vehicle speed measurement, GigE Vision camera capture, and remote 
 
 ## Quick Deployment Commands (Raspberry Pi 5)
 
-All deployment and maintenance commands are executed from your development laptop. The React frontend is built on the laptop in ~2s (`bun run build`) and synced over SSH to the Pi.
+All deployment and maintenance commands are executed from your development laptop over SSH. The scripts pull the repository and perform all frontend asset builds and native Rust compilation directly on the Raspberry Pi.
 
 ```bash
 cd headless-rust

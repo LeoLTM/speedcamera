@@ -693,6 +693,7 @@ impl CameraService {
         // Multi-pass application (up to 3 passes to resolve GenICam feature dependencies)
         for _pass in 0..3 {
             let mut failed_this_pass = Vec::new();
+            let prev_len = pending.len();
             for (feature, value) in pending {
                 if Self::set_feature_str_internal(cam, &feature, &value) {
                     applied.push(format!("{}\t{}", feature, value));
@@ -701,7 +702,7 @@ impl CameraService {
                 }
             }
 
-            if failed_this_pass.len() == pending.len() {
+            if failed_this_pass.len() == prev_len {
                 pending = failed_this_pass;
                 break;
             }

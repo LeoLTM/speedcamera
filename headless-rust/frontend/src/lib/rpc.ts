@@ -124,6 +124,9 @@ class WebSocketRpcClient {
       case "liveFrame":
         store.setLiveFrame(payload as any);
         break;
+      case "violation":
+        store.setLastViolation(payload as any);
+        break;
       case "updateAvailable":
         store.setUpdateVersion((payload as any).version);
         store.setUpdatePhase("ready");

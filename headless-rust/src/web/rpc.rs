@@ -38,6 +38,7 @@ pub struct RpcContext {
     pub serial: Arc<SerialService>,
     pub teable: TeableClient,
     pub flash_tx: broadcast::Sender<FlashProgressPayload>,
+    pub violation_tx: broadcast::Sender<Violation>,
 }
 
 pub async fn handle_rpc(ctx: &RpcContext, req: RpcRequest) -> RpcResponse {
@@ -119,6 +120,7 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             let conn = ctx.db.lock();
             let v = crate::db::violations::insert_violation(&conn, &input, &image_path)
                 .map_err(|e| e.to_string())?;
+            let _ = ctx.violation_tx.send(v.clone());
             Ok(serde_json::to_value(v).unwrap())
         }
 

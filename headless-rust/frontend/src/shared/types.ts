@@ -548,5 +548,7 @@ export type SpeedcameraRPC = {
     flashProgress: FlashProgressPayload;
     // Live stream frame
     liveFrame: string;
+    // Violation notification
+    violation: Violation;
   }>;
 };

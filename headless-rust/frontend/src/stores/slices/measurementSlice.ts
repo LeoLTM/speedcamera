@@ -77,22 +77,6 @@ export const createMeasurementSlice: StateCreator<
     if (payload.status === "SPEEDING") {
       const { value, direction } = payload;
       set({ lastSpeed: value, lastDirection: direction });
-
-      // Only save violations and flash when fully ARMED
-      if (systemState !== "ARMED") return;
-
-      const { maxSpeed } = get();
-
-      // Trigger server-side capture and save
-      getRpc()
-        .request.saveViolation({ measuredSpeed: value, maxSpeed, direction })
-        .then((v) => {
-          get().setLastViolation(v);
-        })
-        .catch((err: unknown) => {
-          console.error("[measurement] Capture/save failed:", err);
-          toast.error("Failed to save violation");
-        });
     } else if (payload.status === "OK") {
       set({ lastSpeed: payload.value, lastDirection: payload.direction });
     }

@@ -79,6 +79,8 @@ async fn main() -> Result<(), rocket::Error> {
     }
 
     // ─── Instant Shutter Trigger Pipeline (<10ms latency) ─────────────────────
+    let (violation_tx, _) = tokio::sync::broadcast::channel::<models::Violation>(32);
+    let pipeline_violation_tx = violation_tx.clone();
     let pipeline_cam = camera.clone();
     let pipeline_db = db.clone();
     let pipeline_store = store.clone();
@@ -92,6 +94,7 @@ async fn main() -> Result<(), rocket::Error> {
                 let cam = pipeline_cam.clone();
                 let db_clone = pipeline_db.clone();
                 let store_clone = pipeline_store.clone();
+                let v_tx = pipeline_violation_tx.clone();
 
                 tokio::task::spawn_blocking(move || {
                     if let Some(png_bytes) = cam.capture_frame() {
@@ -106,6 +109,7 @@ async fn main() -> Result<(), rocket::Error> {
                             };
                             if let Ok(v) = db::violations::insert_violation(&conn, &input, &img_path) {
                                 println!("[trigger-pipeline] Recorded violation #{} ({} km/h)", v.id, v.measured_speed);
+                                let _ = v_tx.send(v);
                             }
                         }
                     } else {
@@ -117,7 +121,7 @@ async fn main() -> Result<(), rocket::Error> {
     });
 
     // Build and launch Rocket web server
-    let server = web::build_rocket(config, db, store, camera, serial);
+    let server = web::build_rocket(config, db, store, camera, serial, violation_tx);
     server.launch().await?;
 
     Ok(())

@@ -6,7 +6,7 @@ pub mod ws;
 use crate::camera::CameraService;
 use crate::config::AppConfig;
 use crate::db::Database;
-use crate::models::FlashProgressPayload;
+use crate::models::{FlashProgressPayload, Violation};
 use crate::serial::SerialService;
 use crate::storage::FileStore;
 use rocket::fairing::{Fairing, Info, Kind};
@@ -43,6 +43,7 @@ pub fn build_rocket(
     store: FileStore,
     camera: Arc<CameraService>,
     serial: Arc<SerialService>,
+    violation_tx: broadcast::Sender<Violation>,
 ) -> Rocket<Build> {
     let (flash_tx, _) = broadcast::channel::<FlashProgressPayload>(32);
 
@@ -58,6 +59,7 @@ pub fn build_rocket(
         .manage(camera)
         .manage(serial)
         .manage(flash_tx)
+        .manage(violation_tx)
         .mount(
             "/",
             rocket::routes![

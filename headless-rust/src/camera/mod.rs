@@ -166,6 +166,7 @@ impl CameraService {
 
             // Configure Trigger mode & strobe
             Self::set_feature_str_internal(cam, "AcquisitionMode", "Continuous");
+            Self::set_feature_str_internal(cam, "TriggerSelector", "FrameStart");
             Self::set_feature_str_internal(cam, "TriggerMode", "On");
             Self::set_feature_str_internal(cam, "TriggerSource", "Software");
 
@@ -349,7 +350,7 @@ impl CameraService {
         let this = self.clone();
 
         tokio::task::spawn_blocking(move || {
-            println!("[camera] Setup preview stream started");
+            println!("[camera] Setup preview stream starting...");
 
             if !this.mock_mode {
                 let cam = *this.camera_ptr.lock().unwrap();
@@ -384,7 +385,8 @@ impl CameraService {
                     Self::set_feature_str_internal(cam, "LineSelector", "Line2");
                     Self::set_feature_str_internal(cam, "LineSource", "Off");
 
-                    // Set free-running stream features
+                    // Set free-running stream features (capped to 10 FPS to prevent GigE flood)
+                    Self::set_feature_str_internal(cam, "TriggerSelector", "FrameStart");
                     Self::set_feature_str_internal(cam, "TriggerMode", "Off");
                     Self::set_feature_str_internal(cam, "ExposureAuto", "Continuous");
                     Self::set_feature_str_internal(cam, "GainAuto", "Continuous");
@@ -403,6 +405,8 @@ impl CameraService {
                 }
             }
 
+            println!("[camera] Setup preview stream active");
+
             while this.setup_stream_active.load(Ordering::SeqCst) {
                 if this.mock_mode {
                     if let Some(jpeg) = this.mock_camera.lock().unwrap().capture_jpeg_preview() {
@@ -415,12 +419,12 @@ impl CameraService {
 
                 let stream = *this.stream_ptr.lock().unwrap();
                 if stream.is_null() {
-                    std::thread::sleep(std::time::Duration::from_millis(80));
+                    std::thread::sleep(std::time::Duration::from_millis(50));
                     continue;
                 }
 
                 unsafe {
-                    let buffer = arv_stream_timeout_pop_buffer(stream, 200_000);
+                    let buffer = arv_stream_try_pop_buffer(stream);
                     if !buffer.is_null() {
                         let status = arv_buffer_get_status(buffer);
                         if status == ARV_BUFFER_STATUS_SUCCESS {
@@ -441,17 +445,26 @@ impl CameraService {
                             }
                         }
                         arv_stream_push_buffer(stream, buffer);
+                        // Throttle stream loop to ~12 FPS
+                        std::thread::sleep(std::time::Duration::from_millis(75));
+                    } else {
+                        // No buffer waiting, brief yield
+                        std::thread::sleep(std::time::Duration::from_millis(20));
                     }
                 }
-                std::thread::sleep(std::time::Duration::from_millis(30));
             }
 
-            println!("[camera] Setup preview stream stopped");
+            println!("[camera] Setup preview stream thread exited");
         });
     }
 
     pub fn stop_setup_stream(&self, settings: &AppSettings) {
-        self.setup_stream_active.store(false, Ordering::SeqCst);
+        if !self.setup_stream_active.swap(false, Ordering::SeqCst) {
+            return;
+        }
+
+        // Wait 60ms for stream thread to exit pump loop cleanly
+        std::thread::sleep(std::time::Duration::from_millis(60));
 
         if !self.mock_mode {
             let cam = *self.camera_ptr.lock().unwrap();
@@ -479,6 +492,7 @@ impl CameraService {
                 }
 
                 // Restore trigger mode & strobe
+                Self::set_feature_str_internal(cam, "TriggerSelector", "FrameStart");
                 Self::set_feature_str_internal(cam, "TriggerMode", "On");
                 Self::set_feature_str_internal(cam, "TriggerSource", "Software");
 
@@ -518,6 +532,7 @@ impl CameraService {
                 }
             }
         }
+        println!("[camera] Setup preview stream stopped, restored triggered capture mode");
     }
 
     pub fn apply_mfs_config(&self, mfs_content: &str) -> MfsConfigResult {
@@ -636,6 +651,7 @@ impl CameraService {
         }
     }
 
+    #[allow(dead_code)]
     pub fn set_feature_float(&self, feature: &str, value: f64) -> bool {
         if self.mock_mode {
             return true;
@@ -648,6 +664,7 @@ impl CameraService {
         }
     }
 
+    #[allow(dead_code)]
     pub fn set_feature_bool(&self, feature: &str, value: bool) -> bool {
         if self.mock_mode {
             return true;

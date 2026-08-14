@@ -1,7 +1,7 @@
 use crate::camera::CameraService;
 use crate::db::Database;
 use crate::integrations::teable::TeableClient;
-use crate::models::FlashProgressPayload;
+use crate::models::{FlashProgressPayload, Violation};
 use crate::serial::SerialService;
 use crate::storage::FileStore;
 use crate::web::rpc::{handle_rpc, RpcContext, RpcRequest};
@@ -21,6 +21,7 @@ pub fn ws_rpc(
     camera: &State<Arc<CameraService>>,
     serial: &State<Arc<SerialService>>,
     flash_tx: &State<broadcast::Sender<FlashProgressPayload>>,
+    violation_tx: &State<broadcast::Sender<Violation>>,
 ) -> Channel<'static> {
     let ctx = Arc::new(RpcContext {
         db: (*db).clone(),
@@ -29,16 +30,19 @@ pub fn ws_rpc(
         serial: (*serial).clone(),
         teable: TeableClient::new(),
         flash_tx: (*flash_tx).clone(),
+        violation_tx: (*violation_tx).clone(),
     });
 
-    let mut serial_rx = serial.subscribe();
-    let mut camera_status_rx = camera.subscribe_status();
-    let mut live_frame_rx = camera.subscribe_frames();
-    let mut flash_rx = flash_tx.subscribe();
-
     ws.channel(move |mut stream: DuplexStream| {
+        let ctx = ctx.clone();
         Box::pin(async move {
             println!("[ws] Client connected");
+
+            let mut serial_rx = ctx.serial.subscribe();
+            let mut camera_status_rx = ctx.camera.subscribe_status();
+            let mut live_frame_rx = ctx.camera.subscribe_frames();
+            let mut flash_rx = ctx.flash_tx.subscribe();
+            let mut violation_rx = ctx.violation_tx.subscribe();
 
             // Push initial camera status immediately
             let init_camera = json!({
@@ -107,6 +111,17 @@ pub fn ws_rpc(
                         }
                     }
 
+                    // Violation broadcast
+                    Ok(v) = violation_rx.recv() => {
+                        let msg = json!({
+                            "event": "violation",
+                            "payload": v
+                        });
+                        if stream.send(Message::Text(msg.to_string())).await.is_err() {
+                            break;
+                        }
+                    }
+
                     // Flash progress broadcast
                     Ok(payload) = flash_rx.recv() => {
                         let msg = json!({
@@ -134,6 +149,7 @@ pub fn ws_alias(
     camera: &State<Arc<CameraService>>,
     serial: &State<Arc<SerialService>>,
     flash_tx: &State<broadcast::Sender<FlashProgressPayload>>,
+    violation_tx: &State<broadcast::Sender<Violation>>,
 ) -> Channel<'static> {
-    ws_rpc(ws, db, store, camera, serial, flash_tx)
+    ws_rpc(ws, db, store, camera, serial, flash_tx, violation_tx)
 }

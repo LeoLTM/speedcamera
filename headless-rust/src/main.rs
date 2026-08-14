@@ -1,0 +1,110 @@
+mod camera;
+mod config;
+mod db;
+mod integrations;
+mod models;
+mod network;
+mod serial;
+mod storage;
+mod web;
+
+use camera::CameraService;
+use clap::Parser;
+use config::AppConfig;
+use db::Database;
+use models::SaveViolationInput;
+use serial::SerialService;
+use storage::FileStore;
+
+#[derive(Parser, Debug)]
+#[command(name = "speedcamera-rust")]
+#[command(about = "High-performance headless Speedcamera daemon for Raspberry Pi 5", long_about = None)]
+struct Args {
+    #[arg(short, long, help = "Run in mock hardware mode (no physical camera/serial required)")]
+    mock: bool,
+
+    #[arg(short, long, help = "HTTP server port (default: 3000)")]
+    port: Option<u16>,
+}
+
+#[rocket::main]
+async fn main() -> Result<(), rocket::Error> {
+    let args = Args::parse();
+    let config = AppConfig::new(args.mock, args.port);
+
+    println!("─────────────────────────────────────────────────────────────────");
+    println!("  ⚡ Speedcamera Headless Daemon (Rust & Rocket)");
+    println!("  • Port:       http://{}:{}", config.host, config.port);
+    println!("  • Data Dir:   {}", config.data_dir.display());
+    println!("  • Mock Mode:  {}", config.mock_mode);
+    println!("─────────────────────────────────────────────────────────────────");
+
+    let network_summary = network::get_system_network_summary();
+    println!("  • Camera LAN [{}]: {} -> [{}]", 
+        network_summary.camera_lan.interface_name.as_deref().unwrap_or("eth0"),
+        network_summary.camera_lan.ip.as_deref().unwrap_or("Not configured"),
+        network_summary.camera_lan.status.to_uppercase()
+    );
+    println!("  • Hotspot AP [{}]: {} -> [{}]",
+        network_summary.hotspot_ap.interface_name.as_deref().unwrap_or("wlan0"),
+        network_summary.hotspot_ap.ip.as_deref().unwrap_or("Not configured"),
+        network_summary.hotspot_ap.status.to_uppercase()
+    );
+    println!("─────────────────────────────────────────────────────────────────");
+
+    // Initialize Database
+    let db = Database::new(&config.db_path).expect("Failed to initialize SQLite database");
+
+    // Initialize FileStore
+    let store = FileStore::new(&config.images_dir);
+
+    // Initialize Camera Service
+    let camera = CameraService::new(config.mock_mode);
+
+    // Initialize Serial Service
+    let serial = SerialService::new(config.mock_mode);
+
+    // ─── Instant Shutter Trigger Pipeline (<10ms latency) ─────────────────────
+    let pipeline_cam = camera.clone();
+    let pipeline_db = db.clone();
+    let pipeline_store = store.clone();
+    let mut serial_rx = serial.subscribe();
+
+    tokio::spawn(async move {
+        while let Ok(msg) = serial_rx.recv().await {
+            if let models::SerialStatusPayload::Speeding { value, direction, .. } = msg {
+                println!("[trigger-pipeline] Speeding detected ({} km/h) -> Triggering camera shutter!", value);
+
+                let cam = pipeline_cam.clone();
+                let db_clone = pipeline_db.clone();
+                let store_clone = pipeline_store.clone();
+
+                tokio::task::spawn_blocking(move || {
+                    if let Some(png_bytes) = cam.capture_frame() {
+                        if let Ok(img_path) = store_clone.save_image_bytes(&png_bytes, "png") {
+                            let conn = db_clone.lock();
+                            let settings = db::settings::get_settings(&conn).unwrap_or_default();
+                            let input = SaveViolationInput {
+                                image_base64: None,
+                                measured_speed: value,
+                                max_speed: settings.max_speed,
+                                direction,
+                            };
+                            if let Ok(v) = db::violations::insert_violation(&conn, &input, &img_path) {
+                                println!("[trigger-pipeline] Recorded violation #{} ({} km/h)", v.id, v.measured_speed);
+                            }
+                        }
+                    } else {
+                        println!("[trigger-pipeline] Failed to capture frame during speeding event");
+                    }
+                });
+            }
+        }
+    });
+
+    // Build and launch Rocket web server
+    let server = web::build_rocket(config, db, store, camera, serial);
+    server.launch().await?;
+
+    Ok(())
+}

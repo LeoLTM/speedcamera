@@ -1,0 +1,29 @@
+[package]
+name = "headless-rust"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rocket = { version = "0.5.1", features = ["json"] }
+rocket_ws = "0.1.1"
+serialport = "4.9.0"
+rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+imageproc = "0.25"
+ab_glyph = "0.2"
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+base64 = "0.22"
+rust-embed = { version = "8.5", features = ["mime-guess"] }
+mime_guess = "2.0"
+clap = { version = "4.5", features = ["derive"] }
+futures = "0.3"
+tokio-stream = "0.1"
+nix = { version = "0.29", features = ["net"] }
+url = "2.5"
+
+[build-dependencies]
+pkg-config = "0.3"

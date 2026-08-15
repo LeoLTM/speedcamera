@@ -119,7 +119,7 @@ impl SerialService {
                 })
                 .collect(),
             Err(e) => {
-                println!("[serial] Failed to list ports: {}", e);
+                tracing::warn!("[serial] Failed to list ports: {}", e);
                 Vec::new()
             }
         }
@@ -127,7 +127,7 @@ impl SerialService {
 
     pub fn open_port(self: &Arc<Self>, port_path: &str) {
         if self.mock_mode {
-            println!("[serial] Opened mock port {}", port_path);
+            tracing::info!("[serial] Opened mock port {}", port_path);
             *self.active_path.lock().unwrap() = port_path.to_string();
             let _ = self.status_sender.send(SerialStatusPayload::Connected {
                 port: Some(port_path.to_string()),
@@ -158,7 +158,7 @@ impl SerialService {
             let builder = serialport::new(&path, 115_200).timeout(Duration::from_millis(500));
             match builder.open() {
                 Ok(port) => {
-                    println!("[serial] Successfully opened {}", path);
+                    tracing::info!("[serial] Successfully opened {}", path);
                     let _ = this.status_sender.send(SerialStatusPayload::Connected {
                         port: Some(path.clone()),
                     });
@@ -166,7 +166,7 @@ impl SerialService {
                     let reader_port = match port.try_clone() {
                         Ok(p) => p,
                         Err(e) => {
-                            println!("[serial] Failed to clone port for reading: {}", e);
+                            tracing::warn!("[serial] Failed to clone port for reading: {}", e);
                             return;
                         }
                     };
@@ -183,7 +183,7 @@ impl SerialService {
                         match reader.read_line(&mut line_buf) {
                             Ok(0) => {
                                 // EOF: Serial hardware disconnected or reset
-                                println!("[serial] EOF on {} (device disconnected)", path);
+                                tracing::warn!("[serial] EOF on {} (device disconnected)", path);
                                 break;
                             }
                             Ok(_) => {
@@ -196,7 +196,7 @@ impl SerialService {
                                 // Expected timeout when idle
                             }
                             Err(e) => {
-                                println!("[serial] Read error on {}: {}", path, e);
+                                tracing::warn!("[serial] Read error on {}: {}", path, e);
                                 break;
                             }
                         }
@@ -204,7 +204,7 @@ impl SerialService {
 
                     // Only clean up state if this session is still the active one
                     if this.session_id.load(Ordering::SeqCst) == session {
-                        println!("[serial] Port {} closed / disconnected", path);
+                        tracing::info!("[serial] Port {} closed / disconnected", path);
                         *this.active_port.lock().unwrap() = None;
                         let _ = this.status_sender.send(SerialStatusPayload::Disconnected);
 
@@ -216,7 +216,7 @@ impl SerialService {
                     }
                 }
                 Err(e) => {
-                    println!("[serial] Failed to open {}: {}", path, e);
+                    tracing::warn!("[serial] Failed to open {}: {}", path, e);
                     if this.session_id.load(Ordering::SeqCst) == session {
                         let _ = this.status_sender.send(SerialStatusPayload::Disconnected);
                         let configured_path = this.active_path.lock().unwrap().clone();
@@ -245,7 +245,7 @@ impl SerialService {
                 return;
             }
 
-            println!("[serial] Attempting auto-reconnect to {}...", path);
+            tracing::info!("[serial] Attempting auto-reconnect to {}...", path);
             this.open_port(&path);
         });
     }
@@ -256,7 +256,7 @@ impl SerialService {
         *self.active_port.lock().unwrap() = None;
         *self.active_path.lock().unwrap() = String::new();
         let _ = self.status_sender.send(SerialStatusPayload::Disconnected);
-        println!("[serial] Port manually closed");
+        tracing::info!("[serial] Port manually closed");
     }
 
     pub fn send_command(&self, json: &str) {
@@ -272,7 +272,7 @@ impl SerialService {
             let mut data = json.as_bytes().to_vec();
             data.push(b'\n');
             if let Err(e) = port.write_all(&data).and_then(|_| port.flush()) {
-                println!("[serial] Failed to write command: {}", e);
+                tracing::warn!("[serial] Failed to write command: {}", e);
             }
         }
     }
@@ -286,7 +286,7 @@ impl SerialService {
         } else {
             // Check if debug message
             if !line.contains("\"debug\"") {
-                println!("[serial] Raw: {}", line);
+                tracing::debug!("[serial] Raw: {}", line);
             }
         }
     }

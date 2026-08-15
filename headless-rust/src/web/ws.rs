@@ -37,7 +37,7 @@ pub fn ws_rpc(
     ws.channel(move |stream: DuplexStream| {
         let ctx = ctx.clone();
         Box::pin(async move {
-            println!("[ws] Client connected");
+            tracing::info!("[ws] Client connected");
 
             let (mut ws_sink, mut ws_stream) = stream.split();
 
@@ -48,7 +48,7 @@ pub fn ws_rpc(
             let writer_handle = tokio::spawn(async move {
                 while let Some(msg) = out_rx.recv().await {
                     if let Err(e) = ws_sink.send(msg).await {
-                        println!("[ws-writer] Send error or client disconnected: {}", e);
+                        tracing::warn!("[ws-writer] Send error or client disconnected: {}", e);
                         break;
                     }
                 }
@@ -103,11 +103,11 @@ pub fn ws_rpc(
                             }
                             Some(Ok(Message::Pong(_))) => {}
                             Some(Ok(Message::Close(_))) | None => {
-                                println!("[ws] Client disconnected cleanly");
+                                tracing::info!("[ws] Client disconnected cleanly");
                                 break;
                             }
                             Some(Err(e)) => {
-                                println!("[ws] Error reading from stream: {}", e);
+                                tracing::warn!("[ws] Error reading from stream: {}", e);
                                 break;
                             }
                             _ => {}
@@ -121,7 +121,7 @@ pub fn ws_rpc(
                         }
                     }
 
-                    // Serial telemetry broadcast
+                    // Serial telemetry broadcast (drop on slow client — next update follows soon)
                     res = serial_rx.recv() => {
                         match res {
                             Ok(payload) => {
@@ -129,18 +129,16 @@ pub fn ws_rpc(
                                     "event": "serialStatus",
                                     "payload": payload
                                 });
-                                if out_tx.send(Message::Text(msg.to_string())).await.is_err() {
-                                    break;
-                                }
+                                let _ = out_tx.try_send(Message::Text(msg.to_string()));
                             }
                             Err(broadcast::error::RecvError::Lagged(n)) => {
-                                println!("[ws] Serial broadcast lagged by {} messages", n);
+                                tracing::debug!("[ws] Serial broadcast lagged by {} messages", n);
                             }
                             Err(broadcast::error::RecvError::Closed) => break,
                         }
                     }
 
-                    // Camera status broadcast
+                    // Camera status broadcast (drop on slow client — status is re-sent on change)
                     res = camera_status_rx.recv() => {
                         match res {
                             Ok(payload) => {
@@ -148,12 +146,10 @@ pub fn ws_rpc(
                                     "event": "cameraStatus",
                                     "payload": payload
                                 });
-                                if out_tx.send(Message::Text(msg.to_string())).await.is_err() {
-                                    break;
-                                }
+                                let _ = out_tx.try_send(Message::Text(msg.to_string()));
                             }
                             Err(broadcast::error::RecvError::Lagged(n)) => {
-                                println!("[ws] Camera status broadcast lagged by {} messages", n);
+                                tracing::debug!("[ws] Camera status broadcast lagged by {} messages", n);
                             }
                             Err(broadcast::error::RecvError::Closed) => break,
                         }
@@ -177,27 +173,39 @@ pub fn ws_rpc(
                         }
                     }
 
-                    // Violation broadcast (high priority)
+                    // Violation broadcast (high priority — retry briefly, then drop rather than stall)
                     res = violation_rx.recv() => {
                         match res {
                             Ok(v) => {
-                                println!("[ws] Broadcasting violation #{} to client", v.id);
+                                tracing::info!("[ws] Broadcasting violation #{} to client", v.id);
                                 let msg = json!({
                                     "event": "violation",
                                     "payload": v
                                 });
-                                if out_tx.send(Message::Text(msg.to_string())).await.is_err() {
-                                    break;
+                                let text = Message::Text(msg.to_string());
+                                // Try a few times with tiny yields; never block the select loop
+                                let mut sent = false;
+                                for _ in 0..10 {
+                                    match out_tx.try_send(text.clone()) {
+                                        Ok(_) => { sent = true; break; }
+                                        Err(mpsc::error::TrySendError::Full(_)) => {
+                                            tokio::time::sleep(Duration::from_millis(20)).await;
+                                        }
+                                        Err(_) => break,
+                                    }
+                                }
+                                if !sent {
+                                    tracing::warn!("[ws] Dropped violation #{} — client too slow", v.id);
                                 }
                             }
                             Err(broadcast::error::RecvError::Lagged(n)) => {
-                                println!("[ws] Violation broadcast lagged by {} messages", n);
+                                tracing::debug!("[ws] Violation broadcast lagged by {} messages", n);
                             }
                             Err(broadcast::error::RecvError::Closed) => break,
                         }
                     }
 
-                    // Flash progress broadcast
+                    // Flash progress broadcast (drop on slow client)
                     res = flash_rx.recv() => {
                         match res {
                             Ok(payload) => {
@@ -205,12 +213,10 @@ pub fn ws_rpc(
                                     "event": "flashProgress",
                                     "payload": payload
                                 });
-                                if out_tx.send(Message::Text(msg.to_string())).await.is_err() {
-                                    break;
-                                }
+                                let _ = out_tx.try_send(Message::Text(msg.to_string()));
                             }
                             Err(broadcast::error::RecvError::Lagged(n)) => {
-                                println!("[ws] Flash progress broadcast lagged by {} messages", n);
+                                tracing::debug!("[ws] Flash progress broadcast lagged by {} messages", n);
                             }
                             Err(broadcast::error::RecvError::Closed) => break,
                         }
@@ -222,7 +228,7 @@ pub fn ws_rpc(
             drop(out_tx);
             let _ = writer_handle.await;
 
-            println!("[ws] Client session ended");
+            tracing::info!("[ws] Client session ended");
             Ok(())
         })
     })

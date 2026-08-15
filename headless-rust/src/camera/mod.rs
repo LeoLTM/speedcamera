@@ -130,7 +130,7 @@ impl CameraService {
             arv_update_device_list();
             let n = arv_get_n_devices();
             if n == 0 {
-                println!("[camera] No GigE Vision cameras detected on network");
+                tracing::info!("[camera] No GigE Vision cameras detected on network");
                 return;
             }
 
@@ -141,7 +141,7 @@ impl CameraService {
                 if !v_ptr.is_null() && !id_ptr.is_null() {
                     let v = CStr::from_ptr(v_ptr).to_string_lossy();
                     let id = CStr::from_ptr(id_ptr).to_string_lossy();
-                    println!("[camera] Found device [{}]: {} ({})", i, v, id);
+                    tracing::info!("[camera] Found device [{}]: {} ({})", i, v, id);
                     if v.to_lowercase().contains("hikrobot") || target_id.is_none() {
                         target_id = Some(id.to_string());
                     }
@@ -156,7 +156,7 @@ impl CameraService {
             if cam.is_null() {
                 if !err.is_null() {
                     let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                    println!("[camera] Failed to open camera: {}", msg);
+                    tracing::info!("[camera] Failed to open camera: {}", msg);
                     g_error_free(err);
                 }
                 return;
@@ -168,18 +168,26 @@ impl CameraService {
                 if !err.is_null() {
                     g_error_free(err);
                 } else {
-                    println!("[camera] GigE Vision auto packet size set to: {} bytes", packet_size);
+                    tracing::info!("[camera] GigE Vision auto packet size set to: {} bytes", packet_size);
                 }
 
-                // Set GevSCPD (Stream Channel Packet Delay) to 2000 ticks
-                // This spaces out UDP packets to prevent NIC packet storms and SSH stalls
+                // Set GevSCPD (Stream Channel Packet Delay) to space out UDP packets.
+                // 2000 ticks caused NIC packet storms on the Pi 5 (SSH/journald stalls,
+                // softirq starvation on the shared SoC). 20000 ticks still allows
+                // ~10 FPS preview at full resolution with jumbo frames, while leaving
+                // headroom for the Wi-Fi hotspot and system responsiveness.
+                // Override via GEV_SCPD env var if tuning is needed in the field.
+                let scpd: i64 = std::env::var("GEV_SCPD")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(20000);
                 let mut delay_err = null_mut();
-                arv_camera_gv_set_packet_delay(cam, 2000, &mut delay_err);
+                arv_camera_gv_set_packet_delay(cam, scpd, &mut delay_err);
                 if !delay_err.is_null() {
                     g_error_free(delay_err);
-                    Self::set_feature_int_internal(cam, "GevSCPD", 2000);
+                    Self::set_feature_int_internal(cam, "GevSCPD", scpd);
                 }
-                println!("[camera] GigE Vision GevSCPD packet delay set to: 2000");
+                tracing::info!("[camera] GigE Vision GevSCPD packet delay set to: {}", scpd);
             }
 
             // Set PixelFormat
@@ -225,12 +233,12 @@ impl CameraService {
             // Enabling it forces the camera's internal frame generator to run,
             // which causes the flash to fire continuously!
             Self::set_frame_rate_enable_internal(cam, false);
-            println!("[camera] Frame rate limiting disabled (triggered mode)");
+            tracing::info!("[camera] Frame rate limiting disabled (triggered mode)");
 
             // Create Stream with 24 pre-allocated buffers for robust throughput without underruns
             let stream = arv_camera_create_stream(cam, null_mut(), null_mut(), &mut err);
             if stream.is_null() {
-                println!("[camera] Failed to create stream");
+                tracing::info!("[camera] Failed to create stream");
                 g_object_unref(cam as *mut _);
                 return;
             }
@@ -253,7 +261,7 @@ impl CameraService {
             arv_camera_start_acquisition(cam, &mut err);
             if !err.is_null() {
                 let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                println!("[camera] Warning: arv_camera_start_acquisition returned error: {}", msg);
+                tracing::warn!("[camera] arv_camera_start_acquisition returned error: {}", msg);
                 g_error_free(err);
             }
 
@@ -261,7 +269,7 @@ impl CameraService {
             *self.stream_ptr.lock().unwrap() = stream;
             self.is_connected.store(true, Ordering::SeqCst);
 
-            println!("[camera] Connected and acquisition started successfully");
+            tracing::info!("[camera] Connected and acquisition started successfully");
             let _ = self.status_sender.send(self.get_status());
         }
     }
@@ -300,7 +308,7 @@ impl CameraService {
             }
         }
 
-        println!("[camera] Disconnected");
+        tracing::info!("[camera] Disconnected");
         let _ = self.status_sender.send(self.get_status());
     }
 
@@ -344,13 +352,13 @@ impl CameraService {
                 let buffer = arv_stream_timeout_pop_buffer(stream, 2_000_000);
 
                 if buffer.is_null() {
-                    println!("[camera] Capture frame timed out");
+                    tracing::warn!("[camera] Capture frame timed out");
                     return None;
                 }
 
                 let status = arv_buffer_get_status(buffer);
                 if status != ARV_BUFFER_STATUS_SUCCESS {
-                    println!(
+                    tracing::info!(
                         "[camera] Capture buffer failed with status: {} ({})",
                         buffer_status_name(status),
                         status
@@ -388,7 +396,7 @@ impl CameraService {
         let this = self.clone();
 
         tokio::task::spawn_blocking(move || {
-            println!("[camera] Setup preview stream starting...");
+            tracing::info!("[camera] Setup preview stream starting...");
 
             if !this.mock_mode {
                 let cam = *this.camera_ptr.lock().unwrap();
@@ -430,14 +438,14 @@ impl CameraService {
                         arv_camera_start_acquisition(cam, &mut err);
                         if !err.is_null() {
                             let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                            println!("[camera] Error restarting acquisition for setup stream: {}", msg);
+                            tracing::info!("[camera] Error restarting acquisition for setup stream: {}", msg);
                             g_error_free(err);
                         }
                     }
                 }
             }
 
-            println!("[camera] Setup preview stream active");
+            tracing::info!("[camera] Setup preview stream active");
 
             let is_encoding = Arc::new(AtomicBool::new(false));
 
@@ -504,7 +512,7 @@ impl CameraService {
                 }
             }
 
-            println!("[camera] Setup preview stream thread exited");
+            tracing::info!("[camera] Setup preview stream thread exited");
         });
     }
 
@@ -560,7 +568,7 @@ impl CameraService {
                 }
             }
         }
-        println!("[camera] Setup preview stream stopped, restored triggered capture mode");
+        tracing::info!("[camera] Setup preview stream stopped, restored triggered capture mode");
         let _ = self.status_sender.send(self.get_status());
     }
 
@@ -1038,8 +1046,14 @@ impl CameraService {
 
     // ── Shared Helper Functions ────────────────────────────────────────────────
 
-    /// Configure Line1 as strobe output with full settings from AppSettings.
-    fn configure_strobe_internal(cam: *mut ArvCamera, settings: &AppSettings) {
+    /// Configure Line1 as strobe output, matching electronbun behavior.
+    ///
+    /// Uses LineSource=ExposureActive so the flash fires ONLY during the
+    /// exposure window of a triggered frame. StrobeEnable/StrobeLineDuration
+    /// are intentionally NOT set: on Hikrobot cameras, enabling StrobeEnable
+    /// with a duration makes the line free-run on its own timer, causing the
+    /// flash to strobe continuously regardless of trigger state.
+    fn configure_strobe_internal(cam: *mut ArvCamera, _settings: &AppSettings) {
         if cam.is_null() {
             return;
         }
@@ -1048,31 +1062,24 @@ impl CameraService {
         }
         Self::set_feature_str_internal(cam, "LineSelector", "Line1");
         Self::set_feature_str_internal(cam, "LineMode", "Strobe");
-        
-        // Match electronbun: prefer ExposureActive to limit flash strictly to the exposure window
+
+        // Prefer ExposureActive to limit flash strictly to the exposure window
         if Self::is_enumeration_entry_available_internal(cam, "LineSource", "ExposureActive") {
             Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
+        } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "ExposureStartActive") {
+            Self::set_feature_str_internal(cam, "LineSource", "ExposureStartActive");
         } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "FrameStartActive") {
             Self::set_feature_str_internal(cam, "LineSource", "FrameStartActive");
-        } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "Strobe") {
-            Self::set_feature_str_internal(cam, "LineSource", "Strobe");
         }
         Self::set_line_inverter_internal(cam, false);
-        Self::set_feature_int_internal(cam, "LineDebouncerTime", 50);
 
+        // Ensure the free-running strobe timer is OFF — LineSource drives the pulse.
         if Self::is_feature_available_internal(cam, "StrobeEnable") {
-            if !Self::set_feature_bool_internal(cam, "StrobeEnable", true) {
-                Self::set_feature_int_internal(cam, "StrobeEnable", 1);
+            if !Self::set_feature_bool_internal(cam, "StrobeEnable", false) {
+                Self::set_feature_int_internal(cam, "StrobeEnable", 0);
             }
-            Self::set_feature_int_internal(
-                cam,
-                "StrobeLineDuration",
-                settings.strobe_line_duration as i64,
-            );
-            Self::set_feature_int_internal(cam, "StrobeLineDelay", 0);
-            Self::set_feature_int_internal(cam, "StrobeLinePreDelay", 0);
         }
-        println!("[camera] Strobe configured on Line1 (StrobeEnable=true)");
+        tracing::info!("[camera] Strobe configured on Line1 (LineSource=ExposureActive, StrobeEnable=false)");
     }
 
     /// Disable strobe output during setup preview to prevent flash from firing.
@@ -1080,10 +1087,10 @@ impl CameraService {
         if cam.is_null() {
             return;
         }
-        // Just disable strobe — don't try to set LineSource to 'Off' as Hikrobot
-        // doesn't support that value (confirmed from logs: "'Off' not an entry")
+        // Disable strobe timer; LineSource=ExposureActive alone won't fire
+        // without exposures, but belt-and-braces for preview mode.
         Self::set_feature_bool_internal(cam, "StrobeEnable", false);
-        println!("[camera] Strobe disabled for preview mode");
+        tracing::info!("[camera] Strobe disabled for preview mode");
     }
 
     /// Flush all pending buffers from the stream output queue back to the input pool.
@@ -1103,7 +1110,7 @@ impl CameraService {
                 flushed += 1;
             }
             if flushed > 0 {
-                println!("[camera] Flushed {} stale buffers", flushed);
+                tracing::debug!("[camera] Flushed {} stale buffers", flushed);
             }
         }
     }
@@ -1118,17 +1125,17 @@ impl CameraService {
             let actual = arv_camera_get_frame_rate(cam, &mut err);
             if !err.is_null() {
                 g_error_free(err);
-                println!("[camera] WARNING: Could not read back frame rate for verification");
+                tracing::warn!("[camera] Could not read back frame rate for verification");
                 return;
             }
             let diff = (actual - target_fps).abs();
             if diff > 1.0 {
-                println!(
+                tracing::info!(
                     "[camera] WARNING: Frame rate readback {:.1} FPS differs from target {:.1} FPS — camera may not be respecting frame rate limit!",
                     actual, target_fps
                 );
             } else {
-                println!("[camera] Frame rate verified: {:.1} FPS (target: {:.1})", actual, target_fps);
+                tracing::debug!("[camera] Frame rate verified: {:.1} FPS (target: {:.1})", actual, target_fps);
             }
         }
     }
@@ -1166,11 +1173,11 @@ impl CameraService {
             arv_camera_execute_command(cam, cmd_cstr.as_ptr(), &mut err);
             if !err.is_null() {
                 let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                println!("[camera] Warning: execute_command({}) failed: {}", command, msg);
+                tracing::warn!("[camera] execute_command({}) failed: {}", command, msg);
                 g_error_free(err);
                 false
             } else {
-                println!("[camera] execute_command({}) succeeded", command);
+                tracing::debug!("[camera] execute_command({}) succeeded", command);
                 true
             }
         }
@@ -1197,11 +1204,11 @@ impl CameraService {
             arv_device_set_string_feature_value(dev, f_cstr.as_ptr(), v_cstr.as_ptr(), &mut err);
             if !err.is_null() {
                 let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                println!("[camera] Warning: set_feature_str({}, {}) failed: {}", feature, value, msg);
+                tracing::warn!("[camera] set_feature_str({}, {}) failed: {}", feature, value, msg);
                 g_error_free(err);
                 false
             } else {
-                println!("[camera] set_feature_str({}, {}) succeeded", feature, value);
+                tracing::debug!("[camera] set_feature_str({}, {}) succeeded", feature, value);
                 true
             }
         }
@@ -1250,11 +1257,11 @@ impl CameraService {
             arv_device_set_integer_feature_value(dev, f_cstr.as_ptr(), value, &mut err);
             if !err.is_null() {
                 let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                println!("[camera] Warning: set_feature_int({}, {}) failed: {}", feature, value, msg);
+                tracing::warn!("[camera] set_feature_int({}, {}) failed: {}", feature, value, msg);
                 g_error_free(err);
                 false
             } else {
-                println!("[camera] set_feature_int({}, {}) succeeded", feature, value);
+                tracing::debug!("[camera] set_feature_int({}, {}) succeeded", feature, value);
                 true
             }
         }
@@ -1301,11 +1308,11 @@ impl CameraService {
             arv_device_set_float_feature_value(dev, f_cstr.as_ptr(), value, &mut err);
             if !err.is_null() {
                 let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                println!("[camera] Warning: set_feature_float({}, {}) failed: {}", feature, value, msg);
+                tracing::warn!("[camera] set_feature_float({}, {}) failed: {}", feature, value, msg);
                 g_error_free(err);
                 false
             } else {
-                println!("[camera] set_feature_float({}, {}) succeeded", feature, value);
+                tracing::debug!("[camera] set_feature_float({}, {}) succeeded", feature, value);
                 true
             }
         }
@@ -1333,11 +1340,11 @@ impl CameraService {
             );
             if !err.is_null() {
                 let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                println!("[camera] Warning: set_feature_bool({}, {}) failed: {}", feature, value, msg);
+                tracing::warn!("[camera] set_feature_bool({}, {}) failed: {}", feature, value, msg);
                 g_error_free(err);
                 false
             } else {
-                println!("[camera] set_feature_bool({}, {}) succeeded", feature, value);
+                tracing::debug!("[camera] set_feature_bool({}, {}) succeeded", feature, value);
                 true
             }
         }
@@ -1352,11 +1359,11 @@ impl CameraService {
             arv_camera_set_exposure_time(cam, us, &mut err);
             if !err.is_null() {
                 let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                println!("[camera] Warning: arv_camera_set_exposure_time({}) failed: {}", us, msg);
+                tracing::warn!("[camera] arv_camera_set_exposure_time({}) failed: {}", us, msg);
                 g_error_free(err);
                 false
             } else {
-                println!("[camera] Set exposure time to {} µs", us);
+                tracing::info!("[camera] Set exposure time to {} µs", us);
                 true
             }
         }
@@ -1371,11 +1378,11 @@ impl CameraService {
             arv_camera_set_gain(cam, gain, &mut err);
             if !err.is_null() {
                 let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                println!("[camera] Warning: arv_camera_set_gain({}) failed: {}", gain, msg);
+                tracing::warn!("[camera] arv_camera_set_gain({}) failed: {}", gain, msg);
                 g_error_free(err);
                 false
             } else {
-                println!("[camera] Set gain to {}", gain);
+                tracing::info!("[camera] Set gain to {}", gain);
                 true
             }
         }
@@ -1390,11 +1397,11 @@ impl CameraService {
             arv_camera_set_frame_rate(cam, fps, &mut err);
             if !err.is_null() {
                 let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                println!("[camera] Warning: arv_camera_set_frame_rate({}) failed: {}", fps, msg);
+                tracing::warn!("[camera] arv_camera_set_frame_rate({}) failed: {}", fps, msg);
                 g_error_free(err);
                 false
             } else {
-                println!("[camera] Set frame rate to {} FPS", fps);
+                tracing::info!("[camera] Set frame rate to {} FPS", fps);
                 true
             }
         }
@@ -1435,42 +1442,61 @@ impl CameraService {
 
     /// Configure triggered capture mode using direct GenICam device features.
     ///
-    /// Avoids `arv_camera_set_trigger()` which uses TriggerSelector=AcquisitionStart
-    /// internally — wrong for Hikrobot cameras that use FrameBurstStart.
-    /// Uses explicit 3-step sequence: TriggerSelector → TriggerMode → TriggerSource.
+    /// Matches electronbun behavior: enable trigger on ONE selector only and
+    /// explicitly disable all others. Enabling multiple selectors (e.g. both
+    /// FrameStart and FrameBurstStart) makes the camera free-run and strobe
+    /// the flash continuously.
     fn set_trigger_mode_internal(cam: *mut ArvCamera, trigger_source: &str) -> bool {
         if cam.is_null() {
             return false;
         }
 
-        // IMPORTANT: FrameStart must be preferred over FrameBurstStart.
-        // If FrameBurstStart is set to On but FrameStart remains Off (free-run),
-        // the camera will continuously expose and strobe the flash indefinitely!
+        // Pick first available selector, prefer FrameStart (per-frame trigger).
         let selectors = ["FrameStart", "FrameBurstStart", "AcquisitionStart"];
+        let mut chosen: Option<&str> = None;
         for sel in selectors {
             if Self::set_feature_str_internal(cam, "TriggerSelector", sel) {
-                let mode_ok = Self::set_feature_str_internal(cam, "TriggerMode", "On");
-                let src_ok = Self::set_feature_str_internal(cam, "TriggerSource", trigger_source);
-                if mode_ok && src_ok {
-                    println!(
-                        "[camera] Trigger configured: Selector={}, Mode=On, Source={}",
-                        sel, trigger_source
-                    );
-                    // Verify TriggerMode actually stuck
-                    if let Some(readback) = Self::get_feature_str_internal(cam, "TriggerMode") {
-                        if readback != "On" {
-                            println!(
-                                "[camera] WARNING: TriggerMode readback is '{}' (expected 'On')",
-                                readback
-                            );
-                        }
-                    }
-                    return true;
-                }
+                chosen = Some(sel);
+                break;
             }
         }
 
-        println!("[camera] ERROR: Failed to configure trigger mode on any selector");
+        let Some(active) = chosen else {
+            tracing::error!("[camera] Failed to select any TriggerSelector");
+            return false;
+        };
+
+        // Explicitly disable trigger mode on all OTHER selectors first.
+        for sel in selectors {
+            if sel != active && Self::set_feature_str_internal(cam, "TriggerSelector", sel) {
+                let _ = Self::set_feature_str_internal(cam, "TriggerMode", "Off");
+            }
+        }
+
+        // Enable trigger on the chosen selector.
+        if !Self::set_feature_str_internal(cam, "TriggerSelector", active) {
+            tracing::error!("[camera] Failed to re-select TriggerSelector={}", active);
+            return false;
+        }
+        let mode_ok = Self::set_feature_str_internal(cam, "TriggerMode", "On");
+        let src_ok = Self::set_feature_str_internal(cam, "TriggerSource", trigger_source);
+        if mode_ok && src_ok {
+            tracing::info!(
+                "[camera] Trigger configured: Selector={}, Mode=On, Source={}",
+                active, trigger_source
+            );
+            if let Some(readback) = Self::get_feature_str_internal(cam, "TriggerMode") {
+                if readback != "On" {
+                    tracing::warn!(
+                        "[camera] TriggerMode readback is '{}' (expected 'On')",
+                        readback
+                    );
+                }
+            }
+            return true;
+        }
+
+        tracing::error!("[camera] Failed to configure trigger mode on selector {}", active);
         false
     }
 
@@ -1487,16 +1513,16 @@ impl CameraService {
         for sel in ["FrameBurstStart", "FrameStart", "AcquisitionStart"] {
             if Self::set_feature_str_internal(cam, "TriggerSelector", sel) {
                 if Self::set_feature_str_internal(cam, "TriggerMode", "Off") {
-                    println!("[camera] Trigger disabled: Selector={}, Mode=Off", sel);
+                    tracing::info!("[camera] Trigger disabled: Selector={}, Mode=Off", sel);
                     any_success = true;
                 }
             }
         }
 
         if any_success {
-            println!("[camera] Triggers cleared — camera in free-running mode");
+            tracing::info!("[camera] Triggers cleared — camera in free-running mode");
         } else {
-            println!("[camera] WARNING: Could not clear triggers on any selector");
+            tracing::warn!("[camera] Could not clear triggers on any selector");
         }
         any_success
     }
@@ -1512,7 +1538,7 @@ impl CameraService {
                 true
             } else {
                 let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                println!("[camera] arv_camera_software_trigger returned: {}. Trying command execution fallback...", msg);
+                tracing::info!("[camera] arv_camera_software_trigger returned: {}. Trying command execution fallback...", msg);
                 g_error_free(err);
                 Self::execute_command_internal(cam, "TriggerSoftware")
             }
@@ -1565,7 +1591,7 @@ impl CameraService {
                 if enable { 1 } else { 0 },
             );
         }
-        println!(
+        tracing::info!(
             "[camera] AcquisitionFrameRateEnable = {}",
             if enable { "true" } else { "false" }
         );
@@ -1609,18 +1635,18 @@ impl CameraService {
                 let mut err = null_mut();
                 arv_camera_set_pixel_format_from_string(cam, fmt_cstr.as_ptr(), &mut err);
                 if err.is_null() {
-                    println!("[camera] PixelFormat set to {}", fmt);
+                    tracing::info!("[camera] PixelFormat set to {}", fmt);
                     return true;
                 } else {
                     g_error_free(err);
                 }
             }
             if Self::set_feature_str_internal(cam, "PixelFormat", fmt) {
-                println!("[camera] PixelFormat set to {}", fmt);
+                tracing::info!("[camera] PixelFormat set to {}", fmt);
                 return true;
             }
         }
-        println!("[camera] Warning: Could not configure requested PixelFormat {}, retaining current format", format);
+        tracing::warn!("[camera] Could not configure requested PixelFormat {}, retaining current format", format);
         false
     }
 

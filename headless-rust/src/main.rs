@@ -32,28 +32,40 @@ struct Args {
 
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
+    // Non-blocking logging: tracing-appender writes on dedicated thread.
+    // Prevents journald/SSH backpressure from stalling tokio workers.
+    let (nb_writer, _guard) = tracing_appender::non_blocking(std::io::stdout());
+    tracing_subscriber::fmt()
+        .with_writer(nb_writer)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .with_target(false)
+        .init();
+
     let args = Args::parse();
     let config = AppConfig::new(args.mock, args.port, args.host);
 
-    println!("─────────────────────────────────────────────────────────────────");
-    println!("  ⚡ Speedcamera Headless Daemon (Rust & Rocket)");
-    println!("  • Port:       http://{}:{}", config.host, config.port);
-    println!("  • Data Dir:   {}", config.data_dir.display());
-    println!("  • Mock Mode:  {}", config.mock_mode);
-    println!("─────────────────────────────────────────────────────────────────");
+    tracing::info!("─────────────────────────────────────────────────────────────────");
+    tracing::info!("  ⚡ Speedcamera Headless Daemon (Rust & Rocket)");
+    tracing::info!("  • Port:       http://{}:{}", config.host, config.port);
+    tracing::info!("  • Data Dir:   {}", config.data_dir.display());
+    tracing::info!("  • Mock Mode:  {}", config.mock_mode);
+    tracing::info!("─────────────────────────────────────────────────────────────────");
 
     let network_summary = network::get_system_network_summary();
-    println!("  • Camera LAN [{}]: {} -> [{}]", 
+    tracing::info!("  • Camera LAN [{}]: {} -> [{}]",
         network_summary.camera_lan.interface_name.as_deref().unwrap_or("eth0"),
         network_summary.camera_lan.ip.as_deref().unwrap_or("Not configured"),
         network_summary.camera_lan.status.to_uppercase()
     );
-    println!("  • Hotspot AP [{}]: {} -> [{}]",
+    tracing::info!("  • Hotspot AP [{}]: {} -> [{}]",
         network_summary.hotspot_ap.interface_name.as_deref().unwrap_or("wlan0"),
         network_summary.hotspot_ap.ip.as_deref().unwrap_or("Not configured"),
         network_summary.hotspot_ap.status.to_uppercase()
     );
-    println!("─────────────────────────────────────────────────────────────────");
+    tracing::info!("─────────────────────────────────────────────────────────────────");
 
     // Initialize Database
     let db = Database::new(&config.db_path).expect("Failed to initialize SQLite database");
@@ -72,7 +84,7 @@ async fn main() -> Result<(), rocket::Error> {
         let conn = db.lock();
         if let Ok(settings) = db::settings::get_settings(&conn) {
             if !settings.selected_port.is_empty() {
-                println!("[serial] Auto-connecting configured port: {}", settings.selected_port);
+                tracing::info!("[serial] Auto-connecting configured port: {}", settings.selected_port);
                 serial.open_port(&settings.selected_port);
             }
         }
@@ -91,7 +103,7 @@ async fn main() -> Result<(), rocket::Error> {
             match serial_rx.recv().await {
                 Ok(msg) => {
                     if let models::SerialStatusPayload::Speeding { value, direction, .. } = msg {
-                        println!("[trigger-pipeline] Speeding detected ({} km/h) -> Triggering camera shutter!", value);
+                        tracing::info!("[trigger-pipeline] Speeding detected ({} km/h) -> Triggering camera shutter!", value);
 
                         let cam = pipeline_cam.clone();
                         let db_clone = pipeline_db.clone();
@@ -110,21 +122,21 @@ async fn main() -> Result<(), rocket::Error> {
                                         direction,
                                     };
                                     if let Ok(v) = db::violations::insert_violation(&conn, &input, &img_path) {
-                                        println!("[trigger-pipeline] Recorded violation #{} ({} km/h)", v.id, v.measured_speed);
+                                        tracing::info!("[trigger-pipeline] Recorded violation #{} ({} km/h)", v.id, v.measured_speed);
                                         let _ = v_tx.send(v);
                                     }
                                 }
                             } else {
-                                println!("[trigger-pipeline] Failed to capture frame during speeding event");
+                                tracing::warn!("[trigger-pipeline] Failed to capture frame during speeding event");
                             }
                         });
                     }
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(missed)) => {
-                    println!("[trigger-pipeline] Warning: Serial receiver lagged by {} messages", missed);
+                    tracing::warn!("[trigger-pipeline] Serial receiver lagged by {} messages", missed);
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    println!("[trigger-pipeline] Serial channel closed, exiting pipeline task");
+                    tracing::info!("[trigger-pipeline] Serial channel closed, exiting pipeline task");
                     break;
                 }
             }

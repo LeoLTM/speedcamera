@@ -31,15 +31,20 @@ case "$MODE" in
     echo ""
 
     # Apply GigE Vision kernel socket buffer optimizations
-    echo "[*] Applying GigE Vision network socket buffer optimizations (64MB)..."
+    echo "[*] Applying GigE Vision network socket buffer optimizations (128MB)..."
     sudo bash -c 'cat > /etc/sysctl.d/60-gige-camera.conf <<EOF
-net.core.rmem_max = 67108864
-net.core.rmem_default = 33554432
-net.core.wmem_max = 67108864
-net.core.wmem_default = 33554432
-net.core.netdev_max_backlog = 10000
+net.core.rmem_max = 134217728
+net.core.rmem_default = 67108864
+net.core.wmem_max = 134217728
+net.core.wmem_default = 67108864
+net.core.netdev_max_backlog = 30000
 EOF'
     sudo sysctl -p /etc/sysctl.d/60-gige-camera.conf 2>/dev/null || sudo sysctl --system 2>/dev/null || true
+
+    # Enable jumbo frames on camera NIC — critical for GigE Vision throughput.
+    # Larger MTU = fewer packets = fewer interrupts = less CPU/softirq pressure.
+    echo "[*] Enabling jumbo frames (MTU 9000) on ${ETH_IFACE}..."
+    sudo ip link set dev "${ETH_IFACE}" mtu 9000 2>/dev/null || echo "Note: MTU 9000 not supported by NIC/driver, keeping default."
 
     # Configure Ethernet Camera LAN
     echo "[1/2] Configuring Camera LAN on ${ETH_IFACE}..."
@@ -50,7 +55,8 @@ EOF'
       autoconnect yes \
       ipv4.method manual \
       ipv4.addresses 192.168.1.100/24 \
-      ipv4.never-default yes
+      ipv4.never-default yes \
+      802-3-ethernet.mtu 9000
     sudo nmcli connection up "Speedcamera-CameraLAN" 2>/dev/null || echo "Note: Ethernet link active when camera cable is connected."
 
     # Configure Wi-Fi Hotspot AP

@@ -216,13 +216,16 @@ impl CameraService {
             if Self::is_feature_available_internal(cam, "AcquisitionMode") {
                 Self::set_feature_str_internal(cam, "AcquisitionMode", "Continuous");
             }
+            // Explicitly set burst frame count to 1 (one frame per trigger)
+            Self::set_feature_int_internal(cam, "AcquisitionBurstFrameCount", 1);
             Self::set_trigger_mode_internal(cam, "Software");
 
-            // ── Frame Rate (safety net) ─────────────────────────────────────
-            // Frame rate limit helps prevent network flood if trigger mode fails.
-            Self::set_frame_rate_enable_internal(cam, true);
-            Self::set_frame_rate_internal(cam, 5.0);
-            println!("[camera] Frame rate safety net: 5 FPS (triggered mode)");
+            // ── Frame Rate ─────────────────────────────────────
+            // Frame rate limit must be disabled in triggered mode.
+            // Enabling it forces the camera's internal frame generator to run,
+            // which causes the flash to fire continuously!
+            Self::set_frame_rate_enable_internal(cam, false);
+            println!("[camera] Frame rate limiting disabled (triggered mode)");
 
             // Create Stream with 24 pre-allocated buffers for robust throughput without underruns
             let stream = arv_camera_create_stream(cam, null_mut(), null_mut(), &mut err);
@@ -544,9 +547,8 @@ impl CameraService {
                     Self::set_gain_internal(cam, settings.camera_gain);
                 }
 
-                // 6. Frame rate safety net (low rate in case trigger fails)
-                Self::set_frame_rate_enable_internal(cam, true);
-                Self::set_frame_rate_internal(cam, 5.0);
+                // 6. Disable frame rate limiting in triggered mode
+                Self::set_frame_rate_enable_internal(cam, false);
 
                 // 7. Restart acquisition in triggered mode
                 unsafe {

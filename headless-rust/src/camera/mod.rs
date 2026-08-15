@@ -208,24 +208,26 @@ impl CameraService {
             }
 
             // ── Line & Strobe Flash Configuration ──────────────────────────────
-            // Configure Line1 as Strobe output
+            // Configure Line1 strobe wiring but keep StrobeEnable=false.
+            // Strobe is ONLY enabled briefly during capture_frame_jpeg() to
+            // prevent permanent flash firing if trigger mode doesn't stick.
             Self::configure_strobe_internal(cam, settings);
 
             // ── Trigger Mode & Acquisition ────────────────────────────────────
-            // Set AcquisitionMode=Continuous, then configure FrameBurstStart
-            // trigger for software-triggered capture. This prevents the camera
-            // from free-running and strobing the flash continuously.
             if Self::is_feature_available_internal(cam, "AcquisitionMode") {
                 Self::set_feature_str_internal(cam, "AcquisitionMode", "Continuous");
             }
+            // Explicitly set burst frame count to 1 (one frame per trigger)
+            Self::set_feature_int_internal(cam, "AcquisitionBurstFrameCount", 1);
             Self::set_trigger_mode_internal(cam, "Software");
 
-            // ── Frame Rate ────────────────────────────────────────────────────
-            // In triggered mode, frame rate limiting is unnecessary and should
-            // be disabled. The trigger timing controls capture rate.
-            // (Matches reference MFS: AcquisitionFrameRateEnable = 0)
-            Self::set_frame_rate_enable_internal(cam, false);
-            println!("[camera] Frame rate limiting disabled (triggered mode)");
+            // ── Frame Rate (safety net) ─────────────────────────────────────
+            // Keep frame rate limiting enabled at a low rate even in triggered
+            // mode. If trigger mode fails for any reason, this prevents the
+            // camera from flooding the network at 63 FPS.
+            Self::set_frame_rate_enable_internal(cam, true);
+            Self::set_frame_rate_internal(cam, 5.0);
+            println!("[camera] Frame rate safety net: 5 FPS (triggered mode)");
 
             // Create Stream with 24 pre-allocated buffers for robust throughput without underruns
             let stream = arv_camera_create_stream(cam, null_mut(), null_mut(), &mut err);
@@ -260,6 +262,15 @@ impl CameraService {
             *self.camera_ptr.lock().unwrap() = cam;
             *self.stream_ptr.lock().unwrap() = stream;
             self.is_connected.store(true, Ordering::SeqCst);
+
+            // Post-acquisition diagnostic: verify trigger mode survived start_acquisition
+            if let Some(readback) = Self::get_feature_str_internal(cam, "TriggerMode") {
+                println!("[camera] POST-ACQUISITION TriggerMode readback: {}", readback);
+                if readback != "On" {
+                    println!("[camera] WARNING: Camera reset TriggerMode to '{}' after acquisition start! Re-applying...", readback);
+                    Self::set_trigger_mode_internal(cam, "Software");
+                }
+            }
 
             println!("[camera] Connected and acquisition started successfully");
             let _ = self.status_sender.send(self.get_status());
@@ -337,11 +348,18 @@ impl CameraService {
                     arv_stream_push_buffer(stream, stale);
                 }
 
+                // Enable strobe for this capture only
+                Self::set_feature_bool_internal(cam, "StrobeEnable", true);
+
                 // Software trigger
                 Self::fire_software_trigger_internal(cam);
 
                 // Wait up to 2.0 seconds for completed frame
                 let buffer = arv_stream_timeout_pop_buffer(stream, 2_000_000);
+
+                // Disable strobe immediately after frame received (or timeout)
+                Self::set_feature_bool_internal(cam, "StrobeEnable", false);
+
                 if buffer.is_null() {
                     println!("[camera] Capture frame timed out");
                     return None;
@@ -533,7 +551,8 @@ impl CameraService {
                 // 3. Restore trigger mode (FrameBurstStart/On/Software)
                 Self::set_trigger_mode_internal(cam, "Software");
 
-                // 4. Restore strobe configuration
+                // 4. Restore strobe wiring but keep StrobeEnable=false
+                // (strobe only enabled during capture_frame_jpeg)
                 Self::configure_strobe_internal(cam, settings);
 
                 // 5. Restore exposure & gain
@@ -546,9 +565,9 @@ impl CameraService {
                     Self::set_gain_internal(cam, settings.camera_gain);
                 }
 
-                // 6. Disable frame rate limiting in triggered mode
-                // (trigger timing controls capture rate, not AcquisitionFrameRate)
-                Self::set_frame_rate_enable_internal(cam, false);
+                // 6. Frame rate safety net (low rate in case trigger fails)
+                Self::set_frame_rate_enable_internal(cam, true);
+                Self::set_frame_rate_internal(cam, 5.0);
 
                 // 7. Restart acquisition in triggered mode
                 unsafe {
@@ -556,6 +575,15 @@ impl CameraService {
                     arv_camera_start_acquisition(cam, &mut err);
                     if !err.is_null() {
                         g_error_free(err);
+                    }
+                }
+
+                // 8. Post-acquisition diagnostic: verify trigger mode survived
+                if let Some(readback) = Self::get_feature_str_internal(cam, "TriggerMode") {
+                    println!("[camera] POST-ACQUISITION TriggerMode readback: {}", readback);
+                    if readback != "On" {
+                        println!("[camera] WARNING: Camera reset TriggerMode after start! Re-applying...");
+                        Self::set_trigger_mode_internal(cam, "Software");
                     }
                 }
             }
@@ -1039,7 +1067,9 @@ impl CameraService {
     // ── Shared Helper Functions ────────────────────────────────────────────────
 
     /// Configure Line1 as strobe output with full settings from AppSettings.
-    /// Used during connect() and stop_setup_stream() to restore strobe.
+    /// Strobe wiring is configured but StrobeEnable is left OFF.
+    /// Strobe is only enabled briefly during capture_frame_jpeg() to prevent
+    /// permanent flash firing if trigger mode doesn't work as expected.
     fn configure_strobe_internal(cam: *mut ArvCamera, settings: &AppSettings) {
         if cam.is_null() {
             return;
@@ -1061,9 +1091,8 @@ impl CameraService {
         Self::set_feature_int_internal(cam, "LineDebouncerTime", 50);
 
         if Self::is_feature_available_internal(cam, "StrobeEnable") {
-            if !Self::set_feature_bool_internal(cam, "StrobeEnable", true) {
-                Self::set_feature_int_internal(cam, "StrobeEnable", 1);
-            }
+            // Keep strobe DISABLED — only enabled during capture_frame_jpeg()
+            Self::set_feature_bool_internal(cam, "StrobeEnable", false);
             Self::set_feature_int_internal(
                 cam,
                 "StrobeLineDuration",
@@ -1072,7 +1101,7 @@ impl CameraService {
             Self::set_feature_int_internal(cam, "StrobeLineDelay", 0);
             Self::set_feature_int_internal(cam, "StrobeLinePreDelay", 0);
         }
-        println!("[camera] Strobe configured on Line1");
+        println!("[camera] Strobe wiring configured on Line1 (StrobeEnable=false, armed for capture)");
     }
 
     /// Disable strobe output during setup preview to prevent flash from firing.
@@ -1080,14 +1109,9 @@ impl CameraService {
         if cam.is_null() {
             return;
         }
+        // Just disable strobe — don't try to set LineSource to 'Off' as Hikrobot
+        // doesn't support that value (confirmed from logs: "'Off' not an entry")
         Self::set_feature_bool_internal(cam, "StrobeEnable", false);
-        Self::set_feature_int_internal(cam, "StrobeEnable", 0);
-        if Self::is_feature_available_internal(cam, "LineSelector") {
-            for line in ["Line1", "Line2"] {
-                Self::set_feature_str_internal(cam, "LineSelector", line);
-                Self::set_feature_str_internal(cam, "LineSource", "Off");
-            }
-        }
         println!("[camera] Strobe disabled for preview mode");
     }
 
@@ -1212,7 +1236,6 @@ impl CameraService {
         }
     }
 
-    #[allow(dead_code)]
     fn get_feature_str_internal(cam: *mut ArvCamera, feature: &str) -> Option<String> {
         if cam.is_null() {
             return None;

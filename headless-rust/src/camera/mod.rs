@@ -165,18 +165,25 @@ impl CameraService {
             // Configure packet size & delay if GigE Vision device
             if arv_camera_is_gv_device(cam) != 0 {
                 let packet_size = arv_camera_gv_auto_packet_size(cam, &mut err);
-                println!("[camera] GigE Vision auto packet size set to: {} bytes", packet_size);
+                if !err.is_null() {
+                    g_error_free(err);
+                } else {
+                    println!("[camera] GigE Vision auto packet size set to: {} bytes", packet_size);
+                }
 
                 // Set GevSCPD (Stream Channel Packet Delay) to 2000 ticks
                 // This spaces out UDP packets to prevent NIC packet storms and SSH stalls
-                Self::set_feature_int_internal(cam, "GevSCPD", 2000);
+                let mut delay_err = null_mut();
+                arv_camera_gv_set_packet_delay(cam, 2000, &mut delay_err);
+                if !delay_err.is_null() {
+                    g_error_free(delay_err);
+                    Self::set_feature_int_internal(cam, "GevSCPD", 2000);
+                }
                 println!("[camera] GigE Vision GevSCPD packet delay set to: 2000");
             }
 
             // Set PixelFormat
-            if Self::is_feature_available_internal(cam, "PixelFormat") {
-                Self::set_pixel_format_internal(cam, &settings.pixel_format);
-            }
+            Self::set_pixel_format_internal(cam, &settings.pixel_format);
 
             // ── Trigger Mode & Acquisition ────────────────────────────────────
             // Crucial: Set TriggerMode = On and TriggerSource = Software so camera
@@ -184,21 +191,21 @@ impl CameraService {
             if Self::is_feature_available_internal(cam, "AcquisitionMode") {
                 Self::set_feature_str_internal(cam, "AcquisitionMode", "Continuous");
             }
-            if Self::is_feature_available_internal(cam, "TriggerSelector") {
-                Self::set_feature_str_internal(cam, "TriggerSelector", "FrameStart");
-            }
-            if Self::is_feature_available_internal(cam, "TriggerMode") {
-                Self::set_feature_str_internal(cam, "TriggerMode", "On");
-                Self::set_feature_str_internal(cam, "TriggerSource", "Software");
-            }
+            Self::set_trigger_mode_internal(cam, "Software");
 
             // ── Line & Strobe Flash Configuration ──────────────────────────────
-            // Configure Line1 as Strobe output driven by ExposureActive
+            // Configure Line1 as Strobe output
             if Self::is_feature_available_internal(cam, "LineSelector") {
                 Self::set_feature_str_internal(cam, "LineSelector", "Line1");
                 Self::set_feature_str_internal(cam, "LineMode", "Strobe");
-                Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
-                Self::set_feature_int_internal(cam, "LineInverter", 0);
+                if Self::is_enumeration_entry_available_internal(cam, "LineSource", "FrameStartActive") {
+                    Self::set_feature_str_internal(cam, "LineSource", "FrameStartActive");
+                } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "ExposureActive") {
+                    Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
+                } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "Strobe") {
+                    Self::set_feature_str_internal(cam, "LineSource", "Strobe");
+                }
+                Self::set_line_inverter_internal(cam, false);
                 Self::set_feature_int_internal(cam, "LineDebouncerTime", 50);
 
                 if Self::is_feature_available_internal(cam, "StrobeEnable") {
@@ -227,7 +234,7 @@ impl CameraService {
             }
 
             if settings.frame_rate > 0.0 {
-                Self::set_feature_bool_internal(cam, "AcquisitionFrameRateEnable", true);
+                Self::set_frame_rate_enable_internal(cam, true);
                 Self::set_frame_rate_internal(cam, settings.frame_rate);
             }
 
@@ -238,7 +245,7 @@ impl CameraService {
                 Self::set_feature_int_internal(cam, "Height", settings.camera_height);
             }
             if settings.black_level >= 0.0 {
-                Self::set_feature_float_internal(cam, "BlackLevel", settings.black_level);
+                Self::set_black_level_internal(cam, settings.black_level);
             }
 
             // Create Stream with 24 pre-allocated buffers for robust throughput without underruns
@@ -352,12 +359,10 @@ impl CameraService {
                 }
 
                 // Software trigger
-                if Self::is_feature_available_internal(cam, "TriggerSoftware") {
-                    Self::execute_command_internal(cam, "TriggerSoftware");
-                }
+                Self::fire_software_trigger_internal(cam);
 
-                // Wait up to 1.5 seconds for completed frame
-                let buffer = arv_stream_timeout_pop_buffer(stream, 1_500_000);
+                // Wait up to 2.0 seconds for completed frame
+                let buffer = arv_stream_timeout_pop_buffer(stream, 2_000_000);
                 if buffer.is_null() {
                     println!("[camera] Capture frame timed out");
                     return None;
@@ -441,15 +446,10 @@ impl CameraService {
                     }
 
                     // Set free-running stream features (capped to 10 FPS to prevent GigE flood)
-                    if Self::is_feature_available_internal(cam, "TriggerSelector") {
-                        Self::set_feature_str_internal(cam, "TriggerSelector", "FrameStart");
-                    }
-                    if Self::is_feature_available_internal(cam, "TriggerMode") {
-                        Self::set_feature_str_internal(cam, "TriggerMode", "Off");
-                    }
+                    Self::clear_triggers_internal(cam);
                     Self::set_feature_str_internal(cam, "ExposureAuto", "Continuous");
                     Self::set_feature_str_internal(cam, "GainAuto", "Continuous");
-                    Self::set_feature_bool_internal(cam, "AcquisitionFrameRateEnable", true);
+                    Self::set_frame_rate_enable_internal(cam, true);
                     Self::set_frame_rate_internal(cam, 10.0);
 
                     unsafe {
@@ -569,19 +569,19 @@ impl CameraService {
                 }
 
                 // Restore trigger mode & strobe
-                if Self::is_feature_available_internal(cam, "TriggerSelector") {
-                    Self::set_feature_str_internal(cam, "TriggerSelector", "FrameStart");
-                }
-                if Self::is_feature_available_internal(cam, "TriggerMode") {
-                    Self::set_feature_str_internal(cam, "TriggerMode", "On");
-                    Self::set_feature_str_internal(cam, "TriggerSource", "Software");
-                }
+                Self::set_trigger_mode_internal(cam, "Software");
 
                 if Self::is_feature_available_internal(cam, "LineSelector") {
                     Self::set_feature_str_internal(cam, "LineSelector", "Line1");
                     Self::set_feature_str_internal(cam, "LineMode", "Strobe");
-                    Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
-                    Self::set_feature_int_internal(cam, "LineInverter", 0);
+                    if Self::is_enumeration_entry_available_internal(cam, "LineSource", "FrameStartActive") {
+                        Self::set_feature_str_internal(cam, "LineSource", "FrameStartActive");
+                    } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "ExposureActive") {
+                        Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
+                    } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "Strobe") {
+                        Self::set_feature_str_internal(cam, "LineSource", "Strobe");
+                    }
+                    Self::set_line_inverter_internal(cam, false);
                     Self::set_feature_int_internal(cam, "LineDebouncerTime", 50);
 
                     if Self::is_feature_available_internal(cam, "StrobeEnable") {
@@ -608,10 +608,10 @@ impl CameraService {
                     Self::set_gain_internal(cam, settings.camera_gain);
                 }
                 if settings.frame_rate > 0.0 {
-                    Self::set_feature_bool_internal(cam, "AcquisitionFrameRateEnable", true);
+                    Self::set_frame_rate_enable_internal(cam, true);
                     Self::set_frame_rate_internal(cam, settings.frame_rate);
                 } else {
-                    Self::set_feature_bool_internal(cam, "AcquisitionFrameRateEnable", false);
+                    Self::set_frame_rate_enable_internal(cam, false);
                 }
 
                 unsafe {
@@ -695,7 +695,7 @@ impl CameraService {
             let mut failed_this_pass = Vec::new();
             let prev_len = pending.len();
             for (feature, value) in pending {
-                if Self::set_feature_str_internal(cam, &feature, &value) {
+                if Self::set_any_feature_internal(cam, &feature, &value) {
                     applied.push(format!("{}\t{}", feature, value));
                 } else {
                     failed_this_pass.push((feature, value));
@@ -1173,6 +1173,7 @@ impl CameraService {
         }
     }
 
+    #[allow(dead_code)]
     fn get_feature_str_internal(cam: *mut ArvCamera, feature: &str) -> Option<String> {
         if cam.is_null() {
             return None;
@@ -1366,34 +1367,245 @@ impl CameraService {
         }
     }
 
+    pub fn is_enumeration_entry_available_internal(
+        cam: *mut ArvCamera,
+        feature: &str,
+        entry: &str,
+    ) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        unsafe {
+            let f_cstr = match CString::new(feature) {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+            let e_cstr = match CString::new(entry) {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+            let mut err = null_mut();
+            let res = arv_camera_is_enumeration_entry_available(
+                cam,
+                f_cstr.as_ptr(),
+                e_cstr.as_ptr(),
+                &mut err,
+            );
+            if !err.is_null() {
+                g_error_free(err);
+                false
+            } else {
+                res != 0
+            }
+        }
+    }
+
+    fn set_trigger_mode_internal(cam: *mut ArvCamera, trigger_source: &str) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        unsafe {
+            let src_cstr = match CString::new(trigger_source) {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+            let mut err = null_mut();
+            arv_camera_set_trigger(cam, src_cstr.as_ptr(), &mut err);
+            if err.is_null() {
+                println!("[camera] Set trigger mode: On, TriggerSource: {}", trigger_source);
+                true
+            } else {
+                let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                println!("[camera] arv_camera_set_trigger({}) returned: {}. Trying fallback sequence...", trigger_source, msg);
+                g_error_free(err);
+
+                // Fallback sequence: Try FrameBurstStart (Hikrobot), then FrameStart, then AcquisitionStart
+                let selectors = ["FrameBurstStart", "FrameStart", "AcquisitionStart"];
+                let mut success = false;
+                for sel in selectors {
+                    if Self::set_feature_str_internal(cam, "TriggerSelector", sel) {
+                        Self::set_feature_str_internal(cam, "TriggerMode", "On");
+                        Self::set_feature_str_internal(cam, "TriggerSource", trigger_source);
+                        println!("[camera] Configured TriggerSelector {} to On / {}", sel, trigger_source);
+                        success = true;
+                        break;
+                    }
+                }
+                success
+            }
+        }
+    }
+
+    fn clear_triggers_internal(cam: *mut ArvCamera) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        unsafe {
+            let mut err = null_mut();
+            arv_camera_clear_triggers(cam, &mut err);
+            if err.is_null() {
+                println!("[camera] Cleared triggers (continuous streaming mode enabled)");
+                true
+            } else {
+                let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                println!("[camera] arv_camera_clear_triggers returned: {}. Disabling TriggerMode on all selectors...", msg);
+                g_error_free(err);
+
+                for sel in ["FrameBurstStart", "FrameStart", "AcquisitionStart"] {
+                    if Self::set_feature_str_internal(cam, "TriggerSelector", sel) {
+                        Self::set_feature_str_internal(cam, "TriggerMode", "Off");
+                    }
+                }
+                true
+            }
+        }
+    }
+
+    fn fire_software_trigger_internal(cam: *mut ArvCamera) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        unsafe {
+            let mut err = null_mut();
+            arv_camera_software_trigger(cam, &mut err);
+            if err.is_null() {
+                true
+            } else {
+                let msg = CStr::from_ptr((*err).message).to_string_lossy();
+                println!("[camera] arv_camera_software_trigger returned: {}. Trying command execution fallback...", msg);
+                g_error_free(err);
+                Self::execute_command_internal(cam, "TriggerSoftware")
+            }
+        }
+    }
+
+    fn set_line_inverter_internal(cam: *mut ArvCamera, inverted: bool) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        if Self::set_feature_bool_internal(cam, "LineInverter", inverted) {
+            return true;
+        }
+        if Self::set_feature_int_internal(cam, "LineInverter", if inverted { 1 } else { 0 }) {
+            return true;
+        }
+        false
+    }
+
+    fn set_black_level_internal(cam: *mut ArvCamera, val: f64) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        if Self::is_feature_available_internal(cam, "BlackLevelEnable") {
+            Self::set_feature_bool_internal(cam, "BlackLevelEnable", val > 0.0);
+        }
+        if Self::set_feature_float_internal(cam, "BlackLevel", val) {
+            return true;
+        }
+        if Self::set_feature_int_internal(cam, "BlackLevel", val as i64) {
+            return true;
+        }
+        false
+    }
+
+    fn set_frame_rate_enable_internal(cam: *mut ArvCamera, enable: bool) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        unsafe {
+            let mut err = null_mut();
+            arv_camera_set_frame_rate_enable(cam, if enable { 1 } else { 0 }, &mut err);
+            if err.is_null() {
+                return true;
+            }
+            g_error_free(err);
+        }
+        Self::set_feature_bool_internal(cam, "AcquisitionFrameRateEnable", enable)
+    }
+
     fn set_pixel_format_internal(cam: *mut ArvCamera, format: &str) -> bool {
         if cam.is_null() {
             return false;
         }
-        if format == "Color" {
-            let fallbacks = [
-                "BayerBG8",
+        let candidates: Vec<&str> = if format.eq_ignore_ascii_case("color") {
+            vec![
                 "BayerRG8",
+                "BayerBG8",
                 "BayerGR8",
                 "BayerGB8",
                 "RGB8Packed",
+                "BGR8Packed",
                 "RGB8",
-            ];
-            for fmt in fallbacks {
-                if Self::set_feature_str_internal(cam, "PixelFormat", fmt) {
-                    println!("[camera] Set PixelFormat to {}", fmt);
+                "Mono8",
+            ]
+        } else if format.eq_ignore_ascii_case("mono") || format.eq_ignore_ascii_case("mono8") {
+            vec![
+                "Mono8",
+                "BayerRG8",
+                "BayerBG8",
+                "BayerGR8",
+                "BayerGB8",
+                "RGB8Packed",
+            ]
+        } else {
+            vec![format, "BayerRG8", "BayerBG8", "Mono8"]
+        };
+
+        for fmt in candidates {
+            unsafe {
+                let fmt_cstr = match CString::new(fmt) {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+                let mut err = null_mut();
+                arv_camera_set_pixel_format_from_string(cam, fmt_cstr.as_ptr(), &mut err);
+                if err.is_null() {
+                    println!("[camera] PixelFormat set to {}", fmt);
+                    return true;
+                } else {
+                    g_error_free(err);
+                }
+            }
+            if Self::set_feature_str_internal(cam, "PixelFormat", fmt) {
+                println!("[camera] PixelFormat set to {}", fmt);
+                return true;
+            }
+        }
+        println!("[camera] Warning: Could not configure requested PixelFormat {}, retaining current format", format);
+        false
+    }
+
+    fn set_any_feature_internal(cam: *mut ArvCamera, feature: &str, value: &str) -> bool {
+        if cam.is_null() {
+            return false;
+        }
+        // 1. Try String / Enumeration
+        if Self::set_feature_str_internal(cam, feature, value) {
+            return true;
+        }
+        // 2. Try Boolean
+        if value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false") {
+            if Self::set_feature_bool_internal(cam, feature, value.eq_ignore_ascii_case("true")) {
+                return true;
+            }
+        }
+        // 3. Try Integer
+        if let Ok(int_val) = value.parse::<i64>() {
+            if Self::set_feature_int_internal(cam, feature, int_val) {
+                return true;
+            }
+            if int_val == 0 || int_val == 1 {
+                if Self::set_feature_bool_internal(cam, feature, int_val != 0) {
                     return true;
                 }
             }
-            println!("[camera] Failed to set PixelFormat for Color");
-            false
-        } else {
-            if Self::set_feature_str_internal(cam, "PixelFormat", "Mono8") {
-                println!("[camera] Set PixelFormat to Mono8");
-                true
-            } else {
-                false
+        }
+        // 4. Try Float
+        if let Ok(float_val) = value.parse::<f64>() {
+            if Self::set_feature_float_internal(cam, feature, float_val) {
+                return true;
             }
         }
+        false
     }
 }

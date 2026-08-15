@@ -116,9 +116,24 @@ unsafe extern "C" {
     pub fn arv_camera_get_gain(cam: *mut ArvCamera, err: *mut *mut GError) -> f64;
     pub fn arv_camera_set_frame_rate(cam: *mut ArvCamera, fps: f64, err: *mut *mut GError);
     pub fn arv_camera_get_frame_rate(cam: *mut ArvCamera, err: *mut *mut GError) -> f64;
+    pub fn arv_camera_set_frame_rate_enable(cam: *mut ArvCamera, enable: i32, err: *mut *mut GError);
     pub fn arv_camera_set_pixel_format(cam: *mut ArvCamera, format: u32, err: *mut *mut GError);
+    pub fn arv_camera_set_pixel_format_from_string(cam: *mut ArvCamera, format: *const c_char, err: *mut *mut GError);
     pub fn arv_camera_get_pixel_format(cam: *mut ArvCamera, err: *mut *mut GError) -> u32;
     pub fn arv_camera_get_payload(cam: *mut ArvCamera, err: *mut *mut GError) -> u32;
+
+    // ----- ArvCamera: Trigger control -----
+    pub fn arv_camera_set_trigger(cam: *mut ArvCamera, source: *const c_char, err: *mut *mut GError);
+    pub fn arv_camera_set_trigger_source(cam: *mut ArvCamera, source: *const c_char, err: *mut *mut GError);
+    pub fn arv_camera_clear_triggers(cam: *mut ArvCamera, err: *mut *mut GError);
+    pub fn arv_camera_software_trigger(cam: *mut ArvCamera, err: *mut *mut GError);
+    pub fn arv_camera_is_software_trigger_supported(cam: *mut ArvCamera, err: *mut *mut GError) -> i32;
+    pub fn arv_camera_is_enumeration_entry_available(
+        cam: *mut ArvCamera,
+        feature: *const c_char,
+        entry: *const c_char,
+        err: *mut *mut GError,
+    ) -> i32;
 
     // ----- ArvDevice: generic GenICam feature access -----
     pub fn arv_device_set_string_feature_value(
@@ -184,6 +199,11 @@ unsafe extern "C" {
         err: *mut *mut GError,
     );
     pub fn arv_camera_gv_get_packet_size(cam: *mut ArvCamera, err: *mut *mut GError) -> i32;
+    pub fn arv_camera_gv_set_packet_delay(
+        cam: *mut ArvCamera,
+        packet_delay: i64,
+        err: *mut *mut GError,
+    );
 
     // ----- Stream & Acquisition -----
     pub fn arv_camera_create_stream(

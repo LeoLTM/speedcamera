@@ -185,44 +185,18 @@ impl CameraService {
             // Set PixelFormat
             Self::set_pixel_format_internal(cam, &settings.pixel_format);
 
-            // ── Trigger Mode & Acquisition ────────────────────────────────────
-            // Crucial: Set TriggerMode = On and TriggerSource = Software so camera
-            // does not free-run upon starting acquisition (which would strobe the flash forever).
-            if Self::is_feature_available_internal(cam, "AcquisitionMode") {
-                Self::set_feature_str_internal(cam, "AcquisitionMode", "Continuous");
+            // ── ROI (Width/Height must be set before payload calculation) ─────
+            if settings.camera_width > 0 {
+                Self::set_feature_int_internal(cam, "Width", settings.camera_width);
             }
-            Self::set_trigger_mode_internal(cam, "Software");
-
-            // ── Line & Strobe Flash Configuration ──────────────────────────────
-            // Configure Line1 as Strobe output
-            if Self::is_feature_available_internal(cam, "LineSelector") {
-                Self::set_feature_str_internal(cam, "LineSelector", "Line1");
-                Self::set_feature_str_internal(cam, "LineMode", "Strobe");
-                if Self::is_enumeration_entry_available_internal(cam, "LineSource", "FrameStartActive") {
-                    Self::set_feature_str_internal(cam, "LineSource", "FrameStartActive");
-                } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "ExposureActive") {
-                    Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
-                } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "Strobe") {
-                    Self::set_feature_str_internal(cam, "LineSource", "Strobe");
-                }
-                Self::set_line_inverter_internal(cam, false);
-                Self::set_feature_int_internal(cam, "LineDebouncerTime", 50);
-
-                if Self::is_feature_available_internal(cam, "StrobeEnable") {
-                    if !Self::set_feature_bool_internal(cam, "StrobeEnable", true) {
-                        Self::set_feature_int_internal(cam, "StrobeEnable", 1);
-                    }
-                    Self::set_feature_int_internal(
-                        cam,
-                        "StrobeLineDuration",
-                        settings.strobe_line_duration as i64,
-                    );
-                    Self::set_feature_int_internal(cam, "StrobeLineDelay", 0);
-                    Self::set_feature_int_internal(cam, "StrobeLinePreDelay", 0);
-                }
+            if settings.camera_height > 0 {
+                Self::set_feature_int_internal(cam, "Height", settings.camera_height);
+            }
+            if settings.black_level >= 0.0 {
+                Self::set_black_level_internal(cam, settings.black_level);
             }
 
-            // ── Exposure & Gain ───────────────────────────────────────────────
+            // ── Exposure & Gain (set before trigger so auto-exposure can initialize) ──
             Self::set_feature_str_internal(cam, "ExposureAuto", &settings.exposure_auto);
             if settings.exposure_auto == "Off" {
                 Self::set_exposure_internal(cam, settings.camera_exposure);
@@ -233,20 +207,25 @@ impl CameraService {
                 Self::set_gain_internal(cam, settings.camera_gain);
             }
 
-            if settings.frame_rate > 0.0 {
-                Self::set_frame_rate_enable_internal(cam, true);
-                Self::set_frame_rate_internal(cam, settings.frame_rate);
-            }
+            // ── Line & Strobe Flash Configuration ──────────────────────────────
+            // Configure Line1 as Strobe output
+            Self::configure_strobe_internal(cam, settings);
 
-            if settings.camera_width > 0 {
-                Self::set_feature_int_internal(cam, "Width", settings.camera_width);
+            // ── Trigger Mode & Acquisition ────────────────────────────────────
+            // Set AcquisitionMode=Continuous, then configure FrameBurstStart
+            // trigger for software-triggered capture. This prevents the camera
+            // from free-running and strobing the flash continuously.
+            if Self::is_feature_available_internal(cam, "AcquisitionMode") {
+                Self::set_feature_str_internal(cam, "AcquisitionMode", "Continuous");
             }
-            if settings.camera_height > 0 {
-                Self::set_feature_int_internal(cam, "Height", settings.camera_height);
-            }
-            if settings.black_level >= 0.0 {
-                Self::set_black_level_internal(cam, settings.black_level);
-            }
+            Self::set_trigger_mode_internal(cam, "Software");
+
+            // ── Frame Rate ────────────────────────────────────────────────────
+            // In triggered mode, frame rate limiting is unnecessary and should
+            // be disabled. The trigger timing controls capture rate.
+            // (Matches reference MFS: AcquisitionFrameRateEnable = 0)
+            Self::set_frame_rate_enable_internal(cam, false);
+            println!("[camera] Frame rate limiting disabled (triggered mode)");
 
             // Create Stream with 24 pre-allocated buffers for robust throughput without underruns
             let stream = arv_camera_create_stream(cam, null_mut(), null_mut(), &mut err);
@@ -413,6 +392,7 @@ impl CameraService {
             if !this.mock_mode {
                 let cam = *this.camera_ptr.lock().unwrap();
                 if !cam.is_null() {
+                    // 1. Stop acquisition before reconfiguring
                     unsafe {
                         let mut err = null_mut();
                         arv_camera_stop_acquisition(cam, &mut err);
@@ -421,37 +401,29 @@ impl CameraService {
                         }
                     }
 
-                    // Flush any pending buffers
-                    let stream = *this.stream_ptr.lock().unwrap();
-                    if !stream.is_null() {
-                        unsafe {
-                            loop {
-                                let stale = arv_stream_try_pop_buffer(stream);
-                                if stale.is_null() {
-                                    break;
-                                }
-                                arv_stream_push_buffer(stream, stale);
-                            }
-                        }
-                    }
+                    // 2. Flush any pending buffers
+                    Self::flush_stream_buffers(&this);
 
-                    // Disable strobe during setup preview so preview stream does not trigger flash
-                    Self::set_feature_bool_internal(cam, "StrobeEnable", false);
-                    Self::set_feature_int_internal(cam, "StrobeEnable", 0);
-                    if Self::is_feature_available_internal(cam, "LineSelector") {
-                        for line in ["Line1", "Line2"] {
-                            Self::set_feature_str_internal(cam, "LineSelector", line);
-                            Self::set_feature_str_internal(cam, "LineSource", "Off");
-                        }
-                    }
+                    // 3. Disable strobe during setup preview
+                    Self::disable_strobe_internal(cam);
 
-                    // Set free-running stream features (capped to 10 FPS to prevent GigE flood)
+                    // 4. Switch to free-running mode (disable triggers)
+                    // Must use direct device features — arv_camera_clear_triggers
+                    // uses wrong TriggerSelector for Hikrobot
                     Self::clear_triggers_internal(cam);
+
+                    // 5. Enable auto exposure/gain for preview
                     Self::set_feature_str_internal(cam, "ExposureAuto", "Continuous");
                     Self::set_feature_str_internal(cam, "GainAuto", "Continuous");
+
+                    // 6. Enable frame rate limiting BEFORE setting the rate
                     Self::set_frame_rate_enable_internal(cam, true);
                     Self::set_frame_rate_internal(cam, 10.0);
 
+                    // 7. Verify frame rate took effect — if not, camera will flood Pi
+                    Self::verify_frame_rate(cam, 10.0);
+
+                    // 8. Start acquisition in free-run mode
                     unsafe {
                         let mut err = null_mut();
                         arv_camera_start_acquisition(cam, &mut err);
@@ -546,6 +518,7 @@ impl CameraService {
         if !self.mock_mode {
             let cam = *self.camera_ptr.lock().unwrap();
             if !cam.is_null() {
+                // 1. Stop acquisition
                 unsafe {
                     let mut err = null_mut();
                     arv_camera_stop_acquisition(cam, &mut err);
@@ -554,51 +527,16 @@ impl CameraService {
                     }
                 }
 
-                // Flush stream buffers
-                let stream = *self.stream_ptr.lock().unwrap();
-                if !stream.is_null() {
-                    unsafe {
-                        loop {
-                            let stale = arv_stream_try_pop_buffer(stream);
-                            if stale.is_null() {
-                                break;
-                            }
-                            arv_stream_push_buffer(stream, stale);
-                        }
-                    }
-                }
+                // 2. Flush stream buffers
+                Self::flush_stream_buffers(self);
 
-                // Restore trigger mode & strobe
+                // 3. Restore trigger mode (FrameBurstStart/On/Software)
                 Self::set_trigger_mode_internal(cam, "Software");
 
-                if Self::is_feature_available_internal(cam, "LineSelector") {
-                    Self::set_feature_str_internal(cam, "LineSelector", "Line1");
-                    Self::set_feature_str_internal(cam, "LineMode", "Strobe");
-                    if Self::is_enumeration_entry_available_internal(cam, "LineSource", "FrameStartActive") {
-                        Self::set_feature_str_internal(cam, "LineSource", "FrameStartActive");
-                    } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "ExposureActive") {
-                        Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
-                    } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "Strobe") {
-                        Self::set_feature_str_internal(cam, "LineSource", "Strobe");
-                    }
-                    Self::set_line_inverter_internal(cam, false);
-                    Self::set_feature_int_internal(cam, "LineDebouncerTime", 50);
+                // 4. Restore strobe configuration
+                Self::configure_strobe_internal(cam, settings);
 
-                    if Self::is_feature_available_internal(cam, "StrobeEnable") {
-                        if !Self::set_feature_bool_internal(cam, "StrobeEnable", true) {
-                            Self::set_feature_int_internal(cam, "StrobeEnable", 1);
-                        }
-                        Self::set_feature_int_internal(
-                            cam,
-                            "StrobeLineDuration",
-                            settings.strobe_line_duration as i64,
-                        );
-                        Self::set_feature_int_internal(cam, "StrobeLineDelay", 0);
-                        Self::set_feature_int_internal(cam, "StrobeLinePreDelay", 0);
-                    }
-                }
-
-                // Restore exposure & gain
+                // 5. Restore exposure & gain
                 Self::set_feature_str_internal(cam, "ExposureAuto", &settings.exposure_auto);
                 if settings.exposure_auto == "Off" {
                     Self::set_exposure_internal(cam, settings.camera_exposure);
@@ -607,13 +545,12 @@ impl CameraService {
                 if settings.gain_auto == "Off" {
                     Self::set_gain_internal(cam, settings.camera_gain);
                 }
-                if settings.frame_rate > 0.0 {
-                    Self::set_frame_rate_enable_internal(cam, true);
-                    Self::set_frame_rate_internal(cam, settings.frame_rate);
-                } else {
-                    Self::set_frame_rate_enable_internal(cam, false);
-                }
 
+                // 6. Disable frame rate limiting in triggered mode
+                // (trigger timing controls capture rate, not AcquisitionFrameRate)
+                Self::set_frame_rate_enable_internal(cam, false);
+
+                // 7. Restart acquisition in triggered mode
                 unsafe {
                     let mut err = null_mut();
                     arv_camera_start_acquisition(cam, &mut err);
@@ -1099,6 +1036,108 @@ impl CameraService {
     }
 
 
+    // ── Shared Helper Functions ────────────────────────────────────────────────
+
+    /// Configure Line1 as strobe output with full settings from AppSettings.
+    /// Used during connect() and stop_setup_stream() to restore strobe.
+    fn configure_strobe_internal(cam: *mut ArvCamera, settings: &AppSettings) {
+        if cam.is_null() {
+            return;
+        }
+        if !Self::is_feature_available_internal(cam, "LineSelector") {
+            return;
+        }
+        Self::set_feature_str_internal(cam, "LineSelector", "Line1");
+        Self::set_feature_str_internal(cam, "LineMode", "Strobe");
+        if Self::is_enumeration_entry_available_internal(cam, "LineSource", "FrameStartActive") {
+            Self::set_feature_str_internal(cam, "LineSource", "FrameStartActive");
+        } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "ExposureActive")
+        {
+            Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
+        } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "Strobe") {
+            Self::set_feature_str_internal(cam, "LineSource", "Strobe");
+        }
+        Self::set_line_inverter_internal(cam, false);
+        Self::set_feature_int_internal(cam, "LineDebouncerTime", 50);
+
+        if Self::is_feature_available_internal(cam, "StrobeEnable") {
+            if !Self::set_feature_bool_internal(cam, "StrobeEnable", true) {
+                Self::set_feature_int_internal(cam, "StrobeEnable", 1);
+            }
+            Self::set_feature_int_internal(
+                cam,
+                "StrobeLineDuration",
+                settings.strobe_line_duration as i64,
+            );
+            Self::set_feature_int_internal(cam, "StrobeLineDelay", 0);
+            Self::set_feature_int_internal(cam, "StrobeLinePreDelay", 0);
+        }
+        println!("[camera] Strobe configured on Line1");
+    }
+
+    /// Disable strobe output during setup preview to prevent flash from firing.
+    fn disable_strobe_internal(cam: *mut ArvCamera) {
+        if cam.is_null() {
+            return;
+        }
+        Self::set_feature_bool_internal(cam, "StrobeEnable", false);
+        Self::set_feature_int_internal(cam, "StrobeEnable", 0);
+        if Self::is_feature_available_internal(cam, "LineSelector") {
+            for line in ["Line1", "Line2"] {
+                Self::set_feature_str_internal(cam, "LineSelector", line);
+                Self::set_feature_str_internal(cam, "LineSource", "Off");
+            }
+        }
+        println!("[camera] Strobe disabled for preview mode");
+    }
+
+    /// Flush all pending buffers from the stream output queue back to the input pool.
+    fn flush_stream_buffers(&self) {
+        let stream = *self.stream_ptr.lock().unwrap();
+        if stream.is_null() {
+            return;
+        }
+        unsafe {
+            let mut flushed = 0u32;
+            loop {
+                let stale = arv_stream_try_pop_buffer(stream);
+                if stale.is_null() {
+                    break;
+                }
+                arv_stream_push_buffer(stream, stale);
+                flushed += 1;
+            }
+            if flushed > 0 {
+                println!("[camera] Flushed {} stale buffers", flushed);
+            }
+        }
+    }
+
+    /// Read back AcquisitionFrameRate and warn if it doesn't match the target.
+    fn verify_frame_rate(cam: *mut ArvCamera, target_fps: f64) {
+        if cam.is_null() {
+            return;
+        }
+        unsafe {
+            let mut err = null_mut();
+            let actual = arv_camera_get_frame_rate(cam, &mut err);
+            if !err.is_null() {
+                g_error_free(err);
+                println!("[camera] WARNING: Could not read back frame rate for verification");
+                return;
+            }
+            let diff = (actual - target_fps).abs();
+            if diff > 1.0 {
+                println!(
+                    "[camera] WARNING: Frame rate readback {:.1} FPS differs from target {:.1} FPS — camera may not be respecting frame rate limit!",
+                    actual, target_fps
+                );
+            } else {
+                println!("[camera] Frame rate verified: {:.1} FPS (target: {:.1})", actual, target_fps);
+            }
+        }
+    }
+
     pub fn is_feature_available_internal(cam: *mut ArvCamera, feature: &str) -> bool {
         if cam.is_null() {
             return false;
@@ -1400,65 +1439,70 @@ impl CameraService {
         }
     }
 
+    /// Configure triggered capture mode using direct GenICam device features.
+    ///
+    /// Avoids `arv_camera_set_trigger()` which uses TriggerSelector=AcquisitionStart
+    /// internally — wrong for Hikrobot cameras that use FrameBurstStart.
+    /// Uses explicit 3-step sequence: TriggerSelector → TriggerMode → TriggerSource.
     fn set_trigger_mode_internal(cam: *mut ArvCamera, trigger_source: &str) -> bool {
         if cam.is_null() {
             return false;
         }
-        unsafe {
-            let src_cstr = match CString::new(trigger_source) {
-                Ok(s) => s,
-                Err(_) => return false,
-            };
-            let mut err = null_mut();
-            arv_camera_set_trigger(cam, src_cstr.as_ptr(), &mut err);
-            if err.is_null() {
-                println!("[camera] Set trigger mode: On, TriggerSource: {}", trigger_source);
-                true
-            } else {
-                let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                println!("[camera] arv_camera_set_trigger({}) returned: {}. Trying fallback sequence...", trigger_source, msg);
-                g_error_free(err);
 
-                // Fallback sequence: Try FrameBurstStart (Hikrobot), then FrameStart, then AcquisitionStart
-                let selectors = ["FrameBurstStart", "FrameStart", "AcquisitionStart"];
-                let mut success = false;
-                for sel in selectors {
-                    if Self::set_feature_str_internal(cam, "TriggerSelector", sel) {
-                        Self::set_feature_str_internal(cam, "TriggerMode", "On");
-                        Self::set_feature_str_internal(cam, "TriggerSource", trigger_source);
-                        println!("[camera] Configured TriggerSelector {} to On / {}", sel, trigger_source);
-                        success = true;
-                        break;
+        // Try FrameBurstStart first (Hikrobot), then FrameStart, then AcquisitionStart
+        let selectors = ["FrameBurstStart", "FrameStart", "AcquisitionStart"];
+        for sel in selectors {
+            if Self::set_feature_str_internal(cam, "TriggerSelector", sel) {
+                let mode_ok = Self::set_feature_str_internal(cam, "TriggerMode", "On");
+                let src_ok = Self::set_feature_str_internal(cam, "TriggerSource", trigger_source);
+                if mode_ok && src_ok {
+                    println!(
+                        "[camera] Trigger configured: Selector={}, Mode=On, Source={}",
+                        sel, trigger_source
+                    );
+                    // Verify TriggerMode actually stuck
+                    if let Some(readback) = Self::get_feature_str_internal(cam, "TriggerMode") {
+                        if readback != "On" {
+                            println!(
+                                "[camera] WARNING: TriggerMode readback is '{}' (expected 'On')",
+                                readback
+                            );
+                        }
                     }
+                    return true;
                 }
-                success
             }
         }
+
+        println!("[camera] ERROR: Failed to configure trigger mode on any selector");
+        false
     }
 
+    /// Disable triggers for free-running (continuous) mode using direct GenICam features.
+    ///
+    /// Avoids `arv_camera_clear_triggers()` which may use wrong selectors for Hikrobot.
     fn clear_triggers_internal(cam: *mut ArvCamera) -> bool {
         if cam.is_null() {
             return false;
         }
-        unsafe {
-            let mut err = null_mut();
-            arv_camera_clear_triggers(cam, &mut err);
-            if err.is_null() {
-                println!("[camera] Cleared triggers (continuous streaming mode enabled)");
-                true
-            } else {
-                let msg = CStr::from_ptr((*err).message).to_string_lossy();
-                println!("[camera] arv_camera_clear_triggers returned: {}. Disabling TriggerMode on all selectors...", msg);
-                g_error_free(err);
 
-                for sel in ["FrameBurstStart", "FrameStart", "AcquisitionStart"] {
-                    if Self::set_feature_str_internal(cam, "TriggerSelector", sel) {
-                        Self::set_feature_str_internal(cam, "TriggerMode", "Off");
-                    }
+        // Disable triggers on all known selectors to ensure free-run
+        let mut any_success = false;
+        for sel in ["FrameBurstStart", "FrameStart", "AcquisitionStart"] {
+            if Self::set_feature_str_internal(cam, "TriggerSelector", sel) {
+                if Self::set_feature_str_internal(cam, "TriggerMode", "Off") {
+                    println!("[camera] Trigger disabled: Selector={}, Mode=Off", sel);
+                    any_success = true;
                 }
-                true
             }
         }
+
+        if any_success {
+            println!("[camera] Triggers cleared — camera in free-running mode");
+        } else {
+            println!("[camera] WARNING: Could not clear triggers on any selector");
+        }
+        any_success
     }
 
     fn fire_software_trigger_internal(cam: *mut ArvCamera) -> bool {
@@ -1508,19 +1552,28 @@ impl CameraService {
         false
     }
 
+    /// Enable or disable the camera's internal frame rate limiter.
+    ///
+    /// Uses direct GenICam device feature access only.
+    /// The Aravis C API does NOT have an `arv_camera_set_frame_rate_enable` function.
     fn set_frame_rate_enable_internal(cam: *mut ArvCamera, enable: bool) -> bool {
         if cam.is_null() {
             return false;
         }
-        unsafe {
-            let mut err = null_mut();
-            arv_camera_set_frame_rate_enable(cam, if enable { 1 } else { 0 }, &mut err);
-            if err.is_null() {
-                return true;
-            }
-            g_error_free(err);
+        let ok = Self::set_feature_bool_internal(cam, "AcquisitionFrameRateEnable", enable);
+        if !ok {
+            // Some cameras expose it as integer (0/1) rather than boolean
+            return Self::set_feature_int_internal(
+                cam,
+                "AcquisitionFrameRateEnable",
+                if enable { 1 } else { 0 },
+            );
         }
-        Self::set_feature_bool_internal(cam, "AcquisitionFrameRateEnable", enable)
+        println!(
+            "[camera] AcquisitionFrameRateEnable = {}",
+            if enable { "true" } else { "false" }
+        );
+        ok
     }
 
     fn set_pixel_format_internal(cam: *mut ArvCamera, format: &str) -> bool {

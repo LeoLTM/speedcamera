@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Timer01Icon, DashboardCircleIcon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/useAppStore";
+import { ConnectionIndicator } from "./ConnectionIndicator";
 
 const NAV_ITEMS = [
   { label: "Home", to: "/" },
@@ -67,6 +68,10 @@ export function NavigationMenu({ className }: NavigationMenuProps) {
           <HugeiconsIcon icon={Timer01Icon} strokeWidth={2} className="w-3.5 h-3.5" />
           Laps
         </button>
+      </div>
+
+      <div className="ml-auto flex items-center">
+        <ConnectionIndicator />
       </div>
     </nav>
   );

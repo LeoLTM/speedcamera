@@ -46,21 +46,8 @@ EOF'
     echo "[*] Enabling jumbo frames (MTU 9000) on ${ETH_IFACE}..."
     sudo ip link set dev "${ETH_IFACE}" mtu 9000 2>/dev/null || echo "Note: MTU 9000 not supported by NIC/driver, keeping default."
 
-    # Configure Ethernet Camera LAN
-    echo "[1/2] Configuring Camera LAN on ${ETH_IFACE}..."
-    sudo nmcli connection delete "Speedcamera-CameraLAN" 2>/dev/null || true
-    sudo nmcli connection add type ethernet \
-      ifname "${ETH_IFACE}" \
-      con-name "Speedcamera-CameraLAN" \
-      autoconnect yes \
-      ipv4.method manual \
-      ipv4.addresses 192.168.1.100/24 \
-      ipv4.never-default yes \
-      802-3-ethernet.mtu 9000
-    sudo nmcli connection up "Speedcamera-CameraLAN" 2>/dev/null || echo "Note: Ethernet link active when camera cable is connected."
-
     # Configure Wi-Fi Hotspot AP
-    echo "[2/2] Configuring Wi-Fi Hotspot AP on ${WIFI_IFACE}..."
+    echo "[1/2] Configuring Wi-Fi Hotspot AP on ${WIFI_IFACE}..."
     SSID="speedcamera"
     PASS="speedcamerapass"
     sudo nmcli connection delete "Speedcamera-Hotspot" 2>/dev/null || true
@@ -78,9 +65,26 @@ EOF'
       wifi-sec.psk "${PASS}"
     sudo nmcli connection up "Speedcamera-Hotspot" 2>/dev/null || echo "Note: Hotspot initialized."
 
+    # Configure Ethernet Camera LAN
+    echo "[2/2] Configuring Camera LAN on ${ETH_IFACE}..."
+    sudo nmcli connection delete "Speedcamera-CameraLAN" 2>/dev/null || true
+    sudo nmcli connection add type ethernet \
+      ifname "${ETH_IFACE}" \
+      con-name "Speedcamera-CameraLAN" \
+      autoconnect yes \
+      ipv4.method manual \
+      ipv4.addresses 192.168.1.100/24 \
+      ipv4.never-default yes \
+      802-3-ethernet.mtu 9000
+    sudo nmcli connection up "Speedcamera-CameraLAN" 2>/dev/null || echo "Note: Ethernet link active when camera cable is connected."
+
     # Disable Wi-Fi power saving on AP interface to eliminate latency spikes and disconnects
     echo "[*] Disabling Wi-Fi power saving on ${WIFI_IFACE}..."
     sudo iw dev "${WIFI_IFACE}" set power_save off 2>/dev/null || sudo iwconfig "${WIFI_IFACE}" power off 2>/dev/null || true
+
+    # Block Bluetooth to free 2.4GHz spectrum and internal resources for Wi-Fi
+    echo "[*] Blocking Bluetooth to improve Wi-Fi performance..."
+    sudo rfkill block bluetooth 2>/dev/null || true
 
     echo ""
     echo "========================================================="
@@ -122,13 +126,14 @@ EOF'
 
   dhcp|reset)
     echo ">>> Reverting Ethernet and Wi-Fi to standard DHCP..."
+    
+    sudo nmcli connection delete "Speedcamera-Ethernet-DHCP" 2>/dev/null || true
+    sudo nmcli connection add type ethernet ifname "${ETH_IFACE}" con-name "Speedcamera-Ethernet-DHCP" autoconnect yes ipv4.method auto 2>/dev/null || true
+    sudo nmcli connection up "Speedcamera-Ethernet-DHCP" 2>/dev/null || true
+    
     sudo nmcli connection delete "Speedcamera-CameraLAN" 2>/dev/null || true
     sudo nmcli connection delete "Speedcamera-Hotspot" 2>/dev/null || true
     sudo nmcli connection delete "Speedcamera-ClientWiFi" 2>/dev/null || true
-    sudo nmcli connection delete "Speedcamera-Ethernet-DHCP" 2>/dev/null || true
-
-    sudo nmcli connection add type ethernet ifname "${ETH_IFACE}" con-name "Speedcamera-Ethernet-DHCP" autoconnect yes ipv4.method auto 2>/dev/null || true
-    sudo nmcli connection up "Speedcamera-Ethernet-DHCP" 2>/dev/null || true
     echo "Interfaces set to standard DHCP."
     ;;
 

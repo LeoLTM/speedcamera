@@ -128,6 +128,8 @@ EOF'
     sudo nmcli connection delete "Speedcamera-ClientWiFi" 2>/dev/null || true
 
     if [ -n "$WIFI_PASS" ]; then
+      # Scan before trying to connect, to ensure the SSID is visible and avoid stale connection issues
+      sudo nmcli dev wifi rescan
       sudo nmcli dev wifi connect "${WIFI_SSID}" password "${WIFI_PASS}" ifname "${WIFI_IFACE}" name "Speedcamera-ClientWiFi"
     else
       sudo nmcli dev wifi connect "${WIFI_SSID}" ifname "${WIFI_IFACE}" name "Speedcamera-ClientWiFi"

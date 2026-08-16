@@ -31,14 +31,21 @@ case "$MODE" in
     echo "    NOTE: In this mode, Pi operates standalone/offline."
     echo ""
 
-    # Apply GigE Vision kernel socket buffer optimizations
-    echo "[*] Applying GigE Vision network socket buffer optimizations (128MB)..."
+    # Apply GigE Vision kernel socket buffer optimizations without causing Wi-Fi bufferbloat
+    echo "[*] Applying optimized network socket buffer configuration (128MB max, clean TCP defaults)..."
     sudo bash -c 'cat > /etc/sysctl.d/60-gige-camera.conf <<EOF
+# Keep high buffer limits for GigE camera explicit SO_RCVBUF allocation
 net.core.rmem_max = 134217728
-net.core.rmem_default = 67108864
 net.core.wmem_max = 134217728
-net.core.wmem_default = 67108864
+# Clean defaults for general Wi-Fi / TCP sockets (prevents bufferbloat and queue stalls)
+net.core.rmem_default = 262144
+net.core.wmem_default = 262144
+net.ipv4.tcp_rmem = 4096 131072 67108864
+net.ipv4.tcp_wmem = 4096 65536 67108864
 net.core.netdev_max_backlog = 30000
+# Prevent dirty-page writeback stalls when saving capture images
+vm.dirty_background_ratio = 5
+vm.dirty_ratio = 10
 EOF'
     sudo sysctl -p /etc/sysctl.d/60-gige-camera.conf 2>/dev/null || sudo sysctl --system 2>/dev/null || true
 
@@ -51,6 +58,14 @@ EOF'
     echo "[1/2] Configuring Wi-Fi Hotspot AP on ${WIFI_IFACE}..."
     SSID="speedcamera"
     PASS="speedcamerapass"
+    
+    # Ensure NetworkManager globally disables Wi-Fi power-save on all connections
+    sudo mkdir -p /etc/NetworkManager/conf.d
+    sudo bash -c 'cat > /etc/NetworkManager/conf.d/default-wifi-powersave-off.conf <<EOF
+[connection]
+wifi.powersave = 2
+EOF'
+
     sudo nmcli connection delete "Speedcamera-Hotspot" 2>/dev/null || true
     sudo nmcli connection delete "Speedcamera-ClientWiFi" 2>/dev/null || true
     sudo nmcli connection add type wifi \
@@ -60,6 +75,8 @@ EOF'
       ssid "${SSID}" \
       mode ap \
       802-11-wireless.band bg \
+      802-11-wireless.channel 6 \
+      802-11-wireless.powersave 2 \
       ipv4.method shared \
       ipv4.addresses 192.168.4.1/24 \
       wifi-sec.key-mgmt wpa-psk \

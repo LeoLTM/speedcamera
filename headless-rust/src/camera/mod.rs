@@ -1046,13 +1046,14 @@ impl CameraService {
 
     // ── Shared Helper Functions ────────────────────────────────────────────────
 
-    /// Configure Line1 as strobe output, matching electronbun behavior.
+    /// Configure Line1 as strobe output for flash synchronization.
     ///
-    /// Uses LineSource=ExposureActive so the flash fires ONLY during the
-    /// exposure window of a triggered frame. StrobeEnable/StrobeLineDuration
-    /// are intentionally NOT set: on Hikrobot cameras, enabling StrobeEnable
-    /// with a duration makes the line free-run on its own timer, causing the
-    /// flash to strobe continuously regardless of trigger state.
+    /// Uses LineSource=ExposureStartActive so the flash fires a single edge
+    /// pulse at the START of each triggered exposure only.  ExposureActive
+    /// (level signal) must NOT be used — it mirrors all internal sensor
+    /// exposure activity and causes continuous strobing.
+    /// StrobeEnable=true with StrobeLineDuration gates the pulse to a fixed
+    /// duration, matching the verified-working MVS/electronbun configuration.
     fn configure_strobe_internal(cam: *mut ArvCamera, _settings: &AppSettings) {
         if cam.is_null() {
             return;
@@ -1063,23 +1064,28 @@ impl CameraService {
         Self::set_feature_str_internal(cam, "LineSelector", "Line1");
         Self::set_feature_str_internal(cam, "LineMode", "Strobe");
 
-        // Prefer ExposureActive to limit flash strictly to the exposure window
-        if Self::is_enumeration_entry_available_internal(cam, "LineSource", "ExposureActive") {
-            Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
-        } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "ExposureStartActive") {
+        // ExposureStartActive = discrete edge pulse at exposure start (correct)
+        // ExposureActive = level signal mirroring all sensor activity (causes strobing!)
+        // FrameStartActive = does not trigger Line1 on MV-CU013-80GC
+        if Self::is_enumeration_entry_available_internal(cam, "LineSource", "ExposureStartActive") {
             Self::set_feature_str_internal(cam, "LineSource", "ExposureStartActive");
+        } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "ExposureActive") {
+            Self::set_feature_str_internal(cam, "LineSource", "ExposureActive");
         } else if Self::is_enumeration_entry_available_internal(cam, "LineSource", "FrameStartActive") {
             Self::set_feature_str_internal(cam, "LineSource", "FrameStartActive");
         }
         Self::set_line_inverter_internal(cam, false);
 
-        // Ensure the free-running strobe timer is OFF — LineSource drives the pulse.
+        // Enable the strobe subsystem for controlled pulse generation
         if Self::is_feature_available_internal(cam, "StrobeEnable") {
-            if !Self::set_feature_bool_internal(cam, "StrobeEnable", false) {
-                Self::set_feature_int_internal(cam, "StrobeEnable", 0);
+            if !Self::set_feature_bool_internal(cam, "StrobeEnable", true) {
+                Self::set_feature_int_internal(cam, "StrobeEnable", 1);
             }
         }
-        tracing::info!("[camera] Strobe configured on Line1 (LineSource=ExposureActive, StrobeEnable=false)");
+        Self::set_feature_int_internal(cam, "StrobeLineDuration", 5000);
+        Self::set_feature_int_internal(cam, "StrobeLineDelay", 0);
+        Self::set_feature_int_internal(cam, "StrobeLinePreDelay", 0);
+        tracing::info!("[camera] Strobe configured on Line1 (LineSource=ExposureStartActive, StrobeEnable=true, StrobeLineDuration=5000)");
     }
 
     /// Disable strobe output during setup preview to prevent flash from firing.
@@ -1087,8 +1093,7 @@ impl CameraService {
         if cam.is_null() {
             return;
         }
-        // Disable strobe timer; LineSource=ExposureActive alone won't fire
-        // without exposures, but belt-and-braces for preview mode.
+        // Disable strobe subsystem so the flash doesn't fire during preview.
         Self::set_feature_bool_internal(cam, "StrobeEnable", false);
         tracing::info!("[camera] Strobe disabled for preview mode");
     }

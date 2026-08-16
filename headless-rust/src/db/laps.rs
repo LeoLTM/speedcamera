@@ -170,6 +170,48 @@ fn get_laps_for_session(conn: &Connection, session_id: i64) -> Result<Vec<Lap>> 
     Ok(laps)
 }
 
+pub fn get_lap_image_paths_for_session(conn: &Connection, session_id: i64) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT startImagePath, endImagePath FROM laps WHERE sessionId = ?")?;
+    let rows = stmt.query_map(params![session_id], |row| {
+        let start: Option<String> = row.get(0)?;
+        let end: Option<String> = row.get(1)?;
+        Ok((start, end))
+    })?;
+
+    let mut paths = Vec::new();
+    for r in rows {
+        let (start, end) = r?;
+        if let Some(s) = start {
+            paths.push(s);
+        }
+        if let Some(e) = end {
+            paths.push(e);
+        }
+    }
+    Ok(paths)
+}
+
+pub fn get_lap_image_paths_for_lap(conn: &Connection, lap_id: i64) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT startImagePath, endImagePath FROM laps WHERE id = ?")?;
+    let mut rows = stmt.query_map(params![lap_id], |row| {
+        let start: Option<String> = row.get(0)?;
+        let end: Option<String> = row.get(1)?;
+        Ok((start, end))
+    })?;
+
+    let mut paths = Vec::new();
+    if let Some(r) = rows.next() {
+        let (start, end) = r?;
+        if let Some(s) = start {
+            paths.push(s);
+        }
+        if let Some(e) = end {
+            paths.push(e);
+        }
+    }
+    Ok(paths)
+}
+
 pub fn delete_lap_session(conn: &Connection, id: i64) -> Result<()> {
     conn.execute("DELETE FROM lap_sessions WHERE id = ?", params![id])?;
     Ok(())

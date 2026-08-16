@@ -56,23 +56,31 @@ export const createMeasurementSlice: StateCreator<
       return;
     }
 
-    const { systemState, appMode } = get();
-    // In PASSIVE mode, ignore all serial measurements
-    if (systemState === "PASSIVE") return;
+    // Lap-specific events MUST ALWAYS be forwarded to the lap state machine,
+    // regardless of systemState (e.g. even if camera is disconnected / PASSIVE)
+    if (
+      payload.status === "LAPSTART" ||
+      payload.status === "LAPEND" ||
+      payload.status === "LAPWAITING" ||
+      payload.status === "LAPSTOPPED"
+    ) {
+      get().handleSerialStatusForLap(payload);
+      return;
+    }
 
-    // In lap timer mode, delegate lap-specific events to the lap state machine
-    if (appMode === "laptimer") {
-      if (payload.status === "LAPSTART" || payload.status === "LAPEND" ||
-          payload.status === "LAPWAITING" || payload.status === "LAPSTOPPED") {
-        get().handleSerialStatusForLap(payload);
-        return;
-      }
-      // Speed events still update the display but do not create violations in lap mode
+    const { systemState, appMode, currentSession } = get();
+
+    // If in lap timer mode or an active lap session is running, speed events
+    // update the display without creating speed camera violations
+    if (appMode === "laptimer" || currentSession !== null) {
       if (payload.status === "SPEEDING" || payload.status === "OK") {
         set({ lastSpeed: payload.value, lastDirection: payload.direction });
       }
       return;
     }
+
+    // In PASSIVE mode, ignore all serial measurements
+    if (systemState === "PASSIVE") return;
 
     if (payload.status === "SPEEDING") {
       const { value, direction } = payload;
@@ -80,6 +88,5 @@ export const createMeasurementSlice: StateCreator<
     } else if (payload.status === "OK") {
       set({ lastSpeed: payload.value, lastDirection: payload.direction });
     }
-    // CONNECTED / DISCONNECTED handled by serialSlice indirectly via store
   },
 });

@@ -213,15 +213,33 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
 
         "deleteLapSession" => {
             let id = params["id"].as_i64().ok_or("Missing id parameter")?;
-            let conn = ctx.db.lock();
-            crate::db::laps::delete_lap_session(&conn, id).map_err(|e| e.to_string())?;
+            let img_paths = {
+                let conn = ctx.db.lock();
+                crate::db::laps::get_lap_image_paths_for_session(&conn, id).unwrap_or_default()
+            };
+            {
+                let conn = ctx.db.lock();
+                crate::db::laps::delete_lap_session(&conn, id).map_err(|e| e.to_string())?;
+            }
+            for p in img_paths {
+                ctx.store.delete_image(&p);
+            }
             Ok(Value::Null)
         }
 
         "deleteLap" => {
             let id = params["id"].as_i64().ok_or("Missing id parameter")?;
-            let conn = ctx.db.lock();
-            crate::db::laps::delete_lap(&conn, id).map_err(|e| e.to_string())?;
+            let img_paths = {
+                let conn = ctx.db.lock();
+                crate::db::laps::get_lap_image_paths_for_lap(&conn, id).unwrap_or_default()
+            };
+            {
+                let conn = ctx.db.lock();
+                crate::db::laps::delete_lap(&conn, id).map_err(|e| e.to_string())?;
+            }
+            for p in img_paths {
+                ctx.store.delete_image(&p);
+            }
             Ok(Value::Null)
         }
 

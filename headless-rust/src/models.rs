@@ -217,6 +217,22 @@ pub struct LapSessionWithLaps {
     pub laps: Vec<Lap>,
 }
 
+fn deserialize_duration_ms<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum IntOrFloat {
+        Int(i64),
+        Float(f64),
+    }
+    match IntOrFloat::deserialize(deserializer)? {
+        IntOrFloat::Int(i) => Ok(i),
+        IntOrFloat::Float(f) => Ok(f.round() as i64),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveLapInput {
@@ -224,6 +240,7 @@ pub struct SaveLapInput {
     pub lap_number: i64,
     pub start_timestamp: i64,
     pub end_timestamp: i64,
+    #[serde(deserialize_with = "deserialize_duration_ms")]
     pub duration_ms: i64,
     pub speed_at_start: f64,
     pub speed_at_end: f64,
@@ -235,12 +252,15 @@ pub struct SaveLapInput {
 #[serde(rename_all = "camelCase")]
 pub struct EspPongConfig {
     pub max_speed: f64,
+    #[serde(default)]
     pub flash_delay: Option<f64>,
+    #[serde(default)]
     pub flash_duration: Option<f64>,
     pub sensor_distance: f64,
     pub debug_enabled: bool,
     pub lap_mode: String,
     pub lap_active: bool,
+    #[serde(default)]
     pub lap_auto_flash: Option<bool>,
     pub lap_dir_filter: String,
 }
@@ -284,7 +304,7 @@ pub enum SerialStatusPayload {
         #[serde(rename = "lapNumber")]
         lap_number: i64,
         #[serde(rename = "durationMs")]
-        duration_ms: i64,
+        duration_ms: f64,
         #[serde(rename = "speedAtStart")]
         speed_at_start: f64,
         #[serde(rename = "speedAtEnd")]

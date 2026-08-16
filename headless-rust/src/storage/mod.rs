@@ -39,7 +39,13 @@ impl FileStore {
             .decode(clean_b64.trim())
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
-        self.save_image_bytes(&decoded, "png")
+        let ext = if decoded.starts_with(&[0xFF, 0xD8, 0xFF]) {
+            "jpg"
+        } else {
+            "png"
+        };
+
+        self.save_image_bytes(&decoded, ext)
     }
 
     pub fn read_image(&self, path_str: &str) -> Option<Vec<u8>> {

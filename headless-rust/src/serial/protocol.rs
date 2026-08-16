@@ -30,7 +30,7 @@ pub enum EspMessage {
         #[serde(rename = "lapNumber")]
         lap_number: i64,
         #[serde(rename = "durationMs")]
-        duration_ms: i64,
+        duration_ms: f64,
         #[serde(rename = "speedAtStart")]
         speed_at_start: f64,
         #[serde(rename = "speedAtEnd")]
@@ -42,6 +42,8 @@ pub enum EspMessage {
     LapStopped,
     #[serde(rename = "configError")]
     ConfigError { message: String },
+    #[serde(other)]
+    Unknown,
 }
 
 impl EspMessage {
@@ -92,7 +94,7 @@ impl EspMessage {
             }),
             Self::LapWaiting => Some(SerialStatusPayload::LapWaiting),
             Self::LapStopped => Some(SerialStatusPayload::LapStopped),
-            Self::ConfigError { .. } => None,
+            Self::ConfigError { .. } | Self::Unknown => None,
         }
     }
 }

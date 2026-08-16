@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 import type { Lap, LapSession, LapSessionWithLaps, SerialStatusPayload, AppSettings } from "@/shared/types";
 import type { CameraSlice } from "./cameraSlice";
 import type { TeableSlice } from "./teableSlice";
+import type { SystemSlice } from "./systemSlice";
 import { getRpc } from "@/lib/rpc";
 import { toast } from "sonner";
 
@@ -49,7 +50,7 @@ let lapSaving = false;
 // ─── Slice ────────────────────────────────────────────────────────────────────
 
 export const createLapSlice: StateCreator<
-  LapSlice & CameraSlice & TeableSlice,
+  LapSlice & CameraSlice & TeableSlice & SystemSlice,
   [],
   [],
   LapSlice
@@ -79,6 +80,7 @@ export const createLapSlice: StateCreator<
       currentLaps: [],
       lapNumber: 0,
       lapState: "waiting",
+      appMode: "laptimer",
     });
     // Tell the ESP to start a lap session — it will drive all subsequent lap events
     await getRpc().request
@@ -100,6 +102,7 @@ export const createLapSlice: StateCreator<
     set({
       lapState: "idle",
       currentSession: null,
+      lapTimingStartedAt: null,
       // Keep currentLaps so the UI can show the final session summary
     });
   },
@@ -107,13 +110,30 @@ export const createLapSlice: StateCreator<
   // ── State machine ──────────────────────────────────────────────────────────
 
   handleSerialStatusForLap: (payload) => {
+    // ── LAPWAITING: firmware opened session, waiting for first pass ───────────
+    if (payload.status === "LAPWAITING") {
+      const { lapState, currentSession } = get();
+      if (currentSession && lapState === "idle") {
+        set({ lapState: "waiting" });
+      }
+      return;
+    }
+
+    // ── LAPSTOPPED: session stopped on firmware ───────────────────────────────
+    if (payload.status === "LAPSTOPPED") {
+      pendingStartImageBase64 = null;
+      lapSaving = false;
+      set({ lapState: "idle", lapTimingStartedAt: null });
+      return;
+    }
+
     // ── LAPSTART: first car pass — firmware opened a new lap ──────────────────
     if (payload.status === "LAPSTART") {
-      const { lapState, lapSettings } = get();
+      const { lapState, lapSettings, currentSession } = get();
 
-      // Accept "waiting" (first lap) or "timing" (MULTI lap N+1 boundary)
+      // Accept "waiting", "idle" (if session active), or "timing" (MULTI lap N+1 boundary)
       const isMultiContinuation = lapState === "timing" && lapSettings.lapMode === "multi";
-      if (lapState !== "waiting" && !isMultiContinuation) return;
+      if (lapState !== "waiting" && (lapState !== "idle" || !currentSession) && !isMultiContinuation) return;
 
       set({ lapState: "timing", lapNumber: payload.lapNumber, lapTimingStartedAt: Date.now() });
 

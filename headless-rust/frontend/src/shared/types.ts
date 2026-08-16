@@ -329,6 +329,16 @@ export type SpeedcameraRPC = {
       response: { exported: number; failed: number };
     };
 
+    // System / Armed State
+    getArmedState: {
+      params: Record<string, never>;
+      response: { armed: boolean };
+    };
+    setArmed: {
+      params: { armed: boolean };
+      response: { armed: boolean };
+    };
+
     // DB – settings
     getSettings: {
       params: Record<string, never>;
@@ -549,6 +559,8 @@ export type SpeedcameraRPC = {
     flashProgress: FlashProgressPayload;
     // Live stream frame
     liveFrame: string;
+    // Armed status notification
+    armedStatus: { armed: boolean };
     // Violation notification
     violation: Violation;
   }>;

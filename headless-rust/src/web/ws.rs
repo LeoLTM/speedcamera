@@ -12,6 +12,7 @@ use rocket_ws::{Channel, Message, WebSocket};
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{broadcast, mpsc};
 
 #[rocket::get("/ws/rpc")]
@@ -23,6 +24,8 @@ pub fn ws_rpc(
     serial: &State<Arc<SerialService>>,
     flash_tx: &State<broadcast::Sender<FlashProgressPayload>>,
     violation_tx: &State<broadcast::Sender<Violation>>,
+    armed: &State<Arc<AtomicBool>>,
+    armed_tx: &State<broadcast::Sender<bool>>,
 ) -> Channel<'static> {
     let ctx = Arc::new(RpcContext {
         db: (*db).clone(),
@@ -32,6 +35,8 @@ pub fn ws_rpc(
         teable: TeableClient::new(),
         flash_tx: (*flash_tx).clone(),
         violation_tx: (*violation_tx).clone(),
+        armed: (*armed).clone(),
+        armed_tx: (*armed_tx).clone(),
     });
 
     ws.channel(move |stream: DuplexStream| {
@@ -69,12 +74,20 @@ pub fn ws_rpc(
             });
             let _ = out_tx.send(Message::Text(init_serial.to_string())).await;
 
+            // Push initial armed status immediately
+            let init_armed = json!({
+                "event": "armedStatus",
+                "payload": { "armed": ctx.armed.load(Ordering::SeqCst) }
+            });
+            let _ = out_tx.send(Message::Text(init_armed.to_string())).await;
+
             // Subscribe to all backend event channels
             let mut serial_rx = ctx.serial.subscribe();
             let mut camera_status_rx = ctx.camera.subscribe_status();
             let mut live_frame_rx = ctx.camera.subscribe_frames();
             let mut flash_rx = ctx.flash_tx.subscribe();
             let mut violation_rx = ctx.violation_tx.subscribe();
+            let mut armed_rx = ctx.armed_tx.subscribe();
 
             // Heartbeat ping interval
             let mut ping_interval = tokio::time::interval(Duration::from_secs(15));
@@ -230,6 +243,23 @@ pub fn ws_rpc(
                             Err(broadcast::error::RecvError::Closed) => break,
                         }
                     }
+
+                    // Armed status broadcast (drop on slow client)
+                    res = armed_rx.recv() => {
+                        match res {
+                            Ok(is_armed) => {
+                                let msg = json!({
+                                    "event": "armedStatus",
+                                    "payload": { "armed": is_armed }
+                                });
+                                let _ = out_tx.try_send(Message::Text(msg.to_string()));
+                            }
+                            Err(broadcast::error::RecvError::Lagged(n)) => {
+                                tracing::debug!("[ws] Armed status broadcast lagged by {} messages", n);
+                            }
+                            Err(broadcast::error::RecvError::Closed) => break,
+                        }
+                    }
                 }
             }
 
@@ -252,6 +282,8 @@ pub fn ws_alias(
     serial: &State<Arc<SerialService>>,
     flash_tx: &State<broadcast::Sender<FlashProgressPayload>>,
     violation_tx: &State<broadcast::Sender<Violation>>,
+    armed: &State<Arc<AtomicBool>>,
+    armed_tx: &State<broadcast::Sender<bool>>,
 ) -> Channel<'static> {
-    ws_rpc(ws, db, store, camera, serial, flash_tx, violation_tx)
+    ws_rpc(ws, db, store, camera, serial, flash_tx, violation_tx, armed, armed_tx)
 }

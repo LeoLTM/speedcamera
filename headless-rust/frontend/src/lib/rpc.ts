@@ -253,6 +253,11 @@ class WebSocketRpcClient {
       case "flashProgress":
         store.handleFlashProgress(payload as FlashProgressPayload);
         break;
+      case "armedStatus": {
+        const armedPayload = payload as { armed: boolean };
+        store.handleArmedStatus(armedPayload.armed);
+        break;
+      }
       case "updateAvailable":
         store.setUpdateVersion((payload as any).version);
         store.setUpdatePhase("ready");

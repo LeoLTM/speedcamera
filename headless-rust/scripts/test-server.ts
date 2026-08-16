@@ -71,6 +71,7 @@ try {
   await new Promise<void>((resolve, reject) => {
     let settingsOk = false;
     let violationsOk = false;
+    let armedOk = false;
 
     ws.onopen = () => {
       console.log("WebSocket connected successfully!");
@@ -78,6 +79,8 @@ try {
       ws.send(JSON.stringify({ id: 1, method: "getSettings", params: {} }));
       // Send RPC request for getViolations
       ws.send(JSON.stringify({ id: 2, method: "getViolations", params: { page: 1, limit: 10 } }));
+      // Send RPC request for getArmedState
+      ws.send(JSON.stringify({ id: 3, method: "getArmedState", params: {} }));
     };
 
     ws.onmessage = (event) => {
@@ -104,7 +107,27 @@ try {
         }
       }
 
-      if (settingsOk && violationsOk) {
+      if (data.id === 3) {
+        console.log("RPC getArmedState result:", data.result);
+        if (data.result && typeof data.result.armed === "boolean") {
+          // Now test setArmed
+          ws.send(JSON.stringify({ id: 4, method: "setArmed", params: { armed: true } }));
+        } else {
+          reject(new Error("Unexpected getArmedState response"));
+        }
+      }
+
+      if (data.id === 4) {
+        console.log("RPC setArmed result:", data.result);
+        if (data.result && data.result.armed === true) {
+          armedOk = true;
+          console.log("SUCCESS: Armed RPC validated!");
+        } else {
+          reject(new Error("Unexpected setArmed response"));
+        }
+      }
+
+      if (settingsOk && violationsOk && armedOk) {
         ws.close();
         resolve();
       }

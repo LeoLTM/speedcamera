@@ -14,7 +14,7 @@ const POST_ARM_DEBOUNCE_MS = 600;
 
 export function ArmingButton() {
   const systemState = useAppStore((s) => s.systemState);
-  const setSystemState = useAppStore((s) => s.setSystemState);
+  const setArmed = useAppStore((s) => s.setArmed);
   const connectedPort = useAppStore((s) => s.connectedPort);
   const cameraConnected = useAppStore((s) => s.cameraConnected);
 
@@ -64,7 +64,7 @@ export function ArmingButton() {
         debounceTimerRef.current = setTimeout(() => {
           justArmedRef.current = false;
         }, POST_ARM_DEBOUNCE_MS);
-        setSystemState("ARMED");
+        void setArmed(true);
         return;
       }
 
@@ -74,7 +74,7 @@ export function ArmingButton() {
     };
 
     rafRef.current = requestAnimationFrame(tick);
-  }, [systemState, setSystemState]);
+  }, [systemState, setArmed]);
 
   const handlePointerDown = useCallback(() => {
     if (systemState === "DISARMED") {
@@ -86,9 +86,9 @@ export function ArmingButton() {
     // Ignore the click that fires right after a successful hold-to-arm
     if (justArmedRef.current) return;
     if (systemState === "ARMED") {
-      setSystemState("DISARMED");
+      void setArmed(false);
     }
-  }, [systemState, setSystemState]);
+  }, [systemState, setArmed]);
 
   // Cleanup on unmount
   useEffect(() => {

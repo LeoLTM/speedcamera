@@ -11,10 +11,13 @@ use rocket::State;
 use serde_json::json;
 use std::sync::Arc;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 #[rocket::get("/api/health")]
 pub fn health(
     config: &State<AppConfig>,
     camera: &State<Arc<CameraService>>,
+    armed: &State<Arc<AtomicBool>>,
 ) -> Json<serde_json::Value> {
     Json(json!({
         "status": "ok",
@@ -22,6 +25,7 @@ pub fn health(
         "camera": camera.get_status(),
         "network": get_system_network_summary(),
         "mockMode": config.mock_mode,
+        "armed": armed.load(Ordering::SeqCst),
     }))
 }
 

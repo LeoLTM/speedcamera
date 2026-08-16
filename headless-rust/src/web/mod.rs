@@ -37,6 +37,8 @@ impl Fairing for Cors {
     }
 }
 
+use std::sync::atomic::AtomicBool;
+
 pub fn build_rocket(
     config: AppConfig,
     db: Database,
@@ -44,6 +46,8 @@ pub fn build_rocket(
     camera: Arc<CameraService>,
     serial: Arc<SerialService>,
     violation_tx: broadcast::Sender<Violation>,
+    armed: Arc<AtomicBool>,
+    armed_tx: broadcast::Sender<bool>,
 ) -> Rocket<Build> {
     let (flash_tx, _) = broadcast::channel::<FlashProgressPayload>(32);
 
@@ -60,6 +64,8 @@ pub fn build_rocket(
         .manage(serial)
         .manage(flash_tx)
         .manage(violation_tx)
+        .manage(armed)
+        .manage(armed_tx)
         .mount(
             "/",
             rocket::routes![

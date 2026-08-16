@@ -39,6 +39,8 @@ pub struct RpcContext {
     pub teable: TeableClient,
     pub flash_tx: broadcast::Sender<FlashProgressPayload>,
     pub violation_tx: broadcast::Sender<Violation>,
+    pub armed: Arc<std::sync::atomic::AtomicBool>,
+    pub armed_tx: broadcast::Sender<bool>,
 }
 
 pub async fn handle_rpc(ctx: &RpcContext, req: RpcRequest) -> RpcResponse {
@@ -293,6 +295,22 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             .map_err(|e| e.to_string())??;
 
             Ok(serde_json::to_value(res).unwrap())
+        }
+
+        // ─── Armed / System State ─────────────────────────────────────────────
+        "getArmedState" => {
+            let is_armed = ctx.armed.load(std::sync::atomic::Ordering::SeqCst);
+            Ok(json!({ "armed": is_armed }))
+        }
+
+        "setArmed" => {
+            let is_armed = params["armed"]
+                .as_bool()
+                .ok_or("Missing armed parameter")?;
+            ctx.armed.store(is_armed, std::sync::atomic::Ordering::SeqCst);
+            let _ = ctx.armed_tx.send(is_armed);
+            tracing::info!("[system] Armed state updated: {}", is_armed);
+            Ok(json!({ "armed": is_armed }))
         }
 
         // ─── Settings ─────────────────────────────────────────────────────────

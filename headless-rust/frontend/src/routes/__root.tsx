@@ -16,6 +16,7 @@ function Root() {
   const loadTeableState = useAppStore((s) => s.loadTeableState);
   const refreshCameraStatus = useAppStore((s) => s.refreshCameraStatus);
   const refreshSerialStatus = useAppStore((s) => s.refreshSerialStatus);
+  const refreshArmedStatus = useAppStore((s) => s.refreshArmedStatus);
   const loadCameraSettings = useAppStore((s) => s.loadCameraSettings);
   const setSelectedPort = useAppStore((s) => s.setSelectedPort);
   const setMaxSpeed = useAppStore((s) => s.setMaxSpeed);
@@ -32,9 +33,10 @@ function Root() {
       })
       .catch((err) => console.warn("[root] Failed to load settings:", err));
 
-    // 2. Hydrate hardware connection states
+    // 2. Hydrate hardware and system armed states
     void refreshCameraStatus();
     void refreshSerialStatus();
+    void refreshArmedStatus();
     void loadLapSettings();
     void loadTeableState();
 
@@ -53,6 +55,7 @@ function Root() {
     setMaxSpeed,
     refreshCameraStatus,
     refreshSerialStatus,
+    refreshArmedStatus,
     loadLapSettings,
     loadTeableState,
     setLastViolation,

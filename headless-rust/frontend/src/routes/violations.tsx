@@ -167,6 +167,7 @@ function ViolationsPage() {
         onOpenChange={setExportDialogOpen}
         selectedIds={[...v.selected]}
         pageViolationIds={v.violations.map((x) => x.id)}
+        violations={v.violations}
       />
     </div>
   );

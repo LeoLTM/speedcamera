@@ -90,6 +90,11 @@ async fn main() -> Result<(), rocket::Error> {
         }
     }
 
+    // ─── Armed System State ──────────────────────────────────────────────────
+    let armed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (armed_tx, _) = tokio::sync::broadcast::channel::<bool>(32);
+    let pipeline_armed = armed.clone();
+
     // ─── Instant Shutter Trigger Pipeline (<10ms latency) ─────────────────────
     let (violation_tx, _) = tokio::sync::broadcast::channel::<models::Violation>(32);
     let pipeline_violation_tx = violation_tx.clone();
@@ -103,6 +108,11 @@ async fn main() -> Result<(), rocket::Error> {
             match serial_rx.recv().await {
                 Ok(msg) => {
                     if let models::SerialStatusPayload::Speeding { value, direction, .. } = msg {
+                        if !pipeline_armed.load(std::sync::atomic::Ordering::SeqCst) {
+                            tracing::debug!("[trigger-pipeline] Speeding detected ({} km/h) but system is DISARMED — skipping capture", value);
+                            continue;
+                        }
+
                         tracing::info!("[trigger-pipeline] Speeding detected ({} km/h) -> Triggering camera shutter!", value);
 
                         let cam = pipeline_cam.clone();
@@ -144,7 +154,7 @@ async fn main() -> Result<(), rocket::Error> {
     });
 
     // Build and launch Rocket web server
-    let server = web::build_rocket(config, db, store, camera, serial, violation_tx);
+    let server = web::build_rocket(config, db, store, camera, serial, violation_tx, armed, armed_tx);
     server.launch().await?;
 
     Ok(())

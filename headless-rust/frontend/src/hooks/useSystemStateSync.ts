@@ -12,6 +12,7 @@ import { useAppStore } from "@/stores/useAppStore";
 export function useSystemStateSync() {
   const systemState = useAppStore((s) => s.systemState);
   const setSystemState = useAppStore((s) => s.setSystemState);
+  const isArmed = useAppStore((s) => s.isArmed);
   const connectedPort = useAppStore((s) => s.connectedPort);
   const cameraConnected = useAppStore((s) => s.cameraConnected);
 
@@ -19,13 +20,14 @@ export function useSystemStateSync() {
 
   useEffect(() => {
     if (conditionsMet) {
-      if (systemState === "PASSIVE") {
-        setSystemState("DISARMED");
+      const targetState = isArmed ? "ARMED" : "DISARMED";
+      if (systemState !== targetState) {
+        setSystemState(targetState);
       }
     } else {
       if (systemState !== "PASSIVE") {
         setSystemState("PASSIVE");
       }
     }
-  }, [conditionsMet, systemState, setSystemState]);
+  }, [conditionsMet, isArmed, systemState, setSystemState]);
 }

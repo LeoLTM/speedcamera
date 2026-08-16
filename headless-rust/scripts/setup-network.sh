@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -e
+trap '' HUP
 
 MODE="${1:-status}"
 

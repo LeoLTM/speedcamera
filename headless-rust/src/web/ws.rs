@@ -87,6 +87,15 @@ pub fn ws_rpc(
                         match incoming {
                             Some(Ok(Message::Text(text))) => {
                                 if let Ok(req) = serde_json::from_str::<RpcRequest>(&text) {
+                                    if req.method == "ping" || req.method == "heartbeat" {
+                                        let resp = json!({
+                                            "id": req.id,
+                                            "result": { "pong": true, "timestamp": chrono::Utc::now().timestamp_millis() }
+                                        });
+                                        let _ = out_tx.send(Message::Text(resp.to_string())).await;
+                                        continue;
+                                    }
+
                                     let ctx_clone = ctx.clone();
                                     let out_tx_clone = out_tx.clone();
                                     // Handle RPC asynchronously in independent task to prevent blocking the select loop

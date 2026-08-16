@@ -36,6 +36,10 @@ class WebSocketRpcClient {
 
   private listeners = new Map<string, Set<EventCallback>>();
 
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private lastLatencyMs: number | null = null;
+  private missedHeartbeats = 0;
+
   constructor() {
     this.connect();
   }
@@ -45,6 +49,35 @@ class WebSocketRpcClient {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host; // includes port (e.g. localhost:5173 or 192.168.4.1:3000)
     return `${protocol}//${host}/ws/rpc`;
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    // 1000ms active heartbeat forces the client Wi-Fi chipset out of 802.11 power-save sleep
+    // and continuously drains any buffered packets in the AP DTIM queue.
+    this.heartbeatInterval = setInterval(async () => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      const start = performance.now();
+      try {
+        await this.call("ping", {});
+        const rtt = Math.round(performance.now() - start);
+        this.lastLatencyMs = rtt;
+        this.missedHeartbeats = 0;
+        this.emit("heartbeat" as any, { connected: true, latencyMs: rtt, degraded: rtt > 250 });
+      } catch (_) {
+        this.missedHeartbeats++;
+        if (this.missedHeartbeats >= 2) {
+          this.emit("heartbeat" as any, { connected: false, latencyMs: null, degraded: true });
+        }
+      }
+    }, 1000);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
   }
 
   public connect() {
@@ -62,7 +95,9 @@ class WebSocketRpcClient {
         console.log("[rpc-client] Connected to speedcamera daemon");
         this.isConnecting = false;
         this.reconnectDelay = 500;
+        this.missedHeartbeats = 0;
         this.emit("connectionChange", true);
+        this.startHeartbeat();
 
         // Flush any queued messages
         while (this.messageQueue.length > 0) {
@@ -109,8 +144,10 @@ class WebSocketRpcClient {
       ws.onclose = (event) => {
         console.log(`[rpc-client] Disconnected (code: ${event.code}). Reconnecting in ${this.reconnectDelay}ms...`);
         this.isConnecting = false;
+        this.stopHeartbeat();
         this.ws = null;
         this.emit("connectionChange", false);
+        this.emit("heartbeat" as any, { connected: false, latencyMs: null, degraded: true });
 
         if (!this.isExplicitlyClosed && !this.reconnectTimeout) {
           this.reconnectTimeout = setTimeout(() => {
@@ -122,6 +159,7 @@ class WebSocketRpcClient {
       };
     } catch (err) {
       this.isConnecting = false;
+      this.stopHeartbeat();
       console.error("[rpc-client] Failed to create WebSocket connection:", err);
       if (!this.reconnectTimeout) {
         this.reconnectTimeout = setTimeout(() => {

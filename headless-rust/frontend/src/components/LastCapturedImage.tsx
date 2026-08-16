@@ -17,12 +17,6 @@ export function LastCapturedImage() {
       .catch(() => setImageSrc(null));
   };
 
-  useBackendEvent("violation", (v) => {
-    if (v && v.imagePath) {
-      loadImage(v.imagePath);
-    }
-  });
-
   useEffect(() => {
     if (lastViolation && lastViolation.imagePath) {
       loadImage(lastViolation.imagePath);

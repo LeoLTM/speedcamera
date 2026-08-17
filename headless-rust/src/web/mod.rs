@@ -46,12 +46,16 @@ pub fn build_app(
         armed_tx,
     });
 
-    // 10 MB payload capacity for live JPEG frames and violation base64 payloads
+    // 10 MB payload capacity, fast 5s keepalive ping interval to keep Wi-Fi sleep-disabled,
+    // short 4s timeout for zombie detection, and large 4096 buffer size for live stream bursts.
     let (layer, io) = SocketIo::builder()
         .max_payload(10_000_000)
-        .max_buffer_size(2048)
-        .ping_interval(Duration::from_secs(10))
-        .ping_timeout(Duration::from_secs(5))
+        .max_buffer_size(4096)
+        .ping_interval(Duration::from_secs(5))
+        .ping_timeout(Duration::from_secs(4))
+        .connect_timeout(Duration::from_secs(5))
+        .upgrade_timeout(Duration::from_secs(5))
+        .ack_timeout(Duration::from_secs(10))
         .build_layer();
 
     let ctx_connect = ctx.clone();

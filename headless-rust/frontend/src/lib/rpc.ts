@@ -21,19 +21,24 @@ class SocketIoRpcClient {
   private listeners = new Map<string, Set<EventCallback>>();
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private missedHeartbeats = 0;
+  private isProbing = false;
 
   constructor() {
     const socketUrl = this.getSocketUrl();
     this.socket = io(socketUrl, {
       transports: ["websocket", "polling"],
+      upgrade: true,
       reconnection: true,
       reconnectionAttempts: Infinity,
-      reconnectionDelay: 500,
-      reconnectionDelayMax: 5000,
-      timeout: 10000,
+      reconnectionDelay: 300,
+      reconnectionDelayMax: 2500,
+      randomizationFactor: 0.2,
+      timeout: 5000,
+      autoConnect: true,
     });
 
     this.setupListeners();
+    this.setupLifecycleListeners();
   }
 
   private getSocketUrl(): string {
@@ -43,17 +48,28 @@ class SocketIoRpcClient {
 
   private setupListeners() {
     this.socket.on("connect", () => {
-      console.log("[rpc-client] Connected to speedcamera daemon via Socket.io");
+      console.log(`[rpc-client] Socket.io connected (id: ${this.socket.id}, transport: ${this.socket.io.engine?.transport?.name})`);
       this.missedHeartbeats = 0;
       this.emit("connectionChange", true);
       this.startHeartbeat();
+
+      // Resync state on connection / reconnection
+      const store = useAppStore.getState();
+      void store.refreshCameraStatus?.();
+      void store.refreshSerialStatus?.();
+      void store.refreshArmedStatus?.();
     });
 
     this.socket.on("disconnect", (reason) => {
-      console.log(`[rpc-client] Disconnected from daemon (reason: ${reason})`);
+      console.log(`[rpc-client] Socket.io disconnected (reason: ${reason})`);
       this.stopHeartbeat();
       this.emit("connectionChange", false);
       this.emit("heartbeat" as any, { connected: false, latencyMs: null, degraded: true });
+
+      // If disconnected by transport close or server disconnect, proactively attempt reconnect
+      if (reason === "io server disconnect" || reason === "transport close") {
+        this.socket.connect();
+      }
     });
 
     this.socket.on("connect_error", (err) => {
@@ -86,14 +102,79 @@ class SocketIoRpcClient {
     });
   }
 
+  /**
+   * Monitor browser lifecycle events (tab switching, screen sleep/wake, Wi-Fi reconnect)
+   * to immediately wake and verify the socket instead of waiting for OS TCP timeouts.
+   */
+  private setupLifecycleListeners() {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    // 1. Tab visibility / device wake
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        console.log("[rpc-client] Tab became active — verifying connection liveness");
+        if (!this.socket.connected) {
+          this.socket.connect();
+        } else {
+          void this.probeAndRecover();
+        }
+      }
+    });
+
+    // 2. Network adapter online event (Wi-Fi reconnected)
+    window.addEventListener("online", () => {
+      console.log("[rpc-client] Wi-Fi / network online event triggered");
+      if (!this.socket.connected) {
+        this.socket.connect();
+      } else {
+        void this.probeAndRecover();
+      }
+    });
+
+    // 3. Window focus
+    window.addEventListener("focus", () => {
+      if (!this.socket.connected) {
+        this.socket.connect();
+      }
+    });
+
+    // 4. Back-forward cache restore
+    window.addEventListener("pageshow", () => {
+      if (!this.socket.connected) {
+        this.socket.connect();
+      }
+    });
+  }
+
+  private async probeAndRecover() {
+    if (this.isProbing) return;
+    this.isProbing = true;
+    try {
+      if (!this.socket.connected) {
+        this.socket.connect();
+        return;
+      }
+      await this.socket.timeout(1200).emitWithAck("ping");
+      this.missedHeartbeats = 0;
+    } catch (_) {
+      console.warn("[rpc-client] Zombie connection detected during wake probe — resetting socket");
+      this.socket.disconnect().connect();
+    } finally {
+      this.isProbing = false;
+    }
+  }
+
   private startHeartbeat() {
     this.stopHeartbeat();
-    // 1000ms active heartbeat measures RTT and keeps Wi-Fi chipset active
+    // 1000ms active heartbeat:
+    // 1. Sends continuous micro-packets to prevent 802.11 Wi-Fi DTIM sleep
+    // 2. Real-time RTT latency telemetry
+    // 3. Instant recovery on 2 missed heartbeats (detects dead connections in 2s)
     this.heartbeatInterval = setInterval(async () => {
       if (!this.socket.connected) return;
       const start = performance.now();
       try {
-        await this.socket.timeout(2000).emitWithAck("ping");
+        await this.socket.timeout(1500).emitWithAck("ping");
         const rtt = Math.round(performance.now() - start);
         this.missedHeartbeats = 0;
         this.emit("heartbeat" as any, { connected: true, latencyMs: rtt, degraded: rtt > 250 });
@@ -101,6 +182,8 @@ class SocketIoRpcClient {
         this.missedHeartbeats++;
         if (this.missedHeartbeats >= 2) {
           this.emit("heartbeat" as any, { connected: false, latencyMs: null, degraded: true });
+          console.warn("[rpc-client] Missed 2 heartbeats (silent Wi-Fi stall) — resetting socket transport");
+          this.socket.disconnect().connect();
         }
       }
     }, 1000);

@@ -12,7 +12,9 @@ rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+fast_image_resize = { version = "5", features = ["rayon", "image"] }
+rayon = "1.10"
 imageproc = "0.25"
 ab_glyph = "0.2"
 chrono = { version = "0.4", features = ["serde"] }

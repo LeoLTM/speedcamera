@@ -1,3 +1,4 @@
+pub mod compress;
 pub mod skin;
 
 use base64::Engine;
@@ -7,14 +8,17 @@ use std::path::{Path, PathBuf};
 
 #[derive(Clone)]
 pub struct FileStore {
-    images_dir: PathBuf,
+    pub images_dir: PathBuf,
+    pub compressor: compress::ImageCompressor,
 }
 
 impl FileStore {
     pub fn new(images_dir: &Path) -> Self {
         let _ = fs::create_dir_all(images_dir);
+        let compressor = compress::ImageCompressor::new(images_dir);
         Self {
             images_dir: images_dir.to_path_buf(),
+            compressor,
         }
     }
 

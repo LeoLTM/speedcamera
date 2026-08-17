@@ -134,6 +134,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     if let Ok(v) = db::violations::insert_violation(&conn, &input, &img_path) {
                                         tracing::info!("[trigger-pipeline] Recorded violation #{} ({} km/h)", v.id, v.measured_speed);
                                         let _ = v_tx.send(v);
+
+                                        // ponytail: pre-cache thumbnails in background across multicore pool
+                                        let store_pre = store_clone.clone();
+                                        let pre_bytes = jpg_bytes.clone();
+                                        let pre_path = img_path.clone();
+                                        rayon::spawn(move || {
+                                            let p_grid = storage::compress::CompressParams { width: Some(400), quality: Some(80), ..Default::default() };
+                                            let p_row = storage::compress::CompressParams { width: Some(160), quality: Some(75), ..Default::default() };
+                                            let _ = store_pre.compressor.process_image(&pre_bytes, &pre_path, &p_grid);
+                                            let _ = store_pre.compressor.process_image(&pre_bytes, &pre_path, &p_row);
+                                        });
                                     }
                                 }
                             } else {

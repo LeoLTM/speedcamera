@@ -250,18 +250,38 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             if image_path.is_empty() {
                 return Ok(Value::String(String::new()));
             }
-            Ok(Value::String(format!(
-                "/image?path={}",
-                urlencoding::encode(image_path)
-            )))
+            let mut url = format!("/image?path={}", urlencoding::encode(image_path));
+            if let Some(w) = params["width"].as_u64().or_else(|| params["w"].as_u64()) {
+                url.push_str(&format!("&w={}", w));
+            }
+            if let Some(h) = params["height"].as_u64().or_else(|| params["h"].as_u64()) {
+                url.push_str(&format!("&h={}", h));
+            }
+            if let Some(q) = params["quality"].as_u64().or_else(|| params["q"].as_u64()) {
+                url.push_str(&format!("&q={}", q));
+            }
+            if let Some(fmt) = params["format"].as_str().or_else(|| params["fmt"].as_str()) {
+                url.push_str(&format!("&fmt={}", fmt));
+            }
+            Ok(Value::String(url))
         }
 
         "getSkinnedImageData" => {
             let violation_id = params["violationId"].as_i64().ok_or("Missing violationId")?;
-            Ok(Value::String(format!(
-                "/skinned-image?violationId={}",
-                violation_id
-            )))
+            let mut url = format!("/skinned-image?violationId={}", violation_id);
+            if let Some(w) = params["width"].as_u64().or_else(|| params["w"].as_u64()) {
+                url.push_str(&format!("&w={}", w));
+            }
+            if let Some(h) = params["height"].as_u64().or_else(|| params["h"].as_u64()) {
+                url.push_str(&format!("&h={}", h));
+            }
+            if let Some(q) = params["quality"].as_u64().or_else(|| params["q"].as_u64()) {
+                url.push_str(&format!("&q={}", q));
+            }
+            if let Some(fmt) = params["format"].as_str().or_else(|| params["fmt"].as_str()) {
+                url.push_str(&format!("&fmt={}", fmt));
+            }
+            Ok(Value::String(url))
         }
 
         "exportSkinnedImages" => {

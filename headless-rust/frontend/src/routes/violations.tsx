@@ -153,11 +153,13 @@ function ViolationsPage() {
           showCloseButton
         >
           {lightboxUrl && (
-            <img
-              src={lightboxUrl}
-              alt="Violation"
-              className="w-full h-full object-contain rounded-none"
-            />
+            <div className="relative w-full h-full flex items-center justify-center">
+              <img
+                src={lightboxUrl}
+                alt="Violation Full Resolution"
+                className="w-full h-full object-contain rounded-none"
+              />
+            </div>
           )}
         </DialogContent>
       </Dialog>

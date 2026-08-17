@@ -28,7 +28,8 @@ export function ViolationGridTile({
   onDelete,
   onImageClick,
 }: ViolationGridTileProps) {
-  const { imageData, imageLoading } = useViolationImage(violation, skinEnabled);
+  // ponytail: 400px compressed thumbnail for fast grid rendering over Wi-Fi
+  const { imageData, imageLoading } = useViolationImage(violation, skinEnabled, { width: 400, quality: 80 });
   const [deleting, setDeleting] = useState(false);
 
   const over = (violation.measuredSpeed - violation.maxSpeed).toFixed(1);
@@ -40,6 +41,10 @@ export function ViolationGridTile({
     minute: "2-digit",
     second: "2-digit",
   });
+
+  const fullResUrl = skinEnabled
+    ? `/skinned-image?violationId=${violation.id}`
+    : `/image?path=${encodeURIComponent(violation.imagePath)}`;
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -60,7 +65,7 @@ export function ViolationGridTile({
     >
       <div
         className="relative w-full h-52 bg-black/60 overflow-hidden cursor-pointer flex items-center justify-center"
-        onClick={() => imageData && onImageClick(imageData)}
+        onClick={() => onImageClick(fullResUrl)}
       >
         <div
           className="absolute top-2.5 left-2.5 z-10 p-1.5 rounded-lg bg-background/80 backdrop-blur-md border border-border/60 shadow-sm"

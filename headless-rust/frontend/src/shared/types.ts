@@ -317,11 +317,23 @@ export type SpeedcameraRPC = {
 
     // DB – images
     getImageData: {
-      params: { imagePath: string };
+      params: {
+        imagePath: string;
+        width?: number;
+        height?: number;
+        quality?: number;
+        format?: "webp" | "jpeg" | "png" | "auto";
+      };
       response: string; // data-URL or path
     };
     getSkinnedImageData: {
-      params: { violationId: number };
+      params: {
+        violationId: number;
+        width?: number;
+        height?: number;
+        quality?: number;
+        format?: "webp" | "jpeg" | "png" | "auto";
+      };
       response: string; // data-URL or URL of skinned image
     };
     exportSkinnedImages: {

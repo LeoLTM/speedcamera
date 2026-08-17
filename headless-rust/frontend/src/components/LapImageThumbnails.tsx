@@ -11,7 +11,7 @@ interface LapImageThumbnailsProps {
 
 /**
  * Renders start/end lap capture thumbnails with a shared lightbox.
- * Fetches image data lazily via the RPC and cancels pending fetches on unmount.
+ * Uses 120px compressed thumbnails over the network, opening full-resolution on click.
  */
 export function LapImageThumbnails({
   startImagePath,
@@ -26,15 +26,16 @@ export function LapImageThumbnails({
     let cancelled = false;
     setStartImageUrl(null);
     setEndImageUrl(null);
+    // ponytail: 120px mini-thumbnails for lap icons
     if (startImagePath) {
       getRpc()
-        .request.getImageData({ imagePath: startImagePath })
+        .request.getImageData({ imagePath: startImagePath, width: 120, quality: 75 })
         .then((data) => { if (!cancelled) setStartImageUrl(data); })
         .catch(() => {});
     }
     if (endImagePath) {
       getRpc()
-        .request.getImageData({ imagePath: endImagePath })
+        .request.getImageData({ imagePath: endImagePath, width: 120, quality: 75 })
         .then((data) => { if (!cancelled) setEndImageUrl(data); })
         .catch(() => {});
     }
@@ -49,8 +50,8 @@ export function LapImageThumbnails({
             {startImageUrl && (
               <button
                 type="button"
-                onClick={() => setLightboxUrl(startImageUrl)}
-                className="w-8 h-6 rounded overflow-hidden border border-border hover:border-primary transition-colors"
+                onClick={() => startImagePath && setLightboxUrl(`/image?path=${encodeURIComponent(startImagePath)}`)}
+                className="w-8 h-6 rounded overflow-hidden border border-border hover:border-primary transition-colors cursor-pointer"
                 title="Start image"
               >
                 <img src={startImageUrl} alt="start" className="w-full h-full object-cover" />
@@ -59,8 +60,8 @@ export function LapImageThumbnails({
             {endImageUrl && (
               <button
                 type="button"
-                onClick={() => setLightboxUrl(endImageUrl)}
-                className="w-8 h-6 rounded overflow-hidden border border-border hover:border-primary transition-colors"
+                onClick={() => endImagePath && setLightboxUrl(`/image?path=${encodeURIComponent(endImagePath)}`)}
+                className="w-8 h-6 rounded overflow-hidden border border-border hover:border-primary transition-colors cursor-pointer"
                 title="End image"
               >
                 <img src={endImageUrl} alt="end" className="w-full h-full object-cover" />
@@ -81,7 +82,7 @@ export function LapImageThumbnails({
           {lightboxUrl && (
             <img
               src={lightboxUrl}
-              alt="Lap capture"
+              alt="Lap capture full resolution"
               className="w-full h-full object-contain rounded-none"
             />
           )}

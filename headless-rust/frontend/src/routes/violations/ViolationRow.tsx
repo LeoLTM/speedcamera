@@ -27,7 +27,8 @@ export function ViolationRow({
   onDelete,
   onImageClick,
 }: ViolationRowProps) {
-  const { imageData, imageLoading } = useViolationImage(violation, skinEnabled);
+  // ponytail: 160px compressed thumbnail for fast row rendering over Wi-Fi
+  const { imageData, imageLoading } = useViolationImage(violation, skinEnabled, { width: 160, quality: 75 });
   const [deleting, setDeleting] = useState(false);
 
   const over = (violation.measuredSpeed - violation.maxSpeed).toFixed(1);
@@ -39,6 +40,10 @@ export function ViolationRow({
     minute: "2-digit",
     second: "2-digit",
   });
+
+  const fullResUrl = skinEnabled
+    ? `/skinned-image?violationId=${violation.id}`
+    : `/image?path=${encodeURIComponent(violation.imagePath)}`;
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -61,8 +66,8 @@ export function ViolationRow({
       <td className="px-3 py-2">
         <button
           type="button"
-          className="relative w-16 h-10 rounded-md overflow-hidden bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-          onClick={() => imageData && onImageClick(imageData)}
+          className="relative w-16 h-10 rounded-md overflow-hidden bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default cursor-pointer"
+          onClick={() => onImageClick(fullResUrl)}
           disabled={!imageData}
           aria-label="View full image"
         >

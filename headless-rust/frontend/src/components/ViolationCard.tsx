@@ -30,8 +30,9 @@ export function ViolationCard({
     let cancelled = false;
     setImageLoading(true);
 
+    // ponytail: 240px thumbnail for dashboard card
     getRpc()
-      .request.getImageData({ imagePath: violation.imagePath })
+      .request.getImageData({ imagePath: violation.imagePath, width: 240, quality: 75 })
       .then((data) => {
         if (!cancelled) setImageData(data);
       })
@@ -46,6 +47,8 @@ export function ViolationCard({
       cancelled = true;
     };
   }, [violation.imagePath]);
+
+  const fullResUrl = `/image?path=${encodeURIComponent(violation.imagePath)}`;
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -85,7 +88,7 @@ export function ViolationCard({
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           onImageClick && imageData ? "cursor-pointer" : "cursor-default",
         )}
-        onClick={() => imageData && onImageClick?.(imageData)}
+        onClick={() => imageData && onImageClick?.(fullResUrl)}
         disabled={!imageData || !onImageClick}
         aria-label="View full violation image"
       >

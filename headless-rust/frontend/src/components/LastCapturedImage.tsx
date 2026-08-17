@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import { getRpc } from "@/lib/rpc";
 import { useAppStore } from "@/stores/useAppStore";
-import { useBackendEvent } from "@/hooks/useBackendEvent";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Image as ImageIcon } from "lucide-react";
 
 export function LastCapturedImage() {
   const lastViolation = useAppStore((s) => s.lastViolation);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const loadImage = (imagePath: string) => {
+    // ponytail: 800px preview for dashboard view saves Wi-Fi payload
     getRpc()
-      .request.getImageData({ imagePath })
+      .request.getImageData({ imagePath, width: 800, quality: 80 })
       .then((src) => {
         setImageSrc(`${src}&_t=${Date.now()}`);
       })
@@ -25,14 +27,22 @@ export function LastCapturedImage() {
     }
   }, [lastViolation]);
 
+  const fullResUrl = lastViolation?.imagePath
+    ? `/image?path=${encodeURIComponent(lastViolation.imagePath)}`
+    : null;
+
   return (
-    <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden">
-      {imageSrc ? (
-        <img
-          src={imageSrc}
-          alt="Last capture"
-          className="max-w-full max-h-full object-contain animate-in fade-in duration-500"
-        />
+    <>
+      <div
+        className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden cursor-pointer"
+        onClick={() => imageSrc && setLightboxOpen(true)}
+      >
+        {imageSrc ? (
+          <img
+            src={imageSrc}
+            alt="Last capture"
+            className="max-w-full max-h-full object-contain animate-in fade-in duration-500 hover:scale-[1.01] transition-transform"
+          />
       ) : (
         <div className="flex flex-col items-center text-muted-foreground/50">
           <ImageIcon className="w-16 h-16 mb-4 opacity-50" />
@@ -54,5 +64,21 @@ export function LastCapturedImage() {
         </div>
       )}
     </div>
+
+    <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+      <DialogContent
+        className="max-w-[96vw] sm:max-w-[96vw] w-[96vw] sm:w-[96vw] h-[96vh] sm:h-[96vh] max-h-[96vh] sm:max-h-[96vh] p-0 rounded-none bg-black/95 border-none flex items-center justify-center overflow-hidden"
+        showCloseButton
+      >
+        {fullResUrl && (
+          <img
+            src={fullResUrl}
+            alt="Last capture full resolution"
+            className="w-full h-full object-contain rounded-none"
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  </>
   );
 }

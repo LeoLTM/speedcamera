@@ -1,28 +1,12 @@
-use rocket::http::ContentType;
-use rocket::response::{self, Responder, Response};
-use rocket::Request;
+use axum::body::Body;
+use axum::http::{header, Response, StatusCode};
 use rust_embed::RustEmbed;
-use std::io::Cursor;
 
 #[derive(RustEmbed)]
 #[folder = "dist/"]
 pub struct Asset;
 
-pub struct EmbeddedFile {
-    pub data: Vec<u8>,
-    pub content_type: ContentType,
-}
-
-impl<'r> Responder<'r, 'static> for EmbeddedFile {
-    fn respond_to(self, _: &'r Request<'_>) -> response::Result<'static> {
-        Response::build()
-            .header(self.content_type)
-            .sized_body(self.data.len(), Cursor::new(self.data))
-            .ok()
-    }
-}
-
-pub fn get_asset(path: &str) -> Option<EmbeddedFile> {
+pub fn serve_embedded_asset(path: &str) -> Response<Body> {
     let clean_path = path.trim_start_matches('/');
     let target = if clean_path.is_empty() {
         "index.html"
@@ -31,22 +15,30 @@ pub fn get_asset(path: &str) -> Option<EmbeddedFile> {
     };
 
     if let Some(file) = Asset::get(target) {
-        let ext = std::path::Path::new(target)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
-        let content_type = ContentType::from_extension(ext).unwrap_or(ContentType::Bytes);
-        Some(EmbeddedFile {
-            data: file.data.into_owned(),
-            content_type,
-        })
+        let mime = mime_guess::from_path(target).first_or_octet_stream();
+        Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, mime.as_ref())
+            .body(Body::from(file.data.into_owned()))
+            .unwrap()
     } else if !target.contains('.') {
-        // SPA Fallback: Return index.html only for client-side navigation routes (routes without file extensions)
-        Asset::get("index.html").map(|index| EmbeddedFile {
-            data: index.data.into_owned(),
-            content_type: ContentType::HTML,
-        })
+        // SPA Fallback: Return index.html for client-side navigation routes
+        if let Some(index) = Asset::get("index.html") {
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                .body(Body::from(index.data.into_owned()))
+                .unwrap()
+        } else {
+            Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::from("404 Not Found"))
+                .unwrap()
+        }
     } else {
-        None
+        Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("404 Not Found"))
+            .unwrap()
     }
 }

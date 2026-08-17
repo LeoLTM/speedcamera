@@ -1,5 +1,6 @@
 import type { SpeedcameraRPC, Violation, SerialStatusPayload, CameraStatusPayload, FlashProgressPayload } from "@/shared/types";
 import { useAppStore } from "@/stores/useAppStore";
+import { io, Socket } from "socket.io-client";
 import { toast } from "sonner";
 
 type RequestMap = SpeedcameraRPC["bun"]["requests"];
@@ -15,53 +16,85 @@ export type SpeedcameraClientRPC = {
 
 type EventCallback<T = any> = (payload: T) => void;
 
-class WebSocketRpcClient {
-  private ws: WebSocket | null = null;
-  private reqIdCounter = 0;
-  private pendingRequests = new Map<
-    string | number,
-    {
-      resolve: (val: any) => void;
-      reject: (err: any) => void;
-      timer: ReturnType<typeof setTimeout>;
-      method: string;
-    }
-  >();
-  private messageQueue: string[] = [];
-  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-  private reconnectDelay = 500;
-  private maxReconnectDelay = 5000;
-  private isConnecting = false;
-  private isExplicitlyClosed = false;
-
+class SocketIoRpcClient {
+  private socket: Socket;
   private listeners = new Map<string, Set<EventCallback>>();
-
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-  private lastLatencyMs: number | null = null;
   private missedHeartbeats = 0;
 
   constructor() {
-    this.connect();
+    const socketUrl = this.getSocketUrl();
+    this.socket = io(socketUrl, {
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 5000,
+      timeout: 10000,
+    });
+
+    this.setupListeners();
   }
 
-  private getWebSocketUrl(): string {
-    if (typeof window === "undefined") return "ws://127.0.0.1:3000/ws/rpc";
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.host; // includes port (e.g. localhost:5173 or 192.168.4.1:3000)
-    return `${protocol}//${host}/ws/rpc`;
+  private getSocketUrl(): string {
+    if (typeof window === "undefined") return "http://127.0.0.1:3000";
+    return window.location.origin;
+  }
+
+  private setupListeners() {
+    this.socket.on("connect", () => {
+      console.log("[rpc-client] Connected to speedcamera daemon via Socket.io");
+      this.missedHeartbeats = 0;
+      this.emit("connectionChange", true);
+      this.startHeartbeat();
+    });
+
+    this.socket.on("disconnect", (reason) => {
+      console.log(`[rpc-client] Disconnected from daemon (reason: ${reason})`);
+      this.stopHeartbeat();
+      this.emit("connectionChange", false);
+      this.emit("heartbeat" as any, { connected: false, latencyMs: null, degraded: true });
+    });
+
+    this.socket.on("connect_error", (err) => {
+      console.warn("[rpc-client] Socket.io connection error:", err.message);
+    });
+
+    // Server push events
+    this.socket.on("serialStatus", (payload: SerialStatusPayload) => {
+      this.handlePushEvent("serialStatus", payload);
+    });
+
+    this.socket.on("cameraStatus", (payload: CameraStatusPayload) => {
+      this.handlePushEvent("cameraStatus", payload);
+    });
+
+    this.socket.on("liveFrame", (payload: string) => {
+      this.handlePushEvent("liveFrame", payload);
+    });
+
+    this.socket.on("violation", (payload: Violation) => {
+      this.handlePushEvent("violation", payload);
+    });
+
+    this.socket.on("flashProgress", (payload: FlashProgressPayload) => {
+      this.handlePushEvent("flashProgress", payload);
+    });
+
+    this.socket.on("armedStatus", (payload: { armed: boolean }) => {
+      this.handlePushEvent("armedStatus", payload);
+    });
   }
 
   private startHeartbeat() {
     this.stopHeartbeat();
-    // 1000ms active heartbeat forces the client Wi-Fi chipset out of 802.11 power-save sleep
-    // and continuously drains any buffered packets in the AP DTIM queue.
+    // 1000ms active heartbeat measures RTT and keeps Wi-Fi chipset active
     this.heartbeatInterval = setInterval(async () => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      if (!this.socket.connected) return;
       const start = performance.now();
       try {
-        await this.call("ping", {});
+        await this.socket.timeout(2000).emitWithAck("ping");
         const rtt = Math.round(performance.now() - start);
-        this.lastLatencyMs = rtt;
         this.missedHeartbeats = 0;
         this.emit("heartbeat" as any, { connected: true, latencyMs: rtt, degraded: rtt > 250 });
       } catch (_) {
@@ -77,96 +110,6 @@ class WebSocketRpcClient {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
-    }
-  }
-
-  public connect() {
-    if (typeof window === "undefined" || this.isConnecting) return;
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
-
-    this.isConnecting = true;
-
-    try {
-      const url = this.getWebSocketUrl();
-      const ws = new WebSocket(url);
-      this.ws = ws;
-
-      ws.onopen = () => {
-        console.log("[rpc-client] Connected to speedcamera daemon");
-        this.isConnecting = false;
-        this.reconnectDelay = 500;
-        this.missedHeartbeats = 0;
-        this.emit("connectionChange", true);
-        this.startHeartbeat();
-
-        // Flush any queued messages
-        while (this.messageQueue.length > 0) {
-          const queued = this.messageQueue.shift();
-          if (queued && ws.readyState === WebSocket.OPEN) {
-            ws.send(queued);
-          }
-        }
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          // Case 1: Response to a pending RPC request
-          if (data.id !== undefined && this.pendingRequests.has(data.id)) {
-            const pending = this.pendingRequests.get(data.id)!;
-            this.pendingRequests.delete(data.id);
-            clearTimeout(pending.timer);
-
-            if (data.error) {
-              pending.reject(new Error(data.error));
-            } else {
-              pending.resolve(data.result);
-            }
-            return;
-          }
-
-          // Case 2: Server push broadcast event
-          if (data.event) {
-            this.handlePushEvent(data.event as keyof PushMessageMap, data.payload);
-            return;
-          }
-        } catch (err) {
-          console.error("[rpc-client] Error handling message:", err);
-        }
-      };
-
-      ws.onerror = (err) => {
-        console.warn("[rpc-client] WebSocket transport error:", err);
-        this.isConnecting = false;
-      };
-
-      ws.onclose = (event) => {
-        console.log(`[rpc-client] Disconnected (code: ${event.code}). Reconnecting in ${this.reconnectDelay}ms...`);
-        this.isConnecting = false;
-        this.stopHeartbeat();
-        this.ws = null;
-        this.emit("connectionChange", false);
-        this.emit("heartbeat" as any, { connected: false, latencyMs: null, degraded: true });
-
-        if (!this.isExplicitlyClosed && !this.reconnectTimeout) {
-          this.reconnectTimeout = setTimeout(() => {
-            this.reconnectTimeout = null;
-            this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, this.maxReconnectDelay);
-            this.connect();
-          }, this.reconnectDelay);
-        }
-      };
-    } catch (err) {
-      this.isConnecting = false;
-      this.stopHeartbeat();
-      console.error("[rpc-client] Failed to create WebSocket connection:", err);
-      if (!this.reconnectTimeout) {
-        this.reconnectTimeout = setTimeout(() => {
-          this.reconnectTimeout = null;
-          this.connect();
-        }, this.reconnectDelay);
-      }
     }
   }
 
@@ -273,33 +216,27 @@ class WebSocketRpcClient {
     this.emit(event, payload);
   }
 
-  public call(method: string, params: any): Promise<any> {
-    return new Promise((resolve, reject) => {
-      const id = ++this.reqIdCounter;
-      const timer = setTimeout(() => {
-        if (this.pendingRequests.has(id)) {
-          this.pendingRequests.delete(id);
-          reject(new Error(`RPC request '${method}' timed out after 10000ms`));
-        }
-      }, 10000);
-
-      this.pendingRequests.set(id, { resolve, reject, timer, method });
-      const payloadStr = JSON.stringify({ id, method, params });
-
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(payloadStr);
-      } else {
-        // Queue message and ensure connection is active
-        this.messageQueue.push(payloadStr);
-        if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
-          this.connect();
-        }
+  public async call(method: string, params: any): Promise<any> {
+    try {
+      const response: any = await this.socket.timeout(10000).emitWithAck("rpc", { method, params });
+      if (response && response.error) {
+        throw new Error(response.error);
       }
-    });
+      return response?.result;
+    } catch (err: any) {
+      if (err?.name === "TimeoutError" || err?.message?.includes("timeout")) {
+        throw new Error(`RPC request '${method}' timed out after 10000ms`);
+      }
+      throw err;
+    }
+  }
+
+  public getRawSocket(): Socket {
+    return this.socket;
   }
 }
 
-export const rpcClient = new WebSocketRpcClient();
+export const rpcClient = new SocketIoRpcClient();
 
 // Proxy accessor so `getRpc().request.someMethod(params)` works transparently
 const rpcProxy: SpeedcameraClientRPC = {
@@ -313,4 +250,3 @@ const rpcProxy: SpeedcameraClientRPC = {
 export function getRpc(): SpeedcameraClientRPC {
   return rpcProxy;
 }
-

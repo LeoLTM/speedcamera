@@ -32,6 +32,7 @@ pub struct RpcResponse {
 }
 
 pub struct RpcContext {
+    pub config: crate::config::AppConfig,
     pub db: Database,
     pub store: FileStore,
     pub camera: Arc<CameraService>,

@@ -1,6 +1,6 @@
-# Speedcamera Headless (Rust & Rocket)
+# Speedcamera Headless (Rust & Axum / Socket.io)
 
-A lightweight, high-performance, single-binary speedcamera daemon and responsive web controller written in **Rust** using **Rocket 0.5**, **native Aravis C FFI**, **SQLite**, and an embedded **React + Vite** frontend.
+A lightweight, high-performance, single-binary speedcamera daemon and responsive web controller written in **Rust** using **Axum 0.8**, **Socketioxide (Socket.io v4)**, **native Aravis C FFI**, **SQLite**, and an embedded **React + Vite** frontend.
 
 Engineered specifically for **Raspberry Pi 5 with Raspberry Pi OS Lite** (zero desktop or GUI dependencies) with ultra-low latency hardware shutter triggering (<10ms) and rock-solid 24/7 reliability. Creates a standalone Wi-Fi hotspot for laptops, tablets, and phones to connect and manage the system via web browser while communicating with industrial GigE cameras on a dedicated Ethernet subnet.
 
@@ -16,8 +16,8 @@ Engineered specifically for **Raspberry Pi 5 with Raspberry Pi OS Lite** (zero d
 │  • wlan0 (Hotspot AP):   192.168.4.1/24    <── Web UI Browser Clients  │
 │                                                                        │
 │  • speedcamera-rust Daemon (Single Standalone Binary)                  │
-│     ├── Rocket 0.5 HTTP Server (REST API & Embedded Static Frontend)   │
-│     ├── Rocket WS (/ws/rpc JSON-RPC Server & Event Broadcaster)        │
+│     ├── Axum 0.8 HTTP Server (REST API & Embedded Static Frontend)     │
+│     ├── Socketioxide (Socket.io v4 RPC Server & Event Broadcaster)     │
 │     ├── Native Aravis C FFI (Direct libaravis-0.8 on eth0)             │
 │     ├── Serial Port Reader (serialport @ 115200 baud)                  │
 │     ├── Instant Trigger Pipeline (Serial Event -> Camera Shutter <10ms)│
@@ -304,7 +304,7 @@ bun run test:server
 - **Web UI:** `http://localhost:3000`
 - **Health Endpoint:** `http://localhost:3000/api/health`
 - **Network Endpoint:** `http://localhost:3000/api/network`
-- **WebSocket RPC:** `ws://localhost:3000/ws/rpc`
+- **Socket.io RPC & Events:** `http://localhost:3000/socket.io/`
 
 ---
 

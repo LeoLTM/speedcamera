@@ -30,8 +30,8 @@ struct Args {
     host: Option<String>,
 }
 
-#[rocket::main]
-async fn main() -> Result<(), rocket::Error> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Non-blocking logging: tracing-appender writes on dedicated thread.
     // Prevents journald/SSH backpressure from stalling tokio workers.
     let (nb_writer, _guard) = tracing_appender::non_blocking(std::io::stdout());
@@ -48,7 +48,7 @@ async fn main() -> Result<(), rocket::Error> {
     let config = AppConfig::new(args.mock, args.port, args.host);
 
     tracing::info!("─────────────────────────────────────────────────────────────────");
-    tracing::info!("  ⚡ Speedcamera Headless Daemon (Rust & Rocket)");
+    tracing::info!("  ⚡ Speedcamera Headless Daemon (Rust & Axum / Socket.io)");
     tracing::info!("  • Port:       http://{}:{}", config.host, config.port);
     tracing::info!("  • Data Dir:   {}", config.data_dir.display());
     tracing::info!("  • Mock Mode:  {}", config.mock_mode);
@@ -153,9 +153,12 @@ async fn main() -> Result<(), rocket::Error> {
         }
     });
 
-    // Build and launch Rocket web server
-    let server = web::build_rocket(config, db, store, camera, serial, violation_tx, armed, armed_tx);
-    server.launch().await?;
+    // Build and launch Axum web server
+    let bind_addr = format!("{}:{}", config.host, config.port);
+    let app = web::build_app(config, db, store, camera, serial, violation_tx, armed, armed_tx);
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+    tracing::info!("  🚀 Server listening on http://{}", bind_addr);
+    axum::serve(listener, app).await?;
 
     Ok(())
 }

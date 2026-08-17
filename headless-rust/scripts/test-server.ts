@@ -1,14 +1,23 @@
 #!/usr/bin/env bun
 import { spawn } from "child_process";
 import { existsSync } from "fs";
+import { io } from "socket.io-client";
 
 console.log("Starting speedcamera headless-rust server in mock mode on port 3099...");
 
-const binaryPath = existsSync("./target/release/headless-rust")
-  ? "./target/release/headless-rust"
-  : existsSync("./target/debug/headless-rust")
-  ? "./target/debug/headless-rust"
-  : "cargo";
+import { statSync } from "fs";
+
+let binaryPath = "cargo";
+const relPath = "./target/release/headless-rust";
+const dbgPath = "./target/debug/headless-rust";
+
+if (existsSync(relPath) && existsSync(dbgPath)) {
+  binaryPath = statSync(relPath).mtimeMs > statSync(dbgPath).mtimeMs ? relPath : dbgPath;
+} else if (existsSync(relPath)) {
+  binaryPath = relPath;
+} else if (existsSync(dbgPath)) {
+  binaryPath = dbgPath;
+}
 
 const args = binaryPath === "cargo"
   ? ["run", "--", "--mock", "--port", "3099"]
@@ -64,81 +73,87 @@ try {
   }
   console.log("SPA index.html served correctly! Length:", indexHtml.length);
 
-  // 4. Test WebSocket RPC
-  console.log("Testing WebSocket RPC on ws://127.0.0.1:3099/ws/rpc ...");
-  const ws = new WebSocket("ws://127.0.0.1:3099/ws/rpc");
+  // 4. Test Socket.io RPC and initial broadcasts
+  console.log("Testing Socket.io on http://127.0.0.1:3099 ...");
+  const socket = io("http://127.0.0.1:3099", {
+    transports: ["websocket", "polling"],
+    timeout: 5000,
+  });
 
   await new Promise<void>((resolve, reject) => {
-    let settingsOk = false;
-    let violationsOk = false;
-    let armedOk = false;
+    const timer = setTimeout(() => reject(new Error("Socket.io test timed out")), 10000);
 
-    ws.onopen = () => {
-      console.log("WebSocket connected successfully!");
-      // Send RPC request for getSettings
-      ws.send(JSON.stringify({ id: 1, method: "getSettings", params: {} }));
-      // Send RPC request for getViolations
-      ws.send(JSON.stringify({ id: 2, method: "getViolations", params: { page: 1, limit: 10 } }));
-      // Send RPC request for getArmedState
-      ws.send(JSON.stringify({ id: 3, method: "getArmedState", params: {} }));
-    };
+    let initialCameraStatusReceived = false;
+    let initialSerialStatusReceived = false;
 
-    ws.onmessage = (event) => {
-      console.log("WS message received:", event.data);
-      const data = JSON.parse(event.data);
+    socket.on("cameraStatus", (status) => {
+      console.log("Push event received: cameraStatus", status);
+      initialCameraStatusReceived = true;
+    });
 
-      if (data.id === 1) {
-        console.log("RPC getSettings result:", data.result);
-        if (data.result && typeof data.result.maxSpeed === "number") {
-          settingsOk = true;
-          console.log("SUCCESS: Settings RPC validated!");
-        } else {
-          reject(new Error("Unexpected getSettings response"));
+    socket.on("serialStatus", (status) => {
+      console.log("Push event received: serialStatus", status);
+      initialSerialStatusReceived = true;
+    });
+
+    socket.on("connect", async () => {
+      console.log("Socket.io connected successfully! Socket ID:", socket.id);
+
+      try {
+        // Test RPC: ping
+        const pingResp: any = await socket.timeout(3000).emitWithAck("ping");
+        console.log("Ping response:", pingResp);
+        if (!pingResp?.pong) throw new Error("Ping failed");
+
+        // Test RPC: getSettings
+        const settingsResp: any = await socket.timeout(3000).emitWithAck("rpc", { method: "getSettings", params: {} });
+        console.log("RPC getSettings response:", settingsResp);
+        if (settingsResp.error || typeof settingsResp.result?.maxSpeed !== "number") {
+          throw new Error("getSettings RPC failed");
         }
-      }
+        console.log("SUCCESS: Settings RPC validated!");
 
-      if (data.id === 2) {
-        console.log("RPC getViolations result:", data.result);
-        if (data.result && Array.isArray(data.result.violations)) {
-          violationsOk = true;
-          console.log("SUCCESS: Violations RPC validated!");
-        } else {
-          reject(new Error("Unexpected getViolations response"));
+        // Test RPC: getViolations
+        const violationsResp: any = await socket.timeout(3000).emitWithAck("rpc", { method: "getViolations", params: { page: 1, limit: 10 } });
+        console.log("RPC getViolations response:", violationsResp);
+        if (violationsResp.error || !Array.isArray(violationsResp.result?.violations)) {
+          throw new Error("getViolations RPC failed");
         }
-      }
+        console.log("SUCCESS: Violations RPC validated!");
 
-      if (data.id === 3) {
-        console.log("RPC getArmedState result:", data.result);
-        if (data.result && typeof data.result.armed === "boolean") {
-          // Now test setArmed
-          ws.send(JSON.stringify({ id: 4, method: "setArmed", params: { armed: true } }));
-        } else {
-          reject(new Error("Unexpected getArmedState response"));
+        // Test RPC: getArmedState
+        const armedStateResp: any = await socket.timeout(3000).emitWithAck("rpc", { method: "getArmedState", params: {} });
+        console.log("RPC getArmedState response:", armedStateResp);
+        if (armedStateResp.error || typeof armedStateResp.result?.armed !== "boolean") {
+          throw new Error("getArmedState RPC failed");
         }
-      }
 
-      if (data.id === 4) {
-        console.log("RPC setArmed result:", data.result);
-        if (data.result && data.result.armed === true) {
-          armedOk = true;
-          console.log("SUCCESS: Armed RPC validated!");
-        } else {
-          reject(new Error("Unexpected setArmed response"));
+        // Test RPC: setArmed
+        const setArmedResp: any = await socket.timeout(3000).emitWithAck("rpc", { method: "setArmed", params: { armed: true } });
+        console.log("RPC setArmed response:", setArmedResp);
+        if (setArmedResp.error || setArmedResp.result?.armed !== true) {
+          throw new Error("setArmed RPC failed");
         }
-      }
+        console.log("SUCCESS: Armed RPC validated!");
 
-      if (settingsOk && violationsOk && armedOk) {
-        ws.close();
+        clearTimeout(timer);
+        socket.disconnect();
         resolve();
+      } catch (err) {
+        clearTimeout(timer);
+        socket.disconnect();
+        reject(err);
       }
-    };
+    });
 
-    ws.onerror = (err) => reject(err);
-    setTimeout(() => reject(new Error("WS Timeout")), 8000);
+    socket.on("connect_error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
   });
 
   console.log("\n=========================================================");
-  console.log(" ALL INTEGRATION TESTS PASSED SUCCESSFULLY!");
+  console.log(" ALL SOCKET.IO INTEGRATION TESTS PASSED SUCCESSFULLY!");
   console.log("=========================================================");
 } finally {
   proc.kill();

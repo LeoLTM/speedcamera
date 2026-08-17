@@ -1,45 +1,27 @@
 pub mod embedded;
 pub mod routes;
 pub mod rpc;
-pub mod ws;
+pub mod socketio;
 
 use crate::camera::CameraService;
 use crate::config::AppConfig;
 use crate::db::Database;
+use crate::integrations::teable::TeableClient;
 use crate::models::{FlashProgressPayload, Violation};
 use crate::serial::SerialService;
 use crate::storage::FileStore;
-use rocket::fairing::{Fairing, Info, Kind};
-use rocket::http::Header;
-use rocket::{Build, Request, Response, Rocket};
-use std::sync::Arc;
-use tokio::sync::broadcast;
-
-pub struct Cors;
-
-#[rocket::async_trait]
-impl Fairing for Cors {
-    fn info(&self) -> Info {
-        Info {
-            name: "Add CORS Headers",
-            kind: Kind::Response,
-        }
-    }
-
-    async fn on_response<'r>(&self, _request: &'r Request<'_>, response: &mut Response<'r>) {
-        response.set_header(Header::new("Access-Control-Allow-Origin", "*"));
-        response.set_header(Header::new(
-            "Access-Control-Allow-Methods",
-            "GET, POST, PUT, DELETE, OPTIONS, HEAD",
-        ));
-        response.set_header(Header::new("Access-Control-Allow-Headers", "*"));
-        response.set_header(Header::new("Access-Control-Allow-Credentials", "true"));
-    }
-}
-
+use crate::web::rpc::RpcContext;
+use axum::routing::get;
+use axum::Router;
+use socketioxide::extract::SocketRef;
+use socketioxide::SocketIo;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::broadcast;
+use tower_http::cors::{Any, CorsLayer};
 
-pub fn build_rocket(
+pub fn build_app(
     config: AppConfig,
     db: Database,
     store: FileStore,
@@ -48,35 +30,51 @@ pub fn build_rocket(
     violation_tx: broadcast::Sender<Violation>,
     armed: Arc<AtomicBool>,
     armed_tx: broadcast::Sender<bool>,
-) -> Rocket<Build> {
+) -> Router {
     let (flash_tx, _) = broadcast::channel::<FlashProgressPayload>(32);
 
-    let figment = rocket::Config::figment()
-        .merge(("address", config.host.as_str()))
-        .merge(("port", config.port));
+    let ctx = Arc::new(RpcContext {
+        config,
+        db,
+        store,
+        camera,
+        serial,
+        teable: TeableClient::new(),
+        flash_tx,
+        violation_tx,
+        armed,
+        armed_tx,
+    });
 
-    rocket::custom(figment)
-        .attach(Cors)
-        .manage(config)
-        .manage(db)
-        .manage(store)
-        .manage(camera)
-        .manage(serial)
-        .manage(flash_tx)
-        .manage(violation_tx)
-        .manage(armed)
-        .manage(armed_tx)
-        .mount(
-            "/",
-            rocket::routes![
-                routes::health,
-                routes::network,
-                routes::get_image,
-                routes::get_skinned_image,
-                ws::ws_rpc,
-                ws::ws_alias,
-                routes::index,
-                routes::static_assets,
-            ],
-        )
+    // 10 MB payload capacity for live JPEG frames and violation base64 payloads
+    let (layer, io) = SocketIo::builder()
+        .max_payload(10_000_000)
+        .max_buffer_size(2048)
+        .ping_interval(Duration::from_secs(10))
+        .ping_timeout(Duration::from_secs(5))
+        .build_layer();
+
+    let ctx_connect = ctx.clone();
+    io.ns("/", move |s: SocketRef| {
+        let ctx = ctx_connect.clone();
+        async move {
+            socketio::on_connect(s, ctx).await;
+        }
+    });
+    socketio::spawn_event_broadcaster(io, ctx.clone());
+
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    Router::new()
+        .route("/api/health", get(routes::health))
+        .route("/api/network", get(routes::network))
+        .route("/image", get(routes::get_image))
+        .route("/skinned-image", get(routes::get_skinned_image))
+        .fallback(routes::static_handler)
+        .layer(layer)
+        .layer(cors)
+        .with_state(ctx)
 }

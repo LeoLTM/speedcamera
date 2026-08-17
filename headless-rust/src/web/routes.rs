@@ -1,94 +1,98 @@
-use crate::camera::CameraService;
-use crate::config::AppConfig;
-use crate::db::Database;
 use crate::network::get_system_network_summary;
 use crate::storage::skin::render_poliscan_skin;
-use crate::storage::FileStore;
-use crate::web::embedded::{get_asset, EmbeddedFile};
-use rocket::http::{ContentType, Status};
-use rocket::serde::json::Json;
-use rocket::State;
+use crate::web::embedded::serve_embedded_asset;
+use crate::web::rpc::RpcContext;
+use axum::body::Body;
+use axum::extract::{Query, State};
+use axum::http::{header, Response, StatusCode, Uri};
+use axum::response::IntoResponse;
+use axum::Json;
+use serde::Deserialize;
 use serde_json::json;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use std::sync::atomic::{AtomicBool, Ordering};
-
-#[rocket::get("/api/health")]
-pub fn health(
-    config: &State<AppConfig>,
-    camera: &State<Arc<CameraService>>,
-    armed: &State<Arc<AtomicBool>>,
-) -> Json<serde_json::Value> {
+pub async fn health(State(ctx): State<Arc<RpcContext>>) -> impl IntoResponse {
     Json(json!({
         "status": "ok",
         "platform": std::env::consts::OS,
-        "camera": camera.get_status(),
+        "camera": ctx.camera.get_status(),
         "network": get_system_network_summary(),
-        "mockMode": config.mock_mode,
-        "armed": armed.load(Ordering::SeqCst),
+        "mockMode": ctx.config.mock_mode,
+        "armed": ctx.armed.load(Ordering::SeqCst),
     }))
 }
 
-#[rocket::get("/api/network")]
-pub fn network() -> Json<crate::models::SystemNetworkSummary> {
+pub async fn network() -> impl IntoResponse {
     Json(get_system_network_summary())
 }
 
-#[rocket::get("/image?<path>")]
-pub fn get_image(
-    path: Option<String>,
-    store: &State<FileStore>,
-) -> Result<(ContentType, Vec<u8>), Status> {
-    let p = path.ok_or(Status::BadRequest)?;
-    let bytes = store.read_image(&p).ok_or(Status::NotFound)?;
-    let content_type = if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        ContentType::JPEG
-    } else {
-        ContentType::PNG
-    };
-    Ok((content_type, bytes))
+#[derive(Deserialize)]
+pub struct ImageQuery {
+    pub path: Option<String>,
 }
 
-#[rocket::get("/skinned-image?<violationId>")]
-pub fn get_skinned_image(
-    #[allow(non_snake_case)] violationId: Option<i64>,
-    db: &State<Database>,
-    store: &State<FileStore>,
-) -> Result<(ContentType, Vec<u8>), Status> {
-    let id = violationId.ok_or(Status::BadRequest)?;
-    let conn = db.lock();
+pub async fn get_image(
+    State(ctx): State<Arc<RpcContext>>,
+    Query(query): Query<ImageQuery>,
+) -> Result<Response<Body>, StatusCode> {
+    let path = query.path.ok_or(StatusCode::BAD_REQUEST)?;
+    let bytes = ctx.store.read_image(&path).ok_or(StatusCode::NOT_FOUND)?;
+    let content_type = if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        "image/jpeg"
+    } else {
+        "image/png"
+    };
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .body(Body::from(bytes))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Deserialize)]
+pub struct SkinnedImageQuery {
+    #[serde(rename = "violationId")]
+    pub violation_id: Option<i64>,
+}
+
+pub async fn get_skinned_image(
+    State(ctx): State<Arc<RpcContext>>,
+    Query(query): Query<SkinnedImageQuery>,
+) -> Result<Response<Body>, StatusCode> {
+    let id = query.violation_id.ok_or(StatusCode::BAD_REQUEST)?;
+    let conn = ctx.db.lock();
 
     let violation = crate::db::violations::get_violation_by_id(&conn, id)
-        .map_err(|_| Status::InternalServerError)?
-        .ok_or(Status::NotFound)?;
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
-    let settings = crate::db::settings::get_settings(&conn).map_err(|_| Status::InternalServerError)?;
-    let image_bytes = store.read_image(&violation.image_path).ok_or(Status::NotFound)?;
+    let settings = crate::db::settings::get_settings(&conn)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let image_bytes = ctx.store.read_image(&violation.image_path).ok_or(StatusCode::NOT_FOUND)?;
 
     let rendered = render_poliscan_skin(
         &image_bytes,
         &violation,
         &settings.skin_measuring_location,
     )
-    .ok_or(Status::InternalServerError)?;
+    .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let content_type = if rendered.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        ContentType::JPEG
+        "image/jpeg"
     } else {
-        ContentType::PNG
+        "image/png"
     };
 
-    Ok((content_type, rendered))
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .body(Body::from(rendered))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-
-#[rocket::get("/<file..>", rank = 20)]
-pub fn static_assets(file: std::path::PathBuf) -> Result<EmbeddedFile, Status> {
-    let path_str = file.to_string_lossy().to_string();
-    get_asset(&path_str).ok_or(Status::NotFound)
-}
-
-#[rocket::get("/", rank = 10)]
-pub fn index() -> Result<EmbeddedFile, Status> {
-    get_asset("index.html").ok_or(Status::NotFound)
+pub async fn static_handler(uri: Uri) -> impl IntoResponse {
+    let path = uri.path();
+    serve_embedded_asset(path)
 }

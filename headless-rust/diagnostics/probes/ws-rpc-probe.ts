@@ -1,4 +1,5 @@
 import type { DiagConfig } from "../config";
+import { io, Socket } from "socket.io-client";
 
 export interface RpcCallRecord {
   id: number;
@@ -34,10 +35,9 @@ export interface WsRpcStats {
 
 export class WsRpcProbe {
   private config: DiagConfig;
-  private ws: WebSocket | null = null;
+  private socket: Socket | null = null;
   private isRunning = false;
   private reqIdCounter = 1000;
-  private pendingCalls = new Map<number, { record: RpcCallRecord; timeoutTimer: NodeJS.Timeout }>();
   private completedCalls: RpcCallRecord[] = [];
   private pushEvents: PushEventRecord[] = [];
   private lastPushTimestamp = 0;
@@ -70,7 +70,7 @@ export class WsRpcProbe {
 
     const rpcLoop = async () => {
       if (!this.isRunning) return;
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      if (this.socket && this.socket.connected) {
         const method = rpcMethods[methodIdx % rpcMethods.length];
         methodIdx++;
         const params = method === "getViolations" ? { page: 1, limit: 5 } : {};
@@ -91,26 +91,22 @@ export class WsRpcProbe {
       clearTimeout(this.loopTimer);
       this.loopTimer = null;
     }
-    for (const [, pending] of this.pendingCalls) {
-      clearTimeout(pending.timeoutTimer);
-    }
-    this.pendingCalls.clear();
 
-    if (this.ws) {
+    if (this.socket) {
       try {
-        this.ws.close();
+        this.socket.disconnect();
       } catch (_) {}
-      this.ws = null;
+      this.socket = null;
     }
   }
 
   public getStats(): WsRpcStats {
-    const totalCalls = this.completedCalls.length + this.pendingCalls.size;
+    const totalCalls = this.completedCalls.length;
     const successfulCalls = this.completedCalls.filter((c) => !c.timedOut && !c.error).length;
     const timedOutCalls = this.completedCalls.filter((c) => c.timedOut).length;
 
     const successfulRtts = this.completedCalls
-      .filter((c) => c.rttMs !== undefined && !c.timedOut)
+      .filter((c) => c.rttMs !== undefined && !c.timedOut && !c.error)
       .map((c) => c.rttMs!);
 
     const avgRpcRttMs = successfulRtts.length > 0 ? successfulRtts.reduce((a, b) => a + b, 0) / successfulRtts.length : 0;
@@ -125,7 +121,7 @@ export class WsRpcProbe {
     const burstEventsCount = this.pushEvents.filter((e) => e.isBurst).length;
 
     return {
-      connected: this.ws !== null && this.ws.readyState === WebSocket.OPEN,
+      connected: this.socket !== null && this.socket.connected,
       connectAttempts: this.connectAttempts,
       disconnects: this.disconnects,
       totalCalls,
@@ -152,8 +148,14 @@ export class WsRpcProbe {
     return new Promise((resolve) => {
       this.connectAttempts++;
       try {
-        const ws = new WebSocket(this.config.wsUrl);
-        this.ws = ws;
+        const socket = io(this.config.httpUrl, {
+          transports: ["websocket", "polling"],
+          reconnection: true,
+          reconnectionAttempts: Infinity,
+          reconnectionDelay: 1000,
+          timeout: 4000,
+        });
+        this.socket = socket;
 
         let resolved = false;
         const connectTimer = setTimeout(() => {
@@ -163,44 +165,56 @@ export class WsRpcProbe {
           }
         }, 4000);
 
-        ws.onopen = () => {
+        socket.on("connect", () => {
           if (!resolved) {
             resolved = true;
             clearTimeout(connectTimer);
             resolve(true);
           }
           if (this.onUpdateCallback) this.onUpdateCallback();
+        });
+
+        const recordPush = (event: string) => {
+          const now = Date.now();
+          const delta = this.lastPushTimestamp > 0 ? now - this.lastPushTimestamp : 0;
+          const isBurst = delta < 40 && this.pushEvents.length > 0 && (this.pushEvents[this.pushEvents.length - 1].deltaFromPrevMs > 1500);
+
+          this.pushEvents.push({
+            event,
+            timestamp: now,
+            deltaFromPrevMs: delta,
+            isBurst,
+          });
+          this.lastPushTimestamp = now;
+          if (this.onUpdateCallback) this.onUpdateCallback();
         };
 
-        ws.onmessage = (event) => {
-          this.handleMessage(event.data);
-        };
+        socket.on("cameraStatus", () => recordPush("cameraStatus"));
+        socket.on("serialStatus", () => recordPush("serialStatus"));
+        socket.on("liveFrame", () => recordPush("liveFrame"));
+        socket.on("violation", () => recordPush("violation"));
+        socket.on("flashProgress", () => recordPush("flashProgress"));
+        socket.on("armedStatus", () => recordPush("armedStatus"));
 
-        ws.onerror = () => {
+        socket.on("connect_error", () => {
           if (!resolved) {
             resolved = true;
             clearTimeout(connectTimer);
             resolve(false);
           }
-        };
+        });
 
-        ws.onclose = () => {
+        socket.on("disconnect", () => {
           this.disconnects++;
-          if (this.isRunning) {
-            // Auto reconnect after 1s
-            setTimeout(() => {
-              if (this.isRunning) void this.connect();
-            }, 1000);
-          }
           if (this.onUpdateCallback) this.onUpdateCallback();
-        };
+        });
       } catch (_) {
         resolve(false);
       }
     });
   }
 
-  private sendRpc(method: string, params: any): number {
+  private async sendRpc(method: string, params: any) {
     const id = ++this.reqIdCounter;
     const now = Date.now();
 
@@ -211,67 +225,31 @@ export class WsRpcProbe {
       timedOut: false,
     };
 
-    // RPC timeout after 5000ms
-    const timeoutTimer = setTimeout(() => {
-      if (this.pendingCalls.has(id)) {
-        const pending = this.pendingCalls.get(id)!;
-        this.pendingCalls.delete(id);
-        pending.record.timedOut = true;
-        pending.record.rttMs = 5000;
-        this.completedCalls.push(pending.record);
-        if (this.onUpdateCallback) this.onUpdateCallback();
-      }
-    }, 5000);
-
-    this.pendingCalls.set(id, { record, timeoutTimer });
-
-    try {
-      this.ws?.send(JSON.stringify({ id, method, params }));
-    } catch (err: any) {
-      clearTimeout(timeoutTimer);
-      this.pendingCalls.delete(id);
-      record.error = err.message;
+    if (!this.socket || !this.socket.connected) {
+      record.error = "Not connected";
       this.completedCalls.push(record);
+      if (this.onUpdateCallback) this.onUpdateCallback();
+      return;
     }
 
-    return id;
-  }
-
-  private handleMessage(data: any) {
-    const now = Date.now();
     try {
-      const msg = typeof data === "string" ? JSON.parse(data) : JSON.parse(data.toString());
-
-      // Case 1: RPC Response
-      if (msg.id !== undefined && this.pendingCalls.has(msg.id)) {
-        const pending = this.pendingCalls.get(msg.id)!;
-        this.pendingCalls.delete(msg.id);
-        clearTimeout(pending.timeoutTimer);
-
-        pending.record.receivedAt = now;
-        pending.record.rttMs = Math.max(0, now - pending.record.sentAt);
-        if (msg.error) {
-          pending.record.error = String(msg.error);
-        }
-        this.completedCalls.push(pending.record);
+      const resp: any = await this.socket.timeout(5000).emitWithAck("rpc", { method, params });
+      const recAt = Date.now();
+      record.receivedAt = recAt;
+      record.rttMs = Math.max(0, recAt - now);
+      if (resp && resp.error) {
+        record.error = resp.error;
       }
-
-      // Case 2: Server Push Event
-      if (msg.event) {
-        const delta = this.lastPushTimestamp > 0 ? now - this.lastPushTimestamp : 0;
-        // If delta < 40ms and previous event had a gap > 1500ms, mark as burst!
-        const isBurst = delta < 40 && this.pushEvents.length > 0 && (this.pushEvents[this.pushEvents.length - 1].deltaFromPrevMs > 1500);
-
-        this.pushEvents.push({
-          event: msg.event,
-          timestamp: now,
-          deltaFromPrevMs: delta,
-          isBurst,
-        });
-        this.lastPushTimestamp = now;
+    } catch (err: any) {
+      if (err?.name === "TimeoutError" || err?.message?.includes("timeout")) {
+        record.timedOut = true;
+        record.rttMs = 5000;
+      } else {
+        record.error = err.message;
       }
-    } catch (_) {}
+    }
 
+    this.completedCalls.push(record);
     if (this.onUpdateCallback) this.onUpdateCallback();
   }
 }

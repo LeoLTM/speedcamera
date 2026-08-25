@@ -67,36 +67,58 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         // ─── Violations ───────────────────────────────────────────────────────
         "getViolations" => {
             let q: ViolationQuery = serde_json::from_value(params).map_err(|e| e.to_string())?;
-            let conn = ctx.db.lock();
-            let page = crate::db::violations::query_violations(&conn, &q).map_err(|e| e.to_string())?;
+            let db = ctx.db.clone();
+            let page = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::violations::query_violations(&conn, &q)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
             Ok(serde_json::to_value(page).unwrap())
         }
 
         "getViolationById" => {
             let id = params["id"].as_i64().ok_or("Missing id parameter")?;
-            let conn = ctx.db.lock();
-            let violation =
-                crate::db::violations::get_violation_by_id(&conn, id).map_err(|e| e.to_string())?;
+            let db = ctx.db.clone();
+            let violation = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::violations::get_violation_by_id(&conn, id)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
             Ok(serde_json::to_value(violation).unwrap())
         }
 
         "deleteViolation" => {
             let id = params["id"].as_i64().ok_or("Missing id parameter")?;
-            let conn = ctx.db.lock();
-            if let Ok(Some(v)) = crate::db::violations::get_violation_by_id(&conn, id) {
-                let _ = crate::db::violations::remove_violation(&conn, id);
-                ctx.store.delete_image(&v.image_path);
-            }
+            let db = ctx.db.clone();
+            let store = ctx.store.clone();
+            tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                if let Ok(Some(v)) = crate::db::violations::get_violation_by_id(&conn, id) {
+                    let _ = crate::db::violations::remove_violation(&conn, id);
+                    store.delete_image(&v.image_path);
+                }
+            })
+            .await
+            .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
         "exportViolationsCsv" => {
-            let date_from = params["dateFrom"].as_str();
-            let date_to = params["dateTo"].as_str();
+            let date_from = params["dateFrom"].as_str().map(|s| s.to_string());
+            let date_to = params["dateTo"].as_str().map(|s| s.to_string());
             let min_speed = params["minSpeed"].as_f64();
-            let conn = ctx.db.lock();
-            let csv = crate::db::violations::export_csv(&conn, date_from, date_to, min_speed)
-                .map_err(|e| e.to_string())?;
+            let db = ctx.db.clone();
+            let csv = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::violations::export_csv(&conn, date_from.as_deref(), date_to.as_deref(), min_speed)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
             Ok(Value::String(csv))
         }
 
@@ -150,43 +172,59 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
 
         // ─── Lap Sessions ─────────────────────────────────────────────────────
         "createLapSession" => {
-            let lap_mode = params["lapMode"].as_str().unwrap_or("single");
-            let conn = ctx.db.lock();
-            let session =
-                crate::db::laps::create_lap_session(&conn, lap_mode).map_err(|e| e.to_string())?;
+            let lap_mode = params["lapMode"].as_str().unwrap_or("single").to_string();
+            let db = ctx.db.clone();
+            let session = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::laps::create_lap_session(&conn, &lap_mode)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
             Ok(serde_json::to_value(session).unwrap())
         }
 
         "closeLapSession" => {
             let id = params["id"].as_i64().ok_or("Missing id parameter")?;
-            let conn = ctx.db.lock();
-            crate::db::laps::close_lap_session(&conn, id).map_err(|e| e.to_string())?;
+            let db = ctx.db.clone();
+            tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::laps::close_lap_session(&conn, id)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
         "saveLap" => {
             let input: SaveLapInput = serde_json::from_value(params).map_err(|e| e.to_string())?;
+            let store = ctx.store.clone();
+            let db = ctx.db.clone();
+            let lap = tokio::task::spawn_blocking(move || -> Result<Lap, String> {
+                let start_img_path = if let Some(ref b64) = input.start_image_base64 {
+                    store.save_base64_image(b64).ok()
+                } else {
+                    None
+                };
 
-            let start_img_path = if let Some(ref b64) = input.start_image_base64 {
-                ctx.store.save_base64_image(b64).ok()
-            } else {
-                None
-            };
+                let end_img_path = if let Some(ref b64) = input.end_image_base64 {
+                    store.save_base64_image(b64).ok()
+                } else {
+                    None
+                };
 
-            let end_img_path = if let Some(ref b64) = input.end_image_base64 {
-                ctx.store.save_base64_image(b64).ok()
-            } else {
-                None
-            };
-
-            let conn = ctx.db.lock();
-            let lap = crate::db::laps::insert_lap(
-                &conn,
-                &input,
-                start_img_path.as_deref(),
-                end_img_path.as_deref(),
-            )
-            .map_err(|e| e.to_string())?;
+                let conn = db.lock();
+                crate::db::laps::insert_lap(
+                    &conn,
+                    &input,
+                    start_img_path.as_deref(),
+                    end_img_path.as_deref(),
+                )
+                .map_err(|e| e.to_string())
+            })
+            .await
+            .map_err(|e| e.to_string())??;
 
             Ok(serde_json::to_value(lap).unwrap())
         }
@@ -194,9 +232,14 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         "getLapSessions" => {
             let page = params["page"].as_i64().unwrap_or(1);
             let limit = params["limit"].as_i64().unwrap_or(20);
-            let conn = ctx.db.lock();
-            let (sessions, total) =
-                crate::db::laps::get_lap_sessions(&conn, page, limit).map_err(|e| e.to_string())?;
+            let db = ctx.db.clone();
+            let (sessions, total) = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::laps::get_lap_sessions(&conn, page, limit)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
 
             Ok(json!({
                 "sessions": sessions,
@@ -206,41 +249,60 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
 
         "getLapSessionById" => {
             let id = params["id"].as_i64().ok_or("Missing id parameter")?;
-            let conn = ctx.db.lock();
-            let session =
-                crate::db::laps::get_lap_session_by_id(&conn, id).map_err(|e| e.to_string())?;
+            let db = ctx.db.clone();
+            let session = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::laps::get_lap_session_by_id(&conn, id)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
             Ok(serde_json::to_value(session).unwrap())
         }
 
         "deleteLapSession" => {
             let id = params["id"].as_i64().ok_or("Missing id parameter")?;
-            let img_paths = {
-                let conn = ctx.db.lock();
-                crate::db::laps::get_lap_image_paths_for_session(&conn, id).unwrap_or_default()
-            };
-            {
-                let conn = ctx.db.lock();
-                crate::db::laps::delete_lap_session(&conn, id).map_err(|e| e.to_string())?;
-            }
-            for p in img_paths {
-                ctx.store.delete_image(&p);
-            }
+            let db = ctx.db.clone();
+            let store = ctx.store.clone();
+            tokio::task::spawn_blocking(move || -> Result<(), String> {
+                let img_paths = {
+                    let conn = db.lock();
+                    crate::db::laps::get_lap_image_paths_for_session(&conn, id).unwrap_or_default()
+                };
+                {
+                    let conn = db.lock();
+                    crate::db::laps::delete_lap_session(&conn, id).map_err(|e| e.to_string())?;
+                }
+                for p in img_paths {
+                    store.delete_image(&p);
+                }
+                Ok(())
+            })
+            .await
+            .map_err(|e| e.to_string())??;
             Ok(Value::Null)
         }
 
         "deleteLap" => {
             let id = params["id"].as_i64().ok_or("Missing id parameter")?;
-            let img_paths = {
-                let conn = ctx.db.lock();
-                crate::db::laps::get_lap_image_paths_for_lap(&conn, id).unwrap_or_default()
-            };
-            {
-                let conn = ctx.db.lock();
-                crate::db::laps::delete_lap(&conn, id).map_err(|e| e.to_string())?;
-            }
-            for p in img_paths {
-                ctx.store.delete_image(&p);
-            }
+            let db = ctx.db.clone();
+            let store = ctx.store.clone();
+            tokio::task::spawn_blocking(move || -> Result<(), String> {
+                let img_paths = {
+                    let conn = db.lock();
+                    crate::db::laps::get_lap_image_paths_for_lap(&conn, id).unwrap_or_default()
+                };
+                {
+                    let conn = db.lock();
+                    crate::db::laps::delete_lap(&conn, id).map_err(|e| e.to_string())?;
+                }
+                for p in img_paths {
+                    store.delete_image(&p);
+                }
+                Ok(())
+            })
+            .await
+            .map_err(|e| e.to_string())??;
             Ok(Value::Null)
         }
 
@@ -354,22 +416,37 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
 
         // ─── Settings ─────────────────────────────────────────────────────────
         "getSettings" => {
-            let conn = ctx.db.lock();
-            let settings = crate::db::settings::get_settings(&conn).map_err(|e| e.to_string())?;
+            let db = ctx.db.clone();
+            let settings = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::settings::get_settings(&conn)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
             Ok(serde_json::to_value(settings).unwrap())
         }
 
         "saveSetting" => {
-            let key = params["key"].as_str().ok_or("Missing key")?;
-            let value = params["value"].as_str().ok_or("Missing value")?;
-            let conn = ctx.db.lock();
-            crate::db::settings::save_setting(&conn, key, value).map_err(|e| e.to_string())?;
+            let key = params["key"].as_str().ok_or("Missing key")?.to_string();
+            let value = params["value"].as_str().ok_or("Missing value")?.to_string();
+            let db = ctx.db.clone();
+            tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::settings::save_setting(&conn, &key, &value)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
         // ─── Serial ───────────────────────────────────────────────────────────
         "listPorts" => {
-            let ports = ctx.serial.list_ports();
+            let serial = ctx.serial.clone();
+            let ports = tokio::task::spawn_blocking(move || serial.list_ports())
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(serde_json::to_value(ports).unwrap())
         }
 
@@ -390,8 +467,11 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         }
 
         "sendCommand" => {
-            let json_cmd = params["json"].as_str().ok_or("Missing json command")?;
-            ctx.serial.send_command(json_cmd);
+            let json_cmd = params["json"].as_str().ok_or("Missing json command")?.to_string();
+            let serial = ctx.serial.clone();
+            tokio::task::spawn_blocking(move || serial.send_command(&json_cmd))
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
@@ -446,39 +526,57 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
 
         "setCameraExposure" => {
             let val = params["value"].as_f64().ok_or("Missing exposure value")?;
-            ctx.camera.set_exposure(val);
+            let cam = ctx.camera.clone();
+            tokio::task::spawn_blocking(move || cam.set_exposure(val))
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
         "setCameraGain" => {
             let val = params["value"].as_f64().ok_or("Missing gain value")?;
-            ctx.camera.set_gain(val);
+            let cam = ctx.camera.clone();
+            tokio::task::spawn_blocking(move || cam.set_gain(val))
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
         "setCameraFeatureStr" => {
-            let feature = params["feature"].as_str().ok_or("Missing feature name")?;
-            let value = params["value"].as_str().ok_or("Missing feature value")?;
-            ctx.camera.set_feature_str(feature, value);
+            let feature = params["feature"].as_str().ok_or("Missing feature name")?.to_string();
+            let value = params["value"].as_str().ok_or("Missing feature value")?.to_string();
+            let cam = ctx.camera.clone();
+            tokio::task::spawn_blocking(move || cam.set_feature_str(&feature, &value))
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
         "setCameraFeatureInt" => {
-            let feature = params["feature"].as_str().ok_or("Missing feature name")?;
+            let feature = params["feature"].as_str().ok_or("Missing feature name")?.to_string();
             let value = params["value"].as_i64().ok_or("Missing feature value")?;
-            ctx.camera.set_feature_int(feature, value);
+            let cam = ctx.camera.clone();
+            tokio::task::spawn_blocking(move || cam.set_feature_int(&feature, value))
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
         "applyMfsConfig" => {
-            let mfs = params["mfsContent"].as_str().ok_or("Missing mfsContent")?;
+            let mfs = params["mfsContent"].as_str().ok_or("Missing mfsContent")?.to_string();
             let save_default = params["saveAsDefault"].as_bool().unwrap_or(false);
-            let res = ctx.camera.apply_mfs_config(mfs, save_default);
+            let cam = ctx.camera.clone();
+            let res = tokio::task::spawn_blocking(move || cam.apply_mfs_config(&mfs, save_default))
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(serde_json::to_value(res).unwrap())
         }
 
         "startSetupStream" => {
-            ctx.camera.start_setup_stream();
+            let cam = ctx.camera.clone();
+            tokio::task::spawn_blocking(move || cam.start_setup_stream())
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
@@ -496,20 +594,31 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         }
 
         "setCameraPixelFormat" => {
-            let fmt = params["format"].as_str().ok_or("Missing format")?;
-            ctx.camera.set_pixel_format(fmt);
+            let fmt = params["format"].as_str().ok_or("Missing format")?.to_string();
+            let cam = ctx.camera.clone();
+            tokio::task::spawn_blocking(move || cam.set_pixel_format(&fmt))
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
         "getCameraPixelFormat" => {
-            let conn = ctx.db.lock();
-            let settings = crate::db::settings::get_settings(&conn).unwrap_or_default();
-            Ok(Value::String(settings.pixel_format))
+            let db = ctx.db.clone();
+            let format = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::settings::get_settings(&conn).unwrap_or_default().pixel_format
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+            Ok(Value::String(format))
         }
 
         "setCameraStrobeDuration" => {
             let val = params["value"].as_i64().ok_or("Missing value")?;
-            ctx.camera.set_strobe_duration(val);
+            let cam = ctx.camera.clone();
+            tokio::task::spawn_blocking(move || cam.set_strobe_duration(val))
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
@@ -530,52 +639,72 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         }
 
         "saveTeableConfig" => {
-            let url = params["url"].as_str().unwrap_or("");
-            let token = params["token"].as_str().unwrap_or("");
-            let name = params["userName"].as_str().unwrap_or("");
-            let email = params["userEmail"].as_str().unwrap_or("");
-            let avatar = params["userAvatar"].as_str().unwrap_or("");
+            let url = params["url"].as_str().unwrap_or("").to_string();
+            let token = params["token"].as_str().unwrap_or("").to_string();
+            let name = params["userName"].as_str().unwrap_or("").to_string();
+            let email = params["userEmail"].as_str().unwrap_or("").to_string();
+            let avatar = params["userAvatar"].as_str().unwrap_or("").to_string();
 
-            let conn = ctx.db.lock();
-            let _ = crate::db::settings::save_setting(&conn, "teableUrl", url);
-            let _ = crate::db::settings::save_setting(&conn, "teableToken", token);
-            let _ = crate::db::settings::save_setting(&conn, "teableUserName", name);
-            let _ = crate::db::settings::save_setting(&conn, "teableUserEmail", email);
-            let _ = crate::db::settings::save_setting(&conn, "teableUserAvatar", avatar);
+            let db = ctx.db.clone();
+            tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                let _ = crate::db::settings::save_setting(&conn, "teableUrl", &url);
+                let _ = crate::db::settings::save_setting(&conn, "teableToken", &token);
+                let _ = crate::db::settings::save_setting(&conn, "teableUserName", &name);
+                let _ = crate::db::settings::save_setting(&conn, "teableUserEmail", &email);
+                let _ = crate::db::settings::save_setting(&conn, "teableUserAvatar", &avatar);
+            })
+            .await
+            .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
         "removeTeableConfig" => {
-            let conn = ctx.db.lock();
-            let _ = crate::db::settings::save_setting(&conn, "teableUrl", "");
-            let _ = crate::db::settings::save_setting(&conn, "teableToken", "");
-            let _ = crate::db::settings::save_setting(&conn, "teableUserName", "");
-            let _ = crate::db::settings::save_setting(&conn, "teableUserEmail", "");
-            let _ = crate::db::settings::save_setting(&conn, "teableUserAvatar", "");
-            let _ = crate::db::settings::save_setting(&conn, "teableSpaceId", "");
-            let _ = crate::db::settings::save_setting(&conn, "teableBaseId", "");
-            let _ = crate::db::settings::save_setting(&conn, "teableTableId", "");
-            let _ = crate::db::settings::save_setting(&conn, "teableSyncEnabled", "false");
+            let db = ctx.db.clone();
+            tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                let _ = crate::db::settings::save_setting(&conn, "teableUrl", "");
+                let _ = crate::db::settings::save_setting(&conn, "teableToken", "");
+                let _ = crate::db::settings::save_setting(&conn, "teableUserName", "");
+                let _ = crate::db::settings::save_setting(&conn, "teableUserEmail", "");
+                let _ = crate::db::settings::save_setting(&conn, "teableUserAvatar", "");
+                let _ = crate::db::settings::save_setting(&conn, "teableSpaceId", "");
+                let _ = crate::db::settings::save_setting(&conn, "teableBaseId", "");
+                let _ = crate::db::settings::save_setting(&conn, "teableTableId", "");
+                let _ = crate::db::settings::save_setting(&conn, "teableSyncEnabled", "false");
+            })
+            .await
+            .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
         "saveTeableTarget" => {
-            let space_id = params["spaceId"].as_str().unwrap_or("");
-            let base_id = params["baseId"].as_str().unwrap_or("");
-            let table_id = params["tableId"].as_str().unwrap_or("");
+            let space_id = params["spaceId"].as_str().unwrap_or("").to_string();
+            let base_id = params["baseId"].as_str().unwrap_or("").to_string();
+            let table_id = params["tableId"].as_str().unwrap_or("").to_string();
 
-            let conn = ctx.db.lock();
-            let _ = crate::db::settings::save_setting(&conn, "teableSpaceId", space_id);
-            let _ = crate::db::settings::save_setting(&conn, "teableBaseId", base_id);
-            let _ = crate::db::settings::save_setting(&conn, "teableTableId", table_id);
+            let db = ctx.db.clone();
+            tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                let _ = crate::db::settings::save_setting(&conn, "teableSpaceId", &space_id);
+                let _ = crate::db::settings::save_setting(&conn, "teableBaseId", &base_id);
+                let _ = crate::db::settings::save_setting(&conn, "teableTableId", &table_id);
+            })
+            .await
+            .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
 
         "listTeableSpaces" => {
-            let settings = {
-                let conn = ctx.db.lock();
-                crate::db::settings::get_settings(&conn).map_err(|e| e.to_string())?
-            };
+            let db = ctx.db.clone();
+            let settings = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::settings::get_settings(&conn)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+
             let spaces = ctx
                 .teable
                 .list_spaces(&settings.teable_url, &settings.teable_token)
@@ -585,10 +714,15 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
 
         "listTeableBases" => {
             let space_id = params["spaceId"].as_str().ok_or("Missing spaceId")?;
-            let settings = {
-                let conn = ctx.db.lock();
-                crate::db::settings::get_settings(&conn).map_err(|e| e.to_string())?
-            };
+            let db = ctx.db.clone();
+            let settings = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::settings::get_settings(&conn)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+
             let bases = ctx
                 .teable
                 .list_bases(&settings.teable_url, &settings.teable_token, space_id)
@@ -598,10 +732,15 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
 
         "listTeableTables" => {
             let base_id = params["baseId"].as_str().ok_or("Missing baseId")?;
-            let settings = {
-                let conn = ctx.db.lock();
-                crate::db::settings::get_settings(&conn).map_err(|e| e.to_string())?
-            };
+            let db = ctx.db.clone();
+            let settings = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::settings::get_settings(&conn)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+
             let tables = ctx
                 .teable
                 .list_tables(&settings.teable_url, &settings.teable_token, base_id)
@@ -611,10 +750,15 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
 
         "verifyTeableTable" => {
             let table_id = params["tableId"].as_str().ok_or("Missing tableId")?;
-            let settings = {
-                let conn = ctx.db.lock();
-                crate::db::settings::get_settings(&conn).map_err(|e| e.to_string())?
-            };
+            let db = ctx.db.clone();
+            let settings = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::settings::get_settings(&conn)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+
             let check = ctx
                 .teable
                 .verify_table(&settings.teable_url, &settings.teable_token, table_id)
@@ -624,10 +768,15 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
 
         "ensureTeableFields" => {
             let table_id = params["tableId"].as_str().ok_or("Missing tableId")?;
-            let settings = {
-                let conn = ctx.db.lock();
-                crate::db::settings::get_settings(&conn).map_err(|e| e.to_string())?
-            };
+            let db = ctx.db.clone();
+            let settings = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::settings::get_settings(&conn)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+
             let created = ctx
                 .teable
                 .ensure_fields(&settings.teable_url, &settings.teable_token, table_id)
@@ -638,10 +787,15 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         "createTeableTable" => {
             let base_id = params["baseId"].as_str().ok_or("Missing baseId")?;
             let table_name = params["tableName"].as_str().ok_or("Missing tableName")?;
-            let settings = {
-                let conn = ctx.db.lock();
-                crate::db::settings::get_settings(&conn).map_err(|e| e.to_string())?
-            };
+            let db = ctx.db.clone();
+            let settings = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::settings::get_settings(&conn)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+
             let table = ctx
                 .teable
                 .create_table(
@@ -656,10 +810,15 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
 
         "syncLapToTeable" => {
             let input: SyncLapInput = serde_json::from_value(params).map_err(|e| e.to_string())?;
-            let settings = {
-                let conn = ctx.db.lock();
-                crate::db::settings::get_settings(&conn).map_err(|e| e.to_string())?
-            };
+            let db = ctx.db.clone();
+            let settings = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::settings::get_settings(&conn)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+
             ctx.teable
                 .sync_lap(
                     &settings.teable_url,
@@ -679,10 +838,14 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         }
 
         "listFirmwareReleases" => {
-            let settings = {
-                let conn = ctx.db.lock();
+            let db = ctx.db.clone();
+            let settings = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
                 crate::db::settings::get_settings(&conn).unwrap_or_default()
-            };
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+
             let releases = list_firmware_releases(&settings.github_token).await?;
             Ok(serde_json::to_value(releases).unwrap())
         }
@@ -695,8 +858,14 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
                 .unwrap_or("")
                 .to_string();
 
-            let conn = ctx.db.lock();
-            let settings = crate::db::settings::get_settings(&conn).unwrap_or_default();
+            let db = ctx.db.clone();
+            let settings = tokio::task::spawn_blocking(move || {
+                let conn = db.lock();
+                crate::db::settings::get_settings(&conn).unwrap_or_default()
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+
             let token = settings.github_token;
             let tx = ctx.flash_tx.clone();
 

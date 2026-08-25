@@ -30,10 +30,10 @@ class SocketIoRpcClient {
       upgrade: true,
       reconnection: true,
       reconnectionAttempts: Infinity,
-      reconnectionDelay: 300,
-      reconnectionDelayMax: 2500,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 5000,
       randomizationFactor: 0.2,
-      timeout: 5000,
+      timeout: 20000,
       autoConnect: true,
     });
 
@@ -154,7 +154,7 @@ class SocketIoRpcClient {
         this.socket.connect();
         return;
       }
-      await this.socket.timeout(1200).emitWithAck("ping");
+      await this.socket.timeout(5000).emitWithAck("ping");
       this.missedHeartbeats = 0;
     } catch (_) {
       console.warn("[rpc-client] Zombie connection detected during wake probe — resetting socket");
@@ -166,27 +166,27 @@ class SocketIoRpcClient {
 
   private startHeartbeat() {
     this.stopHeartbeat();
-    // 1000ms active heartbeat:
+    // 2000ms active heartbeat with 5s timeout:
     // 1. Sends continuous micro-packets to prevent 802.11 Wi-Fi DTIM sleep
     // 2. Real-time RTT latency telemetry
-    // 3. Instant recovery on 2 missed heartbeats (detects dead connections in 2s)
+    // 3. Resilient tolerance (4 missed heartbeats) to prevent disconnect storms during Wi-Fi jitter
     this.heartbeatInterval = setInterval(async () => {
       if (!this.socket.connected) return;
       const start = performance.now();
       try {
-        await this.socket.timeout(1500).emitWithAck("ping");
+        await this.socket.timeout(5000).emitWithAck("ping");
         const rtt = Math.round(performance.now() - start);
         this.missedHeartbeats = 0;
         this.emit("heartbeat" as any, { connected: true, latencyMs: rtt, degraded: rtt > 250 });
       } catch (_) {
         this.missedHeartbeats++;
-        if (this.missedHeartbeats >= 2) {
+        if (this.missedHeartbeats >= 4) {
           this.emit("heartbeat" as any, { connected: false, latencyMs: null, degraded: true });
-          console.warn("[rpc-client] Missed 2 heartbeats (silent Wi-Fi stall) — resetting socket transport");
+          console.warn("[rpc-client] Missed 4 heartbeats (Wi-Fi queue stall) — resetting socket transport");
           this.socket.disconnect().connect();
         }
       }
-    }, 1000);
+    }, 2000);
   }
 
   private stopHeartbeat() {

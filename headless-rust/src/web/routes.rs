@@ -80,17 +80,22 @@ pub async fn get_image(
         }
     }
 
-    let bytes = ctx.store.read_image(&path).ok_or(StatusCode::NOT_FOUND)?;
     let store = ctx.store.clone();
     let cache_id = path.clone();
+    let file_path = path.clone();
 
-    // Offload multicore SIMD resize and compression to blocking thread pool
-    let (compressed_bytes, content_type) = tokio::task::spawn_blocking(move || {
-        store.compressor.process_image(&bytes, &cache_id, &params)
+    // Offload disk read + multicore SIMD resize and compression to blocking thread pool
+    let res = tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, &'static str), StatusCode> {
+        let bytes = store.read_image(&file_path).ok_or(StatusCode::NOT_FOUND)?;
+        store
+            .compressor
+            .process_image(&bytes, &cache_id, &params)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
     })
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let (compressed_bytes, content_type) = res?;
 
     Response::builder()
         .status(StatusCode::OK)
@@ -151,35 +156,40 @@ pub async fn get_skinned_image(
         }
     }
 
-    // ponytail: query db in separate scope so MutexGuard does not cross .await
-    let (violation, measuring_location, image_bytes) = {
-        let conn = ctx.db.lock();
-        let violation = crate::db::violations::get_violation_by_id(&conn, id)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-            .ok_or(StatusCode::NOT_FOUND)?;
-
-        let settings = crate::db::settings::get_settings(&conn)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        let image_bytes = ctx.store.read_image(&violation.image_path).ok_or(StatusCode::NOT_FOUND)?;
-        (violation, settings.skin_measuring_location, image_bytes)
-    };
-
     let store = ctx.store.clone();
+    let db = ctx.db.clone();
     let cache_id = format!("skin_v{}", id);
 
-    let (compressed_bytes, content_type) = tokio::task::spawn_blocking(move || {
+    // Offload DB lookup, disk read, skin rendering, and compression to blocking thread pool
+    let res = tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, &'static str), StatusCode> {
+        let (violation, measuring_location, image_bytes) = {
+            let conn = db.lock();
+            let violation = crate::db::violations::get_violation_by_id(&conn, id)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+                .ok_or(StatusCode::NOT_FOUND)?;
+
+            let settings = crate::db::settings::get_settings(&conn)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let image_bytes = store.read_image(&violation.image_path).ok_or(StatusCode::NOT_FOUND)?;
+            (violation, settings.skin_measuring_location, image_bytes)
+        };
+
         let rendered = render_poliscan_skin(
             &image_bytes,
             &violation,
             &measuring_location,
         )
-        .ok_or_else(|| "Failed to render skin".to_string())?;
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
-        store.compressor.process_image(&rendered, &cache_id, &params)
+        store
+            .compressor
+            .process_image(&rendered, &cache_id, &params)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
     })
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let (compressed_bytes, content_type) = res?;
 
     Response::builder()
         .status(StatusCode::OK)

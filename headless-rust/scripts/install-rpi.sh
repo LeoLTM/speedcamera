@@ -18,31 +18,50 @@ SKIP_NETWORK=false
 ONLY_NETWORK=false
 FORCE_BUILD=false
 AUTO_FIELD=false
+CLIENT_SSID=""
+CLIENT_PASS=""
 
-for arg in "$@"; do
-  case "$arg" in
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     --skip-network|--app-only|--lan|--no-field)
       SKIP_NETWORK=true
+      shift
       ;;
     --field)
       AUTO_FIELD=true
+      shift
+      ;;
+    --client|--wifi-client)
+      CLIENT_SSID="$2"
+      CLIENT_PASS="$3"
+      shift 2
+      if [[ "$1" != --* && -n "$1" ]]; then
+        CLIENT_PASS="$1"
+        shift
+      fi
       ;;
     --network-only)
       ONLY_NETWORK=true
+      shift
       ;;
     --force-build|--build)
       FORCE_BUILD=true
+      shift
       ;;
     --help|-h)
       echo "Usage: $0 [options]"
       echo ""
       echo "Options:"
       echo "  --app-only, --skip-network, --lan   Provision packages, Rust, Bun, binary, and service (keeps network)"
-      echo "  --field                            Provision and switch to Field Mode at the very end"
-      echo "  --network-only                     Only configure dual-subnet network (Hotspot AP + Camera LAN)"
+      echo "  --field                            Provision and switch to Field Mode (Hotspot AP + Camera LAN) at end"
+      echo "  --client <SSID> [PASS]             Provision and switch to Wi-Fi Client + Camera LAN Mode at end"
+      echo "  --network-only                     Only configure network"
       echo "  --build, --force-build             Force building release binary and frontend on the Pi"
       echo "  --help, -h                         Show this help message"
       exit 0
+      ;;
+    *)
+      shift
       ;;
   esac
 done
@@ -237,6 +256,13 @@ echo " Daemon logs:   sudo journalctl -u speedcamera -f"
 echo "========================================================="
 
 # Step 6: Network Mode Transition (executed ONLY after all builds & services are fully running)
+if [ -n "$CLIENT_SSID" ]; then
+  echo "[*] Switching network to Wi-Fi Client + Camera LAN Mode (SSID: ${CLIENT_SSID})..."
+  chmod +x "${PROJECT_DIR}/scripts/setup-network.sh"
+  "${PROJECT_DIR}/scripts/setup-network.sh" client "${CLIENT_SSID}" "${CLIENT_PASS}"
+  exit 0
+fi
+
 if [ "$AUTO_FIELD" = true ]; then
   echo "[*] Switching network to Standalone Field Mode (Camera LAN + Hotspot AP)..."
   chmod +x "${PROJECT_DIR}/scripts/setup-network.sh"
@@ -248,6 +274,8 @@ if [ "$SKIP_NETWORK" = true ]; then
   echo "Keeping current network configuration (--skip-network / --lan)."
   echo "When ready for field deployment, run:"
   echo "  ~/speedcamera/headless-rust/scripts/setup-network.sh field"
+  echo "Or for Wi-Fi Client + Camera LAN mode, run:"
+  echo "  ~/speedcamera/headless-rust/scripts/setup-network.sh client <SSID> [PASS]"
   exit 0
 fi
 

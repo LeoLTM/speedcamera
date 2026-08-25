@@ -245,19 +245,23 @@ ssh pi@raspberrypi.local
 
 ## Network Mode Management (`setup-network.sh`)
 
-You can switch the Pi's networking mode at any time using the network management script:
+You can switch the Pi's networking mode at any time via the Web UI Settings (**Camera** tab) or via the network management script:
 
 ```bash
-# Switch to Standalone Field Mode (Camera LAN 192.168.1.100 + Hotspot AP 192.168.4.1)
+# 1. Wi-Fi Client Mode (External Wi-Fi + Direct GigE Camera LAN 192.168.1.100)
+# Connects Pi as Wi-Fi client (avoids Broadcom AP radio drops) while preserving isolated Camera LAN:
+~/speedcamera/headless-rust/scripts/setup-network.sh client "MyHomeWiFi" "SecretPassword123"
+
+# 2. Standalone Field Mode (Camera LAN 192.168.1.100 + Standalone 5GHz Hotspot AP 192.168.4.1)
 ~/speedcamera/headless-rust/scripts/setup-network.sh field
 
-# Connect Pi Wi-Fi to a router for internet updates (Client Mode)
-~/speedcamera/headless-rust/scripts/setup-network.sh internet "MyHomeWiFi" "SecretPassword123"
+# 3. Scan nearby Wi-Fi networks (SSIDs, signal quality, security)
+~/speedcamera/headless-rust/scripts/setup-network.sh scan
 
-# Revert Ethernet and Wi-Fi to standard DHCP
+# 4. Revert Ethernet and Wi-Fi to standard DHCP
 ~/speedcamera/headless-rust/scripts/setup-network.sh dhcp
 
-# Check active connections, IP addresses, and internet reachability
+# 5. Check active network mode, IP addresses, power management, and internet reachability
 ~/speedcamera/headless-rust/scripts/setup-network.sh status
 ```
 

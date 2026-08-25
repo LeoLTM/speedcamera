@@ -88,12 +88,28 @@ sudo apt-get install -y \
   build-essential \
   esptool \
   network-manager \
+  dnsmasq \
+  iptables \
   curl \
   unzip \
   git \
   rsync \
   sqlite3 \
   libsqlite3-dev
+
+# Configure fake-internet DNS rules for Windows NCSI, Fedora hotspot, and Linux connectivity checks
+echo "[*] Configuring DNS interception for OS connectivity checks (Windows / Fedora / Linux)..."
+sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d /etc/dnsmasq.d
+sudo bash -c 'cat > /etc/NetworkManager/dnsmasq-shared.d/fake-internet.conf <<EOF
+address=/msftncsi.com/192.168.4.1
+address=/msftconnecttest.com/192.168.4.1
+address=/fedoraproject.org/192.168.4.1
+address=/ping.archlinux.org/192.168.4.1
+address=/connectivitycheck.gstatic.com/192.168.4.1
+address=/captive.apple.com/192.168.4.1
+address=/network-test.debian.org/192.168.4.1
+EOF'
+sudo cp /etc/NetworkManager/dnsmasq-shared.d/fake-internet.conf /etc/dnsmasq.d/fake-internet.conf 2>/dev/null || true
 
 # Apply GigE Vision socket buffer tuning with fq_codel to prevent bufferbloat
 echo "[*] Configuring Linux socket buffers for GigE camera (with fq_codel)..."

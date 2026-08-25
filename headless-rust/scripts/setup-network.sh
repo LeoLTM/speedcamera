@@ -82,6 +82,13 @@ EOF'
     ipv4.addresses 192.168.4.1/24 \
     wifi-sec.key-mgmt wpa-psk \
     wifi-sec.psk "${PASS}"
+
+  # Disable MAC randomization which can trigger background radio resets
+  sudo nmcli connection modify "Speedcamera-Hotspot" 802-11-wireless.mac-address-randomization 1 2>/dev/null || true
+
+  # Explicitly tell the AP it is not the default route to stop internet-probe stalling
+  sudo nmcli connection modify "Speedcamera-Hotspot" ipv4.never-default yes 2>/dev/null || true
+
   sudo nmcli connection up "Speedcamera-Hotspot" 2>/dev/null || echo "Note: Hotspot initialized."
 
   # Configure Ethernet Camera LAN
@@ -115,6 +122,25 @@ EOF"
   sudo systemctl daemon-reload 2>/dev/null || true
   sudo systemctl enable wifi-power-off.service 2>/dev/null || true
   sudo systemctl restart wifi-power-off.service 2>/dev/null || sudo iw dev "${WIFI_IFACE}" set power_save off 2>/dev/null || sudo iwconfig "${WIFI_IFACE}" power off 2>/dev/null || true
+
+  # Configure DNS interception for OS connectivity checks (Windows NCSI, Fedora hotspot, Linux ping)
+  echo "[*] Configuring DNS interception for OS internet probes (192.168.4.1)..."
+  sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d /etc/dnsmasq.d
+  sudo bash -c 'cat > /etc/NetworkManager/dnsmasq-shared.d/fake-internet.conf <<EOF
+address=/msftncsi.com/192.168.4.1
+address=/msftconnecttest.com/192.168.4.1
+address=/fedoraproject.org/192.168.4.1
+address=/ping.archlinux.org/192.168.4.1
+address=/connectivitycheck.gstatic.com/192.168.4.1
+address=/captive.apple.com/192.168.4.1
+address=/network-test.debian.org/192.168.4.1
+EOF'
+  sudo cp /etc/NetworkManager/dnsmasq-shared.d/fake-internet.conf /etc/dnsmasq.d/fake-internet.conf 2>/dev/null || true
+
+  # Redirect port 80 to port 3000 on hotspot interface so OS HTTP probe requests hit the Rust daemon
+  echo "[*] Redirecting HTTP probe port 80 -> 3000 on ${WIFI_IFACE}..."
+  sudo iptables -t nat -D PREROUTING -i "${WIFI_IFACE}" -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null || true
+  sudo iptables -t nat -A PREROUTING -i "${WIFI_IFACE}" -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null || true
 
   # Block Bluetooth to free 2.4GHz spectrum and internal resources for Wi-Fi
   echo "[*] Blocking Bluetooth to improve Wi-Fi performance..."

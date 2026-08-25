@@ -200,7 +200,58 @@ pub async fn get_skinned_image(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-pub async fn static_handler(uri: Uri) -> impl IntoResponse {
+// ─── Fake Internet / Captive Portal Connectivity Probes ────────────────────────
+// Pacify Windows, Fedora, Debian, Arch, Android, and macOS network managers
+// so client laptops don't background-scan or drop connection thinking there's no internet.
+pub async fn ncsi_handler() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/plain")],
+        "Microsoft NCSI",
+    )
+}
+
+pub async fn connecttest_handler() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/plain")],
+        "Microsoft Connect Test",
+    )
+}
+
+pub async fn hotspot_txt_handler() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/plain")],
+        "OK\n",
+    )
+}
+
+pub async fn ping_txt_handler() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/plain")],
+        "OK\n",
+    )
+}
+
+pub async fn generate_204_handler() -> impl IntoResponse {
+    StatusCode::NO_CONTENT
+}
+
+pub async fn apple_hotspot_handler() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>",
+    )
+}
+
+pub async fn static_handler(headers: HeaderMap, uri: Uri) -> impl IntoResponse {
     let path = uri.path();
+    if let Some(host) = headers.get(header::HOST).and_then(|h| h.to_str().ok()) {
+        if host.contains("ping.archlinux.org") {
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/plain")
+                .body(Body::from("OK\n"))
+                .unwrap();
+        }
+    }
     serve_embedded_asset(path)
 }

@@ -77,6 +77,20 @@ pub fn build_app(
         .route("/api/network", get(routes::network))
         .route("/image", get(routes::get_image))
         .route("/skinned-image", get(routes::get_skinned_image))
+        // Windows NCSI & Connect Test
+        .route("/ncsi.txt", get(routes::ncsi_handler))
+        .route("/connecttest.txt", get(routes::connecttest_handler))
+        // Fedora / Linux / NetworkManager probes
+        .route("/static/hotspot.txt", get(routes::hotspot_txt_handler))
+        .route("/hotspot.txt", get(routes::hotspot_txt_handler))
+        .route("/ping.txt", get(routes::ping_txt_handler))
+        .route("/check_network_status.txt", get(routes::hotspot_txt_handler))
+        .route("/nm", get(routes::hotspot_txt_handler))
+        // Android / Chromium / Google probe
+        .route("/generate_204", get(routes::generate_204_handler))
+        .route("/gen_204", get(routes::generate_204_handler))
+        // Apple / macOS captive portal probe
+        .route("/hotspot-detect.html", get(routes::apple_hotspot_handler))
         .fallback(routes::static_handler)
         .layer(layer)
         .layer(cors)

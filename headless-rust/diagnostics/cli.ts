@@ -192,8 +192,8 @@ vm.dirty_ratio = 10
 EOF'
     sudo sysctl -p /etc/sysctl.d/60-speedcamera-optimized.conf 2>/dev/null || sudo sysctl --system
 
-    echo "=== 4. Optimizing NetworkManager Hotspot Connection (5GHz Band A, Ch 36) ==="
-    sudo nmcli connection modify "Speedcamera-Hotspot" 802-11-wireless.powersave 2 802-11-wireless.band a 802-11-wireless.channel 36 2>/dev/null || true
+    echo "=== 4. Optimizing NetworkManager Hotspot Connection (5GHz Band A, Ch 36, No MAC Rand) ==="
+    sudo nmcli connection modify "Speedcamera-Hotspot" 802-11-wireless.powersave 2 802-11-wireless.band a 802-11-wireless.channel 36 802-11-wireless.mac-address-randomization 1 ipv4.never-default yes 2>/dev/null || true
 
     echo "=== 5. Locking Down Wi-Fi Power Management Permanently ==="
     sudo bash -c 'cat > /etc/systemd/system/wifi-power-off.service <<EOF

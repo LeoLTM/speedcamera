@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -e
-trap '' HUP
+trap '' HUP PIPE INT TERM
 
 MODE="${1:-status}"
 
@@ -57,7 +57,7 @@ EOF'
     ipv4.method manual \
     ipv4.addresses 192.168.1.100/24 \
     ipv4.never-default yes \
-    802-3-ethernet.mtu 9000
+    802-3-ethernet.mtu 9000 2>/dev/null || true
   sudo nmcli connection up "Speedcamera-CameraLAN" 2>/dev/null || echo "Note: Ethernet link active when camera cable is connected."
 }
 
@@ -101,25 +101,30 @@ EOF"
 
 apply_ap_mode() {
   echo ">>> Applying SETUP / AP MODE (Open Hotspot + Captive Portal):"
-  echo "    1. Wi-Fi Hotspot (${WIFI_IFACE}) -> Open AP (SSID: speedcamera, 5GHz, No password)"
+  echo "    1. Wi-Fi Hotspot (${WIFI_IFACE}) -> Open AP (SSID: speedcamera, No password)"
   echo "    2. Static Hotspot IP: 192.168.4.1/24"
   echo "    3. Captive portal active -> redirects to web setup at http://192.168.4.1:3000"
   echo ""
 
-  # Ensure Camera LAN is active on eth0 if not already in DHCP mode
-  if ! nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx "Speedcamera-Ethernet-DHCP"; then
-    apply_camera_lan_config
-  fi
+  # 1. Enforce power save off & disable standalone dnsmasq service to prevent port 53 collision
+  enforce_wifi_powersave_off
+  sudo systemctl stop dnsmasq 2>/dev/null || true
+  sudo systemctl disable dnsmasq 2>/dev/null || true
 
-  # Configure Open 5GHz Wi-Fi Hotspot AP (Band A, Channel 36, NO password)
-  echo "[*] Configuring Open 5GHz Wi-Fi Hotspot AP on ${WIFI_IFACE}..."
+  # 2. Configure Open Wi-Fi Hotspot AP
+  echo "[*] Configuring Open Wi-Fi Hotspot AP on ${WIFI_IFACE}..."
   SSID="speedcamera"
 
-  enforce_wifi_powersave_off
+  # Unblock Wi-Fi radio and ensure link is up
+  sudo rfkill unblock wifi 2>/dev/null || true
+  sudo ip link set dev "${WIFI_IFACE}" up 2>/dev/null || true
 
   sudo nmcli connection delete "Speedcamera-Hotspot" 2>/dev/null || true
   sudo nmcli connection delete "Speedcamera-ClientWiFi" 2>/dev/null || true
-  sudo nmcli connection add type wifi \
+
+  # Try 5GHz Band A (Channel 36) first, fallback to 2.4GHz Band BG if 5GHz AP is restricted
+  local AP_SUCCESS=0
+  if sudo nmcli connection add type wifi \
     ifname "${WIFI_IFACE}" \
     con-name "Speedcamera-Hotspot" \
     autoconnect yes \
@@ -128,16 +133,37 @@ apply_ap_mode() {
     802-11-wireless.band a \
     802-11-wireless.channel 36 \
     802-11-wireless.powersave 2 \
+    802-11-wireless.mac-address-randomization 1 \
     ipv4.method shared \
-    ipv4.addresses 192.168.4.1/24
+    ipv4.addresses 192.168.4.1/24 \
+    ipv4.never-default yes 2>/dev/null && sudo nmcli connection up "Speedcamera-Hotspot" 2>/dev/null; then
+      AP_SUCCESS=1
+      echo "[*] 5GHz Open AP Hotspot initialized on channel 36."
+  else
+      echo "[-] 5GHz AP restricted or failed. Initializing 2.4GHz Open AP on channel 6..."
+      sudo nmcli connection delete "Speedcamera-Hotspot" 2>/dev/null || true
+      if sudo nmcli connection add type wifi \
+        ifname "${WIFI_IFACE}" \
+        con-name "Speedcamera-Hotspot" \
+        autoconnect yes \
+        ssid "${SSID}" \
+        mode ap \
+        802-11-wireless.band bg \
+        802-11-wireless.channel 6 \
+        802-11-wireless.powersave 2 \
+        802-11-wireless.mac-address-randomization 1 \
+        ipv4.method shared \
+        ipv4.addresses 192.168.4.1/24 \
+        ipv4.never-default yes 2>/dev/null && sudo nmcli connection up "Speedcamera-Hotspot" 2>/dev/null; then
+          AP_SUCCESS=1
+          echo "[*] 2.4GHz Open AP Hotspot initialized on channel 6."
+      else
+          echo "[-] Warning: Hotspot connection up failed. Retrying..."
+          sudo nmcli connection up "Speedcamera-Hotspot" 2>/dev/null || true
+      fi
+  fi
 
-  # Disable MAC randomization which can trigger background radio resets
-  sudo nmcli connection modify "Speedcamera-Hotspot" 802-11-wireless.mac-address-randomization 1 2>/dev/null || true
-  sudo nmcli connection modify "Speedcamera-Hotspot" ipv4.never-default yes 2>/dev/null || true
-
-  sudo nmcli connection up "Speedcamera-Hotspot" 2>/dev/null || echo "Note: Hotspot initialized."
-
-  # Configure DNS interception for captive portal (192.168.4.1)
+  # 3. Configure DNS interception for captive portal (192.168.4.1)
   echo "[*] Configuring captive portal DNS interception (192.168.4.1)..."
   sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d /etc/dnsmasq.d
   sudo bash -c 'cat > /etc/NetworkManager/dnsmasq-shared.d/fake-internet.conf <<EOF
@@ -160,10 +186,15 @@ EOF'
   echo "[*] Blocking Bluetooth to improve Wi-Fi performance..."
   sudo rfkill block bluetooth 2>/dev/null || true
 
+  # 4. Configure Camera LAN on eth0 LAST (so Ethernet drop does not abort Wi-Fi setup)
+  if ! nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx "Speedcamera-Ethernet-DHCP"; then
+    apply_camera_lan_config
+  fi
+
   echo ""
   echo "========================================================="
   echo " AP / Setup Mode Active!"
-  echo "  • Open 5GHz Hotspot: SSID '${SSID}' (No password)"
+  echo "  • Open Hotspot:       SSID '${SSID}' (No password)"
   echo "  • Web UI:             http://192.168.4.1:3000"
   echo "  • Camera LAN:         http://192.168.1.100:3000"
   echo "========================================================="

@@ -298,7 +298,16 @@ if [ -t 0 ]; then
 
   if [[ $REPLY =~ ^[Yy]$ ]]; then
     chmod +x "${PROJECT_DIR}/scripts/setup-network.sh"
-    "${PROJECT_DIR}/scripts/setup-network.sh" ap
+    echo "[*] Launching Open AP Setup Mode in background..."
+    nohup sudo "${PROJECT_DIR}/scripts/setup-network.sh" ap > /tmp/setup-network.log 2>&1 &
+    sleep 1
+    echo ""
+    echo "========================================================================="
+    echo " Open AP Setup Mode is now starting!"
+    echo "  • Open Hotspot: 'speedcamera' (No password)"
+    echo "  • Web UI:       http://192.168.4.1:3000"
+    echo " Connect your phone or laptop to 'speedcamera' now."
+    echo "========================================================================="
   else
     echo "Skipping AP Setup Mode network switch for now."
     echo "Run anytime later: ~/speedcamera/headless-rust/scripts/setup-network.sh ap"

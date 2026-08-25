@@ -45,8 +45,6 @@ let pendingStartImageBase64: string | null = null;
 /** Guard to prevent re-entrant lap saves */
 let lapSaving = false;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-// Removed grabFrame (using bun side captureFrame)
 // ─── Slice ────────────────────────────────────────────────────────────────────
 
 export const createLapSlice: StateCreator<

@@ -21,7 +21,7 @@ export function LastCapturedImage() {
         <img
           src={imageSrc}
           alt="Last capture"
-          className="max-w-full max-h-full object-contain animate-in fade-in duration-500"
+          className="h-full w-auto max-w-none object-contain animate-in fade-in duration-500"
         />
       ) : (
         <div className="flex flex-col items-center text-muted-foreground/50">

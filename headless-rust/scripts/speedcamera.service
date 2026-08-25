@@ -1,0 +1,24 @@
+[Unit]
+Description=Speedcamera Native Rust Daemon & Web Server
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/speedcamera/headless-rust
+Environment=PORT=3000
+Environment=HOST=0.0.0.0
+Environment=DATA_DIR=/home/pi/.speedcamera
+Environment=PATH=/home/pi/.cargo/bin:/home/pi/.bun/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/pi/speedcamera/headless-rust/target/release/headless-rust
+Restart=always
+RestartSec=2
+KillSignal=SIGINT
+LimitNOFILE=65536
+LimitMEMLOCK=infinity
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+
+[Install]
+WantedBy=multi-user.target

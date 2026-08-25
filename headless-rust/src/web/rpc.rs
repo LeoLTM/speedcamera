@@ -646,6 +646,31 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             Ok(serde_json::to_value(res).unwrap())
         }
 
+        "forgetWifi" => {
+            let input = ApplyNetworkModeInput {
+                mode: "forget".to_string(),
+                ssid: None,
+                password: None,
+            };
+            let res = tokio::task::spawn_blocking(move || crate::network::apply_network_mode(&input))
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(serde_json::to_value(res).unwrap())
+        }
+
+        "setEthernetMode" => {
+            let mode = params["mode"].as_str().unwrap_or("camera-lan").to_string();
+            let input = ApplyNetworkModeInput {
+                mode,
+                ssid: None,
+                password: None,
+            };
+            let res = tokio::task::spawn_blocking(move || crate::network::apply_network_mode(&input))
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(serde_json::to_value(res).unwrap())
+        }
+
         // ─── Teable ───────────────────────────────────────────────────────────
         "testTeableConnection" => {
             let url = params["url"].as_str().ok_or("Missing url")?;

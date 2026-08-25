@@ -264,16 +264,16 @@ if [ -n "$CLIENT_SSID" ]; then
 fi
 
 if [ "$AUTO_FIELD" = true ]; then
-  echo "[*] Switching network to Standalone Field Mode (Camera LAN + Hotspot AP)..."
+  echo "[*] Switching network to Open AP Setup Mode (Camera LAN + Open Hotspot AP)..."
   chmod +x "${PROJECT_DIR}/scripts/setup-network.sh"
-  "${PROJECT_DIR}/scripts/setup-network.sh" field
+  "${PROJECT_DIR}/scripts/setup-network.sh" ap
   exit 0
 fi
 
 if [ "$SKIP_NETWORK" = true ]; then
   echo "Keeping current network configuration (--skip-network / --lan)."
-  echo "When ready for field deployment, run:"
-  echo "  ~/speedcamera/headless-rust/scripts/setup-network.sh field"
+  echo "When ready for initial Wi-Fi setup, run:"
+  echo "  ~/speedcamera/headless-rust/scripts/setup-network.sh ap"
   echo "Or for Wi-Fi Client + Camera LAN mode, run:"
   echo "  ~/speedcamera/headless-rust/scripts/setup-network.sh client <SSID> [PASS]"
   exit 0
@@ -283,26 +283,27 @@ fi
 if [ -t 0 ]; then
   echo ""
   echo "========================================================================="
-  echo " FIELD NETWORK CONFIGURATION (Camera LAN + Hotspot AP)"
+  echo " INITIAL AP SETUP MODE (Camera LAN + Open Hotspot AP)"
   echo "========================================================================="
   echo " All software and services have been installed and built successfully."
-  echo " Ready to switch Pi into Standalone Field Mode:"
+  echo " Ready to switch Pi into Open AP Setup Mode:"
   echo "  • Ethernet (eth0) -> Static IP 192.168.1.100 (GigE Camera LAN)"
-  echo "  • Wi-Fi (wlan0)   -> Standalone Hotspot AP 192.168.4.1 (SSID: speedcamera)"
+  echo "  • Wi-Fi (wlan0)   -> Open Hotspot AP 192.168.4.1 (SSID: speedcamera, no password)"
+  echo "  • Captive portal redirects to Network settings for Client Wi-Fi onboarding."
   echo ""
   echo " WARNING: This will disconnect current Wi-Fi/SSH internet connection!"
   echo "========================================================================="
-  read -p "Switch to Standalone Field Mode now? (y/N) " -n 1 -r
+  read -p "Switch to Open AP Setup Mode now? (y/N) " -n 1 -r
   echo ""
 
   if [[ $REPLY =~ ^[Yy]$ ]]; then
     chmod +x "${PROJECT_DIR}/scripts/setup-network.sh"
-    "${PROJECT_DIR}/scripts/setup-network.sh" field
+    "${PROJECT_DIR}/scripts/setup-network.sh" ap
   else
-    echo "Skipping Field Mode network switch for now."
-    echo "Run anytime later: ~/speedcamera/headless-rust/scripts/setup-network.sh field"
+    echo "Skipping AP Setup Mode network switch for now."
+    echo "Run anytime later: ~/speedcamera/headless-rust/scripts/setup-network.sh ap"
   fi
 else
   echo "Non-interactive session: Keeping existing network configuration."
-  echo "Switch to field mode when ready: ~/speedcamera/headless-rust/scripts/setup-network.sh field"
+  echo "Switch to AP mode when ready: ~/speedcamera/headless-rust/scripts/setup-network.sh ap"
 fi

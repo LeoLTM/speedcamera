@@ -24,7 +24,11 @@ export interface WifiClientInfo {
 }
 
 export interface SystemNetworkSummary {
-  mode: "field" | "wifi-client" | "dhcp" | "custom";
+  mode: "ap" | "client" | "field" | "wifi-client" | "dhcp" | "custom";
+  wifiMode?: "ap" | "client" | "disconnected";
+  ethernetMode?: "camera-lan" | "dhcp" | "unmanaged";
+  wifiMac?: string | null;
+  ethernetMac?: string | null;
   cameraLan: {
     interfaceName: string | null;
     ip: string | null;
@@ -47,13 +51,15 @@ export interface SystemNetworkSummary {
 
 export interface WifiScanResult {
   ssid: string;
+  bssid?: string;
+  channel?: number;
   signal: number;
   security: string;
   inUse: boolean;
 }
 
 export interface ApplyNetworkModeInput {
-  mode: "field" | "wifi-client" | "client" | "dhcp";
+  mode: "ap" | "client" | "forget" | "lan-camera" | "lan-dhcp" | "field" | "wifi-client" | "dhcp";
   ssid?: string;
   password?: string;
 }
@@ -504,6 +510,14 @@ export type SpeedcameraRPC = {
     };
     applyNetworkMode: {
       params: ApplyNetworkModeInput;
+      response: NetworkOperationResult;
+    };
+    forgetWifi: {
+      params: Record<string, never>;
+      response: NetworkOperationResult;
+    };
+    setEthernetMode: {
+      params: { mode: "camera-lan" | "lan-dhcp" };
       response: NetworkOperationResult;
     };
 

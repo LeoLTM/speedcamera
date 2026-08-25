@@ -200,28 +200,21 @@ pub async fn get_skinned_image(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-// ─── Fake Internet / Captive Portal Connectivity Probes ────────────────────────
-// Pacify Windows, Fedora, Debian, Arch, Android, and macOS network managers
-// so client laptops don't background-scan or drop connection thinking there's no internet.
+use axum::response::Redirect;
+
+// ─── Captive Portal Interception & Redirect Handlers ─────────────────────────
+// In AP mode, OS captive portal probes are redirected to http://192.168.4.1:3000/
+// so smartphones and laptops automatically open the web setup onboarding page.
 pub async fn ncsi_handler() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "text/plain")],
-        "Microsoft NCSI",
-    )
+    Redirect::temporary("http://192.168.4.1:3000/")
 }
 
 pub async fn connecttest_handler() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "text/plain")],
-        "Microsoft Connect Test",
-    )
+    Redirect::temporary("http://192.168.4.1:3000/")
 }
 
 pub async fn hotspot_txt_handler() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "text/plain")],
-        "OK\n",
-    )
+    Redirect::temporary("http://192.168.4.1:3000/")
 }
 
 pub async fn ping_txt_handler() -> impl IntoResponse {
@@ -232,14 +225,13 @@ pub async fn ping_txt_handler() -> impl IntoResponse {
 }
 
 pub async fn generate_204_handler() -> impl IntoResponse {
-    StatusCode::NO_CONTENT
+    // Returning 302/307 Redirect triggers Android / ChromeOS "Sign in to network"
+    Redirect::temporary("http://192.168.4.1:3000/")
 }
 
 pub async fn apple_hotspot_handler() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>",
-    )
+    // Returning Redirect triggers Apple iOS Captive Network Assistant (CNA)
+    Redirect::temporary("http://192.168.4.1:3000/")
 }
 
 pub async fn static_handler(headers: HeaderMap, uri: Uri) -> impl IntoResponse {

@@ -51,7 +51,15 @@ pub struct WifiClientInfo {
 #[serde(rename_all = "camelCase")]
 pub struct SystemNetworkSummary {
     #[serde(default = "default_network_mode")]
-    pub mode: String, // "field" | "wifi-client" | "dhcp" | "custom"
+    pub mode: String, // "ap" | "client" | "field" | "wifi-client" | "dhcp" | "custom"
+    #[serde(default = "default_wifi_mode")]
+    pub wifi_mode: String, // "ap" | "client" | "disconnected"
+    #[serde(default = "default_ethernet_mode")]
+    pub ethernet_mode: String, // "camera-lan" | "dhcp" | "unmanaged"
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wifi_mac: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ethernet_mac: Option<String>,
     pub camera_lan: SubnetInfo,
     pub hotspot_ap: SubnetInfo,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -60,13 +68,25 @@ pub struct SystemNetworkSummary {
 }
 
 fn default_network_mode() -> String {
-    "field".to_string()
+    "ap".to_string()
+}
+
+fn default_wifi_mode() -> String {
+    "ap".to_string()
+}
+
+fn default_ethernet_mode() -> String {
+    "camera-lan".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WifiScanResult {
     pub ssid: String,
+    #[serde(default)]
+    pub bssid: String,
+    #[serde(default)]
+    pub channel: u32,
     pub signal: i32,
     pub security: String,
     pub in_use: bool,
@@ -75,7 +95,7 @@ pub struct WifiScanResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplyNetworkModeInput {
-    pub mode: String, // "field" | "wifi-client" | "client" | "dhcp"
+    pub mode: String, // "ap" | "client" | "forget" | "lan-camera" | "lan-dhcp" | "dhcp"
     #[serde(default)]
     pub ssid: Option<String>,
     #[serde(default)]

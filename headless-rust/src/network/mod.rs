@@ -6,12 +6,21 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
+/// Reads hardware MAC address from Linux sysfs (/sys/class/net/<iface>/address)
+fn get_interface_mac(iface: &str) -> String {
+    let path = format!("/sys/class/net/{}/address", iface);
+    std::fs::read_to_string(&path)
+        .map(|s| s.trim().to_uppercase())
+        .unwrap_or_default()
+}
+
 pub fn get_system_network_summary() -> SystemNetworkSummary {
     let mut interfaces = Vec::new();
     let mut camera_lan_iface: Option<NetworkInterfaceDetail> = None;
     let mut hotspot_ap_iface: Option<NetworkInterfaceDetail> = None;
     let mut wifi_client_iface: Option<NetworkInterfaceDetail> = None;
     let mut detected_wifi_name: Option<String> = None;
+    let mut detected_eth_name: Option<String> = None;
 
     // Use nix getifaddrs to inspect active IPv4 network interfaces
     if let Ok(ifaddrs) = nix::ifaddrs::getifaddrs() {
@@ -41,6 +50,9 @@ pub fn get_system_network_summary() -> SystemNetworkSummary {
             if is_wifi_name {
                 detected_wifi_name = Some(name.clone());
             }
+            if is_eth_name && detected_eth_name.is_none() {
+                detected_eth_name = Some(name.clone());
+            }
 
             let role = if is_loopback {
                 "loopback"
@@ -67,13 +79,15 @@ pub fn get_system_network_summary() -> SystemNetworkSummary {
                 None => true,
             };
 
+            let mac = get_interface_mac(&name);
+
             let detail = NetworkInterfaceDetail {
                 name: name.clone(),
                 role: role.to_string(),
                 address: ip.clone(),
                 family: "IPv4".to_string(),
                 netmask,
-                mac: String::new(),
+                mac,
                 expected_ip,
                 is_configured,
             };
@@ -92,21 +106,44 @@ pub fn get_system_network_summary() -> SystemNetworkSummary {
         }
     }
 
+    let wifi_iface_name = detected_wifi_name.unwrap_or_else(|| "wlan0".to_string());
+    let eth_iface_name = detected_eth_name.unwrap_or_else(|| "eth0".to_string());
+
+    let wifi_mac = {
+        let mac = get_interface_mac(&wifi_iface_name);
+        if mac.is_empty() { None } else { Some(mac) }
+    };
+
+    let ethernet_mac = {
+        let mac = get_interface_mac(&eth_iface_name);
+        if mac.is_empty() { None } else { Some(mac) }
+    };
+
     let camera_status = match &camera_lan_iface {
         None => "missing",
         Some(iface) if iface.address == "192.168.1.100" => "ok",
         Some(_) => "ip_mismatch",
     };
 
-    // Determine Wi-Fi active connection mode & details
-    let (active_ssid, signal_dbm, power_save_status, default_gateway) = query_wifi_runtime_info(
-        detected_wifi_name.as_deref().unwrap_or("wlan0")
-    );
+    // Determine Ethernet mode
+    let ethernet_mode = if let Some(ref iface) = camera_lan_iface {
+        if iface.address == "192.168.1.100" {
+            "camera-lan".to_string()
+        } else {
+            "dhcp".to_string()
+        }
+    } else {
+        "unmanaged".to_string()
+    };
 
-    let (mode, hotspot_status, wifi_client_info) = if let Some(ref hs) = hotspot_ap_iface {
+    // Determine Wi-Fi active connection mode & details
+    let (active_ssid, signal_dbm, power_save_status, default_gateway) = query_wifi_runtime_info(&wifi_iface_name);
+
+    let (mode, wifi_mode, hotspot_status, wifi_client_info) = if let Some(ref hs) = hotspot_ap_iface {
         let status = if hs.address == "192.168.4.1" { "ok" } else { "ip_mismatch" };
         (
-            "field".to_string(),
+            "ap".to_string(),
+            "ap".to_string(),
             status.to_string(),
             None,
         )
@@ -123,13 +160,15 @@ pub fn get_system_network_summary() -> SystemNetworkSummary {
             description: "Wi-Fi Client connected to external router (Station mode)".to_string(),
         };
         (
-            "wifi-client".to_string(),
+            "client".to_string(),
+            "client".to_string(),
             "inactive".to_string(),
             Some(client_info),
         )
     } else {
         (
-            "dhcp".to_string(),
+            "ap".to_string(),
+            "disconnected".to_string(),
             "missing".to_string(),
             None,
         )
@@ -137,6 +176,10 @@ pub fn get_system_network_summary() -> SystemNetworkSummary {
 
     SystemNetworkSummary {
         mode,
+        wifi_mode,
+        ethernet_mode,
+        wifi_mac,
+        ethernet_mac,
         camera_lan: SubnetInfo {
             interface_name: camera_lan_iface.as_ref().map(|i| i.name.clone()),
             ip: camera_lan_iface.as_ref().map(|i| i.address.clone()),
@@ -146,12 +189,12 @@ pub fn get_system_network_summary() -> SystemNetworkSummary {
             description: "Dedicated GigE Vision Industrial Camera LAN (eth0/end0)".to_string(),
         },
         hotspot_ap: SubnetInfo {
-            interface_name: hotspot_ap_iface.as_ref().map(|i| i.name.clone()).or_else(|| detected_wifi_name.clone()),
+            interface_name: hotspot_ap_iface.as_ref().map(|i| i.name.clone()).or(Some(wifi_iface_name)),
             ip: hotspot_ap_iface.as_ref().map(|i| i.address.clone()),
             expected_ip: "192.168.4.1".to_string(),
             subnet: "192.168.4.0/24".to_string(),
             status: hotspot_status,
-            description: "Wi-Fi Access Point & Remote Web UI Control (wlan0/wifi0)".to_string(),
+            description: "Open Wi-Fi Hotspot AP & Web Setup (wlan0/wifi0)".to_string(),
         },
         wifi_client: wifi_client_info,
         interfaces,
@@ -214,7 +257,6 @@ fn query_wifi_runtime_info(wifi_iface: &str) -> (Option<String>, Option<i32>, Op
     if let Ok(output) = Command::new("ip").args(["route", "show", "default"]).output() {
         if output.status.success() {
             let text = String::from_utf8_lossy(&output.stdout);
-            // Example: default via 192.168.178.1 dev wlan0 proto dhcp src 192.168.178.50 metric 600
             let parts: Vec<&str> = text.split_whitespace().collect();
             if parts.len() >= 3 && parts[0] == "default" && parts[1] == "via" {
                 gateway = Some(parts[2].to_string());
@@ -227,28 +269,45 @@ fn query_wifi_runtime_info(wifi_iface: &str) -> (Option<String>, Option<i32>, Op
 
 /// Scans for visible 2.4GHz & 5GHz Wi-Fi networks
 pub fn scan_wifi_networks() -> Vec<WifiScanResult> {
-    let mut results: Vec<WifiScanResult> = Vec::new();
     let mut seen_ssids: HashMap<String, WifiScanResult> = HashMap::new();
 
     if let Ok(output) = Command::new("nmcli")
-        .args(["-t", "-f", "SSID,SIGNAL,SECURITY,IN-USE", "dev", "wifi", "list", "--rescan", "auto"])
+        .args(["-t", "-f", "SSID,BSSID,CHAN,SIGNAL,SECURITY,IN-USE", "dev", "wifi", "list", "--rescan", "auto"])
         .output()
     {
         if output.status.success() {
             let text = String::from_utf8_lossy(&output.stdout);
             for line in text.lines() {
+                // Split with care: BSSID has colons, so nmcli escapes or separates with colon.
+                // When using -t (terse), nmcli escapes colons inside fields with \:
                 let parts: Vec<&str> = line.split(':').collect();
                 if parts.len() >= 4 {
-                    let ssid = parts[0].trim().to_string();
+                    // With BSSID having 5 colons (e.g. AA:BB:CC:DD:EE:FF), parts length is typically >= 10
+                    let (ssid, bssid, channel, signal, security, in_use) = if parts.len() >= 10 {
+                        let ssid = parts[0].trim().to_string();
+                        let bssid = format!("{}:{}:{}:{}:{}:{}", parts[1], parts[2], parts[3], parts[4], parts[5], parts[6]);
+                        let chan = parts[7].trim().parse::<u32>().unwrap_or(0);
+                        let sig = parts[8].trim().parse::<i32>().unwrap_or(0);
+                        let sec = parts[9].trim().to_string();
+                        let in_u = parts.get(10).map(|s| s.trim().eq_ignore_ascii_case("yes") || *s == "*").unwrap_or(false);
+                        (ssid, bssid, chan, sig, sec, in_u)
+                    } else {
+                        // Fallback parsing
+                        let ssid = parts[0].trim().to_string();
+                        let sig = parts.iter().find_map(|p| p.trim().parse::<i32>().ok()).unwrap_or(0);
+                        let sec = parts.last().map(|s| s.trim().to_string()).unwrap_or_default();
+                        let in_u = parts.iter().any(|p| p.trim().eq_ignore_ascii_case("yes") || *p == "*");
+                        (ssid, String::new(), 0, sig, sec, in_u)
+                    };
+
                     if ssid.is_empty() || ssid == "--" {
                         continue;
                     }
-                    let signal = parts[1].parse::<i32>().unwrap_or(0);
-                    let security = parts[2].trim().to_string();
-                    let in_use = parts[3].trim().eq_ignore_ascii_case("yes") || parts[3].trim() == "*";
 
                     let item = WifiScanResult {
                         ssid: ssid.clone(),
+                        bssid,
+                        channel,
                         signal,
                         security: if security.is_empty() { "Open".to_string() } else { security },
                         in_use,
@@ -260,6 +319,8 @@ pub fn scan_wifi_networks() -> Vec<WifiScanResult> {
                         }
                         if item.signal > existing.signal {
                             existing.signal = item.signal;
+                            existing.bssid = item.bssid;
+                            existing.channel = item.channel;
                         }
                     } else {
                         seen_ssids.insert(ssid, item);
@@ -269,7 +330,7 @@ pub fn scan_wifi_networks() -> Vec<WifiScanResult> {
         }
     }
 
-    results = seen_ssids.into_values().collect();
+    let mut results: Vec<WifiScanResult> = seen_ssids.into_values().collect();
     results.sort_by(|a, b| {
         if a.in_use != b.in_use {
             b.in_use.cmp(&a.in_use)
@@ -281,7 +342,7 @@ pub fn scan_wifi_networks() -> Vec<WifiScanResult> {
     results
 }
 
-/// Applies a network mode switch (Field AP, Wi-Fi Client, or DHCP)
+/// Applies a network mode switch (AP, Wi-Fi Client, Forget Wi-Fi, Ethernet LAN, Ethernet DHCP, or standard DHCP)
 pub fn apply_network_mode(input: &ApplyNetworkModeInput) -> NetworkOperationResult {
     let script_paths = [
         Path::new("./scripts/setup-network.sh"),
@@ -301,8 +362,8 @@ pub fn apply_network_mode(input: &ApplyNetworkModeInput) -> NetworkOperationResu
     cmd.arg(&script);
 
     match normalized_mode.as_str() {
-        "field" | "ap" => {
-            cmd.arg("field");
+        "ap" | "field" | "hotspot" => {
+            cmd.arg("ap");
         }
         "client" | "wifi-client" | "internet" | "wifi" => {
             let ssid = match &input.ssid {
@@ -323,6 +384,18 @@ pub fn apply_network_mode(input: &ApplyNetworkModeInput) -> NetworkOperationResu
                 }
             }
         }
+        "forget" | "reset-wifi" => {
+            cmd.arg("forget");
+        }
+        "lan-camera" | "camera-lan" => {
+            cmd.arg("lan-camera");
+        }
+        "lan-dhcp" | "ethernet-dhcp" => {
+            cmd.arg("lan-dhcp");
+        }
+        "auto" => {
+            cmd.arg("auto");
+        }
         "dhcp" | "reset" => {
             cmd.arg("dhcp");
         }
@@ -330,7 +403,7 @@ pub fn apply_network_mode(input: &ApplyNetworkModeInput) -> NetworkOperationResu
             return NetworkOperationResult {
                 success: false,
                 mode: input.mode.clone(),
-                message: format!("Unknown network mode '{}'. Use 'field', 'wifi-client', or 'dhcp'.", other),
+                message: format!("Unknown network mode '{}'.", other),
                 details: None,
             };
         }

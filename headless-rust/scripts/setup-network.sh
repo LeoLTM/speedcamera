@@ -61,6 +61,18 @@ EOF'
   sudo nmcli connection up "Speedcamera-CameraLAN" 2>/dev/null || echo "Note: Ethernet link active when camera cable is connected."
 }
 
+apply_ethernet_dhcp() {
+  echo "[*] Configuring Ethernet on ${ETH_IFACE} to standard DHCP (Internet / Updates)..."
+  sudo nmcli connection delete "Speedcamera-CameraLAN" 2>/dev/null || true
+  sudo nmcli connection delete "Speedcamera-Ethernet-DHCP" 2>/dev/null || true
+  sudo nmcli connection add type ethernet \
+    ifname "${ETH_IFACE}" \
+    con-name "Speedcamera-Ethernet-DHCP" \
+    autoconnect yes \
+    ipv4.method auto 2>/dev/null || true
+  sudo nmcli connection up "Speedcamera-Ethernet-DHCP" 2>/dev/null || echo "Note: Ethernet link active when cable is connected."
+}
+
 enforce_wifi_powersave_off() {
   echo "[*] Locking down Wi-Fi power management permanently (wifi.powersave=2)..."
   sudo mkdir -p /etc/NetworkManager/conf.d
@@ -87,20 +99,21 @@ EOF"
   sudo systemctl restart wifi-power-off.service 2>/dev/null || sudo iw dev "${WIFI_IFACE}" set power_save off 2>/dev/null || sudo iwconfig "${WIFI_IFACE}" power off 2>/dev/null || true
 }
 
-apply_field_mode() {
-  echo ">>> Applying FIELD MODE (Standalone Offline Dual-Subnet):"
-  echo "    1. Camera LAN (${ETH_IFACE}) -> Static IP 192.168.1.100/24"
-  echo "    2. Hotspot AP (${WIFI_IFACE}) -> Static IP 192.168.4.1/24 (SSID: speedcamera)"
-  echo "    NOTE: In this mode, Pi operates standalone/offline."
+apply_ap_mode() {
+  echo ">>> Applying SETUP / AP MODE (Open Hotspot + Captive Portal):"
+  echo "    1. Wi-Fi Hotspot (${WIFI_IFACE}) -> Open AP (SSID: speedcamera, 5GHz, No password)"
+  echo "    2. Static Hotspot IP: 192.168.4.1/24"
+  echo "    3. Captive portal active -> redirects to web setup at http://192.168.4.1:3000"
   echo ""
 
-  # 1. Configure Camera LAN
-  apply_camera_lan_config
+  # Ensure Camera LAN is active on eth0 if not already in DHCP mode
+  if ! nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx "Speedcamera-Ethernet-DHCP"; then
+    apply_camera_lan_config
+  fi
 
-  # 2. Configure Wi-Fi Hotspot AP (5GHz Band A, Channel 36 to avoid 2.4GHz congestion)
-  echo "[*] Configuring 5GHz Wi-Fi Hotspot AP on ${WIFI_IFACE}..."
+  # Configure Open 5GHz Wi-Fi Hotspot AP (Band A, Channel 36, NO password)
+  echo "[*] Configuring Open 5GHz Wi-Fi Hotspot AP on ${WIFI_IFACE}..."
   SSID="speedcamera"
-  PASS="speedcamerapass"
 
   enforce_wifi_powersave_off
 
@@ -116,9 +129,7 @@ apply_field_mode() {
     802-11-wireless.channel 36 \
     802-11-wireless.powersave 2 \
     ipv4.method shared \
-    ipv4.addresses 192.168.4.1/24 \
-    wifi-sec.key-mgmt wpa-psk \
-    wifi-sec.psk "${PASS}"
+    ipv4.addresses 192.168.4.1/24
 
   # Disable MAC randomization which can trigger background radio resets
   sudo nmcli connection modify "Speedcamera-Hotspot" 802-11-wireless.mac-address-randomization 1 2>/dev/null || true
@@ -126,8 +137,8 @@ apply_field_mode() {
 
   sudo nmcli connection up "Speedcamera-Hotspot" 2>/dev/null || echo "Note: Hotspot initialized."
 
-  # Configure DNS interception for OS connectivity checks (Windows NCSI, Fedora hotspot, Linux ping)
-  echo "[*] Configuring DNS interception for OS internet probes (192.168.4.1)..."
+  # Configure DNS interception for captive portal (192.168.4.1)
+  echo "[*] Configuring captive portal DNS interception (192.168.4.1)..."
   sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d /etc/dnsmasq.d
   sudo bash -c 'cat > /etc/NetworkManager/dnsmasq-shared.d/fake-internet.conf <<EOF
 address=/msftncsi.com/192.168.4.1
@@ -140,19 +151,19 @@ address=/network-test.debian.org/192.168.4.1
 EOF'
   sudo cp /etc/NetworkManager/dnsmasq-shared.d/fake-internet.conf /etc/dnsmasq.d/fake-internet.conf 2>/dev/null || true
 
-  # Redirect port 80 to port 3000 on hotspot interface so OS HTTP probe requests hit the Rust daemon
+  # Redirect port 80 to port 3000 on hotspot interface so OS HTTP probe requests hit the web server
   echo "[*] Redirecting HTTP probe port 80 -> 3000 on ${WIFI_IFACE}..."
   sudo iptables -t nat -D PREROUTING -i "${WIFI_IFACE}" -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null || true
   sudo iptables -t nat -A PREROUTING -i "${WIFI_IFACE}" -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null || true
 
-  # Block Bluetooth to free 2.4GHz spectrum and internal resources for Wi-Fi
+  # Block Bluetooth to free 2.4GHz spectrum and internal resources
   echo "[*] Blocking Bluetooth to improve Wi-Fi performance..."
   sudo rfkill block bluetooth 2>/dev/null || true
 
   echo ""
   echo "========================================================="
-  echo " Field Mode Active!"
-  echo "  • 5GHz Wi-Fi Hotspot: SSID '${SSID}' (Password: '${PASS}')"
+  echo " AP / Setup Mode Active!"
+  echo "  • Open 5GHz Hotspot: SSID '${SSID}' (No password)"
   echo "  • Web UI:             http://192.168.4.1:3000"
   echo "  • Camera LAN:         http://192.168.1.100:3000"
   echo "========================================================="
@@ -168,29 +179,30 @@ apply_client_mode() {
     exit 1
   fi
 
-  echo ">>> Applying WI-FI CLIENT + CAMERA LAN MODE:"
-  echo "    1. Camera LAN (${ETH_IFACE}) -> Static IP 192.168.1.100/24 (Direct GigE Camera link)"
-  echo "    2. Wi-Fi Client (${WIFI_IFACE}) -> Connecting to SSID: '${WIFI_SSID}' (DHCP)"
-  echo "    NOTE: Allows testing if AP mode was root cause of connectivity issues."
+  echo ">>> Applying WI-FI CLIENT MODE (Normal Operation):"
+  echo "    1. Wi-Fi Client (${WIFI_IFACE}) -> Connecting to SSID: '${WIFI_SSID}' (DHCP)"
+  echo "    2. Camera LAN (${ETH_IFACE}) -> Static IP 192.168.1.100/24"
   echo ""
 
-  # 1. Configure Camera LAN (isolated static 192.168.1.100)
-  apply_camera_lan_config
+  # Ensure Camera LAN is active on eth0 if not already in DHCP mode
+  if ! nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx "Speedcamera-Ethernet-DHCP"; then
+    apply_camera_lan_config
+  fi
 
-  # 2. Enforce Wi-Fi Power-Save OFF
+  # Enforce Wi-Fi Power-Save OFF
   enforce_wifi_powersave_off
 
-  # 3. Clean up fake-internet DNS interception and port 80 redirect so real internet/DNS works
+  # Clean up fake-internet DNS interception and port 80 redirect
   echo "[*] Cleaning up captive portal DNS rules & port redirects..."
   sudo rm -f /etc/NetworkManager/dnsmasq-shared.d/fake-internet.conf /etc/dnsmasq.d/fake-internet.conf 2>/dev/null || true
   sudo iptables -t nat -D PREROUTING -i "${WIFI_IFACE}" -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null || true
 
-  # 4. Tear down Hotspot AP profile
+  # Tear down Hotspot AP profile
   echo "[*] Stopping Wi-Fi Hotspot AP and connecting as Client Station..."
   sudo nmcli connection delete "Speedcamera-Hotspot" 2>/dev/null || true
   sudo nmcli connection delete "Speedcamera-ClientWiFi" 2>/dev/null || true
 
-  # 5. Scan and connect to external Wi-Fi network
+  # Scan and connect to external Wi-Fi network
   sudo nmcli dev wifi rescan 2>/dev/null || true
   sleep 1
 
@@ -208,10 +220,12 @@ apply_client_mode() {
   if [ "$CONNECT_SUCCESS" -ne 1 ]; then
     echo "" >&2
     echo "[-] Error: Failed to connect to Wi-Fi network '${WIFI_SSID}'." >&2
+    echo "[*] Falling back to AP Mode..." >&2
+    apply_ap_mode
     exit 1
   fi
 
-  # Optimize client connection: powersave off, no MAC randomization
+  # Optimize client connection: powersave off, no MAC randomization, autoconnect on boot
   sudo nmcli connection modify "Speedcamera-ClientWiFi" 802-11-wireless.powersave 2 2>/dev/null || true
   sudo nmcli connection modify "Speedcamera-ClientWiFi" 802-11-wireless.mac-address-randomization 1 2>/dev/null || true
   sudo nmcli connection modify "Speedcamera-ClientWiFi" connection.autoconnect yes 2>/dev/null || true
@@ -225,7 +239,7 @@ apply_client_mode() {
 
   echo ""
   echo "========================================================="
-  echo " Wi-Fi Client + Camera LAN Mode Active!"
+  echo " Wi-Fi Client Mode Active!"
   echo "  • Connected Wi-Fi:    SSID '${WIFI_SSID}'"
   if [ -n "$WIFI_IP" ]; then
     echo "  • Wi-Fi Client IP:    ${WIFI_IP}"
@@ -236,6 +250,39 @@ apply_client_mode() {
   fi
   echo "  • Camera LAN:         http://192.168.1.100:3000"
   echo "========================================================="
+}
+
+apply_auto_mode() {
+  echo ">>> Boot Auto Network Check..."
+  
+  # Check if saved client profile exists
+  if nmcli connection show "Speedcamera-ClientWiFi" &>/dev/null; then
+    echo "[*] Found saved client connection profile. Attempting connect..."
+    enforce_wifi_powersave_off
+    sudo rm -f /etc/NetworkManager/dnsmasq-shared.d/fake-internet.conf /etc/dnsmasq.d/fake-internet.conf 2>/dev/null || true
+    sudo iptables -t nat -D PREROUTING -i "${WIFI_IFACE}" -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null || true
+
+    if sudo nmcli connection up "Speedcamera-ClientWiFi" --timeout 15 2>/dev/null; then
+      echo "[*] Successfully connected to saved Wi-Fi network!"
+      if ! nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx "Speedcamera-Ethernet-DHCP"; then
+        apply_camera_lan_config
+      fi
+      return 0
+    else
+      echo "[-] Failed to connect to saved Wi-Fi. Falling back to Open AP mode..."
+    fi
+  else
+    echo "[*] No saved Wi-Fi profile found. Starting Open AP Setup mode..."
+  fi
+
+  apply_ap_mode
+}
+
+forget_wifi() {
+  echo ">>> Forgetting saved Wi-Fi network..."
+  sudo nmcli connection delete "Speedcamera-ClientWiFi" 2>/dev/null || true
+  echo "[*] Saved Wi-Fi forgotten. Switching to Open AP Setup mode..."
+  apply_ap_mode
 }
 
 apply_dhcp_mode() {
@@ -257,7 +304,7 @@ apply_dhcp_mode() {
 scan_wifi_networks() {
   echo "--- Scanning Visible Wi-Fi Networks ---"
   sudo nmcli dev wifi rescan 2>/dev/null || true
-  nmcli -f IN-USE,SSID,MODE,CHAN,RATE,SIGNAL,BARS,SECURITY dev wifi list || true
+  nmcli -f IN-USE,SSID,BSSID,CHAN,SIGNAL,SECURITY dev wifi list || true
 }
 
 show_status() {
@@ -265,6 +312,7 @@ show_status() {
   local HAS_HOTSPOT=0
   local HAS_CLIENT=0
   local HAS_CAM_LAN=0
+  local HAS_ETH_DHCP=0
 
   if nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx "Speedcamera-Hotspot"; then
     HAS_HOTSPOT=1
@@ -275,19 +323,24 @@ show_status() {
   if nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx "Speedcamera-CameraLAN"; then
     HAS_CAM_LAN=1
   fi
+  if nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx "Speedcamera-Ethernet-DHCP"; then
+    HAS_ETH_DHCP=1
+  fi
 
-  if [ "$HAS_HOTSPOT" -eq 1 ] && [ "$HAS_CAM_LAN" -eq 1 ]; then
-    echo "Mode: FIELD MODE (Hotspot AP 192.168.4.1 + Camera LAN 192.168.1.100)"
-  elif [ "$HAS_CLIENT" -eq 1 ] && [ "$HAS_CAM_LAN" -eq 1 ]; then
-    echo "Mode: WI-FI CLIENT MODE (External Wi-Fi + Camera LAN 192.168.1.100)"
-  elif [ "$HAS_HOTSPOT" -eq 1 ]; then
-    echo "Mode: HOTSPOT AP ONLY"
+  if [ "$HAS_HOTSPOT" -eq 1 ]; then
+    echo "Wi-Fi Mode: AP / SETUP (Open Hotspot 192.168.4.1)"
   elif [ "$HAS_CLIENT" -eq 1 ]; then
-    echo "Mode: WI-FI CLIENT ONLY"
-  elif nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx "Speedcamera-Ethernet-DHCP"; then
-    echo "Mode: STANDARD DHCP"
+    echo "Wi-Fi Mode: CLIENT (Connected to external router)"
   else
-    echo "Mode: CUSTOM / DYNAMIC"
+    echo "Wi-Fi Mode: DISCONNECTED / UNMANAGED"
+  fi
+
+  if [ "$HAS_CAM_LAN" -eq 1 ]; then
+    echo "Ethernet Mode: CAMERA LAN (Static 192.168.1.100 MTU 9000)"
+  elif [ "$HAS_ETH_DHCP" -eq 1 ]; then
+    echo "Ethernet Mode: STANDARD DHCP (Internet / Updates)"
+  else
+    echo "Ethernet Mode: UNMANAGED"
   fi
   echo ""
 
@@ -311,17 +364,33 @@ show_status() {
   if ping -c 1 -W 2 1.1.1.1 &>/dev/null; then
     echo "Status: ONLINE (Internet reachable)"
   else
-    echo "Status: OFFLINE (Isolated field mode or no default route)"
+    echo "Status: OFFLINE (Isolated AP setup mode or no default route)"
   fi
 }
 
 case "$MODE" in
-  field|ap)
-    apply_field_mode
+  ap|field|hotspot)
+    apply_ap_mode
     ;;
 
   client|wifi-client|internet|wifi)
     apply_client_mode "$2" "$3"
+    ;;
+
+  auto)
+    apply_auto_mode
+    ;;
+
+  forget|reset-wifi)
+    forget_wifi
+    ;;
+
+  lan-camera|camera-lan)
+    apply_camera_lan_config
+    ;;
+
+  lan-dhcp|ethernet-dhcp)
+    apply_ethernet_dhcp
     ;;
 
   dhcp|reset)
@@ -337,11 +406,15 @@ case "$MODE" in
     ;;
 
   *)
-    echo "Usage: $0 {field|client <SSID> [PASS]|scan|dhcp|status}"
+    echo "Usage: $0 {ap|client <SSID> [PASS]|auto|forget|lan-camera|lan-dhcp|scan|dhcp|status}"
     echo ""
     echo "Commands:"
-    echo "  field                       Set Camera LAN (192.168.1.100) + Hotspot AP (192.168.4.1) [Standalone/Field]"
-    echo "  client <SSID> [PASS]        Set Camera LAN (192.168.1.100) + Connect Wi-Fi Client to router [Client Mode]"
+    echo "  ap                          Start Open AP Hotspot (192.168.4.1) for setup"
+    echo "  client <SSID> [PASS]        Connect Wi-Fi client to router (main operation mode)"
+    echo "  auto                        Try connect to saved Wi-Fi, fallback to AP if unavailable"
+    echo "  forget                      Delete saved Wi-Fi credentials and switch to AP mode"
+    echo "  lan-camera                  Set Ethernet to Camera LAN (192.168.1.100, MTU 9000)"
+    echo "  lan-dhcp                    Set Ethernet to standard DHCP (for updates/wired internet)"
     echo "  scan                        Scan visible 2.4GHz & 5GHz Wi-Fi networks"
     echo "  dhcp                        Reset ethernet & Wi-Fi to standard DHCP"
     echo "  status                      Check current network mode, IP addresses, and connectivity"

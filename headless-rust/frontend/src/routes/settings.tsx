@@ -3,6 +3,7 @@ import { Tabs as TabsPrimitive } from "radix-ui";
 import { RootRoute } from "./__root";
 import { cn } from "@/lib/utils";
 import { DeviceTab } from "./settings/DeviceTab";
+import { NetworkTab } from "./settings/NetworkTab";
 import { CameraTab } from "./settings/CameraTab";
 import { SpeedCameraTab } from "./settings/SpeedCameraTab";
 import { LapTimerTab } from "./settings/LapTimerTab";
@@ -18,7 +19,7 @@ function SettingsPage() {
     <div className="h-full overflow-hidden flex flex-col">
       <TabsPrimitive.Root defaultValue="device" className="flex flex-col h-full">
         <TabsPrimitive.List className="flex shrink-0 border-b border-border px-4 gap-0.5">
-          {(["device", "camera", "speed-camera", "lap-timer"] as const).map((tab) => (
+          {(["device", "network", "camera", "speed-camera", "lap-timer"] as const).map((tab) => (
             <TabsPrimitive.Trigger
               key={tab}
               value={tab}
@@ -31,6 +32,8 @@ function SettingsPage() {
             >
               {tab === "device"
                 ? "Device"
+                : tab === "network"
+                ? "Network"
                 : tab === "camera"
                 ? "Camera"
                 : tab === "speed-camera"
@@ -42,6 +45,9 @@ function SettingsPage() {
 
         <TabsPrimitive.Content value="device" className="flex-1 overflow-y-auto p-6">
           <DeviceTab />
+        </TabsPrimitive.Content>
+        <TabsPrimitive.Content value="network" className="flex-1 overflow-y-auto p-6">
+          <NetworkTab />
         </TabsPrimitive.Content>
         <TabsPrimitive.Content value="camera" className="flex-1 overflow-y-auto p-6">
           <CameraTab />

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ChangeEvent } from "react";
 import { toast } from "sonner";
 import { useAppStore } from "@/stores/useAppStore";

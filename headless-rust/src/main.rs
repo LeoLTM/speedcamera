@@ -55,16 +55,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("─────────────────────────────────────────────────────────────────");
 
     let network_summary = network::get_system_network_summary();
+    tracing::info!("  • Network Mode: [{}]", network_summary.mode.to_uppercase());
     tracing::info!("  • Camera LAN [{}]: {} -> [{}]",
         network_summary.camera_lan.interface_name.as_deref().unwrap_or("eth0"),
         network_summary.camera_lan.ip.as_deref().unwrap_or("Not configured"),
         network_summary.camera_lan.status.to_uppercase()
     );
-    tracing::info!("  • Hotspot AP [{}]: {} -> [{}]",
-        network_summary.hotspot_ap.interface_name.as_deref().unwrap_or("wlan0"),
-        network_summary.hotspot_ap.ip.as_deref().unwrap_or("Not configured"),
-        network_summary.hotspot_ap.status.to_uppercase()
-    );
+    if let Some(ref client) = network_summary.wifi_client {
+        tracing::info!("  • Wi-Fi Client [{}]: {} (SSID: {}) -> [{}]",
+            client.interface_name.as_deref().unwrap_or("wlan0"),
+            client.ip.as_deref().unwrap_or("Waiting DHCP"),
+            client.ssid.as_deref().unwrap_or("Unknown"),
+            client.status.to_uppercase()
+        );
+    } else {
+        tracing::info!("  • Hotspot AP [{}]: {} -> [{}]",
+            network_summary.hotspot_ap.interface_name.as_deref().unwrap_or("wlan0"),
+            network_summary.hotspot_ap.ip.as_deref().unwrap_or("Not configured"),
+            network_summary.hotspot_ap.status.to_uppercase()
+        );
+    }
     tracing::info!("─────────────────────────────────────────────────────────────────");
 
     // Initialize Database

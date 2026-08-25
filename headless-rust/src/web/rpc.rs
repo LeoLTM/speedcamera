@@ -630,6 +630,22 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             Ok(serde_json::to_value(summary).unwrap())
         }
 
+        "scanWifiNetworks" => {
+            let results = tokio::task::spawn_blocking(move || crate::network::scan_wifi_networks())
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(serde_json::to_value(results).unwrap())
+        }
+
+        "applyNetworkMode" => {
+            let input: ApplyNetworkModeInput =
+                serde_json::from_value(params).map_err(|e| e.to_string())?;
+            let res = tokio::task::spawn_blocking(move || crate::network::apply_network_mode(&input))
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(serde_json::to_value(res).unwrap())
+        }
+
         // ─── Teable ───────────────────────────────────────────────────────────
         "testTeableConnection" => {
             let url = params["url"].as_str().ok_or("Missing url")?;

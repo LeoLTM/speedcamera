@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct NetworkInterfaceDetail {
     pub name: string_or_empty::StringOrEmpty,
-    pub role: String, // "camera-lan" | "hotspot-ap" | "other" | "loopback"
+    pub role: String, // "camera-lan" | "hotspot-ap" | "wifi-client" | "other" | "loopback"
     pub address: String,
     pub family: String,
     pub netmask: String,
@@ -27,16 +27,69 @@ pub struct SubnetInfo {
     pub ip: Option<String>,
     pub expected_ip: String,
     pub subnet: String,
-    pub status: String, // "ok" | "ip_mismatch" | "missing"
+    pub status: String, // "ok" | "ip_mismatch" | "missing" | "inactive"
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WifiClientInfo {
+    pub interface_name: Option<String>,
+    pub ssid: Option<String>,
+    pub ip: Option<String>,
+    pub subnet: Option<String>,
+    pub gateway: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signal_dbm: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub power_save: Option<String>,
+    pub status: String, // "connected" | "connecting" | "disconnected" | "inactive"
     pub description: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemNetworkSummary {
+    #[serde(default = "default_network_mode")]
+    pub mode: String, // "field" | "wifi-client" | "dhcp" | "custom"
     pub camera_lan: SubnetInfo,
     pub hotspot_ap: SubnetInfo,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wifi_client: Option<WifiClientInfo>,
     pub interfaces: Vec<NetworkInterfaceDetail>,
+}
+
+fn default_network_mode() -> String {
+    "field".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WifiScanResult {
+    pub ssid: String,
+    pub signal: i32,
+    pub security: String,
+    pub in_use: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyNetworkModeInput {
+    pub mode: String, // "field" | "wifi-client" | "client" | "dhcp"
+    #[serde(default)]
+    pub ssid: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkOperationResult {
+    pub success: bool,
+    pub mode: String,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

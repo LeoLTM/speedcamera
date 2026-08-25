@@ -2,7 +2,7 @@
 
 export interface NetworkInterfaceDetail {
   name: string;
-  role: "camera-lan" | "hotspot-ap" | "other" | "loopback";
+  role: "camera-lan" | "hotspot-ap" | "wifi-client" | "other" | "loopback";
   address: string;
   family: string;
   netmask: string;
@@ -11,24 +11,58 @@ export interface NetworkInterfaceDetail {
   isConfigured: boolean;
 }
 
+export interface WifiClientInfo {
+  interfaceName: string | null;
+  ssid: string | null;
+  ip: string | null;
+  subnet: string | null;
+  gateway: string | null;
+  signalDbm?: number;
+  powerSave?: string;
+  status: "connected" | "connecting" | "disconnected" | "inactive";
+  description: string;
+}
+
 export interface SystemNetworkSummary {
+  mode: "field" | "wifi-client" | "dhcp" | "custom";
   cameraLan: {
     interfaceName: string | null;
     ip: string | null;
-    expectedIp: "192.168.1.100";
-    subnet: "192.168.1.0/24";
-    status: "ok" | "ip_mismatch" | "missing";
+    expectedIp: string;
+    subnet: string;
+    status: "ok" | "ip_mismatch" | "missing" | "inactive";
     description: string;
   };
   hotspotAp: {
     interfaceName: string | null;
     ip: string | null;
-    expectedIp: "192.168.4.1";
-    subnet: "192.168.4.0/24";
-    status: "ok" | "ip_mismatch" | "missing";
+    expectedIp: string;
+    subnet: string;
+    status: "ok" | "ip_mismatch" | "missing" | "inactive";
     description: string;
   };
+  wifiClient?: WifiClientInfo | null;
   interfaces: NetworkInterfaceDetail[];
+}
+
+export interface WifiScanResult {
+  ssid: string;
+  signal: number;
+  security: string;
+  inUse: boolean;
+}
+
+export interface ApplyNetworkModeInput {
+  mode: "field" | "wifi-client" | "client" | "dhcp";
+  ssid?: string;
+  password?: string;
+}
+
+export interface NetworkOperationResult {
+  success: boolean;
+  mode: string;
+  message: string;
+  details?: string;
 }
 
 export interface Violation {
@@ -463,6 +497,14 @@ export type SpeedcameraRPC = {
     getNetworkInfo: {
       params: Record<string, never>;
       response: SystemNetworkSummary;
+    };
+    scanWifiNetworks: {
+      params: Record<string, never>;
+      response: WifiScanResult[];
+    };
+    applyNetworkMode: {
+      params: ApplyNetworkModeInput;
+      response: NetworkOperationResult;
     };
 
     // Teable integration

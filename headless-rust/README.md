@@ -2,18 +2,21 @@
 
 A lightweight, high-performance, single-binary speedcamera daemon and responsive web controller written in **Rust** using **Axum 0.8**, **Socketioxide (Socket.io v4)**, **native Aravis C FFI**, **SQLite**, and an embedded **React + Vite** frontend.
 
-Engineered specifically for **Raspberry Pi 5 with Raspberry Pi OS Lite** (zero desktop or GUI dependencies) with ultra-low latency hardware shutter triggering (<10ms) and rock-solid 24/7 reliability. Creates a standalone Wi-Fi hotspot for laptops, tablets, and phones to connect and manage the system via web browser while communicating with industrial GigE cameras on a dedicated Ethernet subnet.
+Engineered specifically for **Raspberry Pi 5 with Raspberry Pi OS Lite** (zero desktop or GUI dependencies) with ultra-low latency hardware shutter triggering (<10ms) and rock-solid 24/7 reliability. Features an IoT-style onboarding workflow (similar to WLED/ESPHome) with an open 5GHz setup hotspot, captive portal redirection, scannable QR code Wi-Fi onboarding, and dedicated GigE Vision industrial camera networking.
 
 ---
 
-## Architecture & Dual-Subnet Network Setup
+## Architecture & Network Operation Modes
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │ Raspberry Pi 5 (Raspberry Pi OS Lite ARM64)                            │
 │                                                                        │
-│  • eth0 (Camera LAN):    192.168.1.100/24  <── GigE Vision HIKROBOT    │
-│  • wlan0 (Hotspot AP):   192.168.4.1/24    <── Web UI Browser Clients  │
+│  • eth0 (Camera LAN):    192.168.1.100/24  <── GigE Vision Industrial  │
+│                          (or DHCP toggle)      Camera (MTU 9000)       │
+│                                                                        │
+│  • wlan0 (Wireless):     192.168.4.1/24    <── Open AP Setup Hotspot   │
+│                          or DHCP Client IP <── Client Mode (Operation) │
 │                                                                        │
 │  • speedcamera-rust Daemon (Single Standalone Binary)                  │
 │     ├── Axum 0.8 HTTP Server (REST API & Embedded Static Frontend)     │
@@ -24,16 +27,53 @@ Engineered specifically for **Raspberry Pi 5 with Raspberry Pi OS Lite** (zero d
 │     ├── SQLite Database (rusqlite WAL mode @ ~/.speedcamera)           │
 │     └── Pure Rust Poliscan Overlay Renderer (image + imageproc)        │
 └───────────────────────┬─────────────────────────────▲──────────────────┘
-                        │ Wi-Fi AP                    │ Ethernet Cable
+                        │ Wi-Fi (AP or Client)        │ Ethernet Cable
                         ▼                             │
 ┌──────────────────────────────────────────┐   ┌──────────────────────────┐
 │ Client Device (Phone / Tablet / Laptop)  │   │ Industrial GigE Camera   │
 │                                          │   │                          │
-│ • Wi-Fi SSID: speedcamera                │   │ • Subnet: 192.168.1.0/24 │
-│ • Open: http://192.168.4.1:3000          │   │ • GenICam / Aravis 0.8   │
-│ • Live Radar, Live View, Settings, Laps  │   │ • Direct link to eth0    │
+│ • Setup: Connect to open "speedcamera"   │   │ • Subnet: 192.168.1.0/24 │
+│ • Normal: Access via local router IP     │   │ • GenICam / Aravis 0.8   │
+│ • Scannable QR Code Wi-Fi onboarding     │   │ • Jumbo frames (MTU 9000)│
 └──────────────────────────────────────────┘   └──────────────────────────┘
 ```
+
+---
+
+## Network Onboarding Flow (WLED-Style)
+
+```mermaid
+flowchart TD
+    A[Pi Boot / Fresh Install] --> B{Saved Wi-Fi Profile?}
+    B -->|No| C[Start Open 5GHz AP: 'speedcamera' @ 192.168.4.1]
+    B -->|Yes| D[Connect to Saved Wi-Fi Network]
+    D -->|Fail / Unreachable| C
+    D -->|Success| E[Client Mode Active: UI at Assigned DHCP IP]
+    C --> F[Connect Phone/PC to open 'speedcamera' Wi-Fi]
+    F --> G[Captive Portal Redirects to Network Settings]
+    G --> H[Scan & Select Wi-Fi Network]
+    H --> I[Enter Password & Click Connect]
+    I --> J[Popup: Scan QR Code to connect phone to same Wi-Fi]
+    J --> K[Pi switches wlan0 to Client Mode]
+    K --> E
+    E --> L[Access Settings > Network at any time to reconfigure or reset]
+    L -->|Forget Network| C
+```
+
+1. **Initial / Fallback AP Mode**:
+   - Open 5GHz Wi-Fi Hotspot: SSID **`speedcamera`** (No password, Channel 36, IP `192.168.4.1`).
+   - Built-in captive portal automatically opens the web dashboard when connecting from iOS, Android, macOS, or Windows.
+2. **Wi-Fi Scanner & QR Code Transition**:
+   - Open the **Settings > Network** page (icons only, no emojis).
+   - Auto-scans nearby 2.4GHz & 5GHz networks with signal strength %, BSSID, channel, and security.
+   - Select your Wi-Fi, enter the password, and click **Connect**.
+   - A modal displays a **scannable Wi-Fi QR Code** so your smartphone can instantly switch to the same target network.
+3. **Client Operation Mode**:
+   - The Pi connects to your local router via DHCP and serves the Web UI and API at its assigned IPv4 address.
+   - The dedicated Camera LAN on `eth0` remains active at static `192.168.1.100` (MTU 9000).
+4. **Internet / Software Updates**:
+   - The Pi has internet access via Wi-Fi client mode.
+   - If Wi-Fi is not available, the **Network** tab includes an Ethernet toggle to switch `eth0` to standard DHCP for wired internet access.
 
 ---
 
@@ -47,20 +87,84 @@ Engineered specifically for **Raspberry Pi 5 with Raspberry Pi OS Lite** (zero d
 | **Shutter Latency** | ~50–150ms JS event loop lag | **<10ms Instant Hardware Shutter Pipeline** |
 | **Poliscan Skinning** | Heavy native canvas node addons | **Pure Rust `image` + `imageproc` + embedded TTF font** |
 | **Frontend Serving** | Node / Bun file serving | **Baked into binary via `rust-embed` (Single binary deployment!)** |
+| **Network Management** | Flaky AP password / drops | **Open AP setup + Client mode + QR Code + Captive Portal** |
 | **Database** | Bun SQLite bindings | **Native `rusqlite` with WAL mode & foreign keys** |
 | **Stability** | Event loop crashes on buffer overflows | **Ring buffer pool + safe Rust error handling + auto-reconnect** |
 
 ---
 
+## Migration Guide (From Old System)
+
+If you are running an existing version of Speedcamera on your Raspberry Pi, follow one of these migration methods:
+
+### Method 1: Remote Automated Update (Recommended)
+
+From your development laptop:
+
+```bash
+cd headless-rust
+
+# 1. If Pi is connected to Home LAN / Wi-Fi via DHCP:
+bun run deploy:pi pi@raspberrypi.local --build
+
+# 2. Or if currently connected to the Pi's old hotspot (192.168.4.1):
+ssh pi@192.168.4.1 '~/speedcamera/headless-rust/scripts/setup-network.sh client "MyHomeWiFi" "MyPassword"'
+# Then run deploy:
+bun run deploy:pi pi@raspberrypi.local --build
+```
+
+### Method 2: Clean Re-Installation (Full Wipe & Fresh Setup)
+
+To remove all legacy services, network profiles, and start completely fresh:
+
+```bash
+cd headless-rust
+
+# 1. Clean up old installation and restore DHCP network:
+bun run cleanup:pi pi@raspberrypi.local --yes
+
+# 2. Run fresh installation:
+bun run install:pi pi@raspberrypi.local
+```
+
+### Method 3: Direct on Raspberry Pi (via SSH / Console)
+
+If executing directly on the Raspberry Pi:
+
+```bash
+# 1. Pull latest code
+cd ~/speedcamera
+git pull origin main
+
+# 2. Install new frontend dependency & build
+cd ~/speedcamera/headless-rust
+bun install
+bun run build
+
+# 3. Compile release binary
+cargo build --release
+
+# 4. Restart systemd service
+sudo systemctl restart speedcamera
+
+# 5. Switch to new Open AP Setup Mode
+sudo ./scripts/setup-network.sh ap
+```
+
+---
+
 ## Fresh Pi OS Requirements & Dependencies
 
-To set up a fresh Raspberry Pi OS image (recommended: **Raspberry Pi OS Lite 64-bit**), the following tools and packages are required.
+To set up a fresh Raspberry Pi OS image (recommended: **Raspberry Pi OS Lite 64-bit**), the automated installer handles all steps:
 
-> [!TIP]
-> The automated installer `bun run install:pi` (or `./scripts/install-rpi.sh` directly on the Pi) automatically checks and installs all of these dependencies for you.
+```bash
+cd headless-rust
+bun run install:pi pi@raspberrypi.local
+```
 
-### 1. System Packages (APT)
+### Manual Dependency Reference
 
+#### 1. System Packages (APT)
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
@@ -73,6 +177,8 @@ sudo apt-get install -y \
   build-essential \
   esptool \
   network-manager \
+  dnsmasq \
+  iptables \
   curl \
   unzip \
   git \
@@ -81,28 +187,19 @@ sudo apt-get install -y \
   libsqlite3-dev
 ```
 
-### 2. Rust Toolchain (`rustup`)
-
-Required for building and compiling the native daemon on ARM64:
-
+#### 2. Rust Toolchain (`rustup`)
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 source "$HOME/.cargo/env"
 ```
 
-### 3. Bun Runtime (`bun.sh`)
-
-Required on your developer laptop (and optional on the Pi) for building the React/Vite frontend bundle and running automation/test scripts:
-
+#### 3. Bun Runtime (`bun.sh`)
 ```bash
 curl -fsSL https://bun.sh/install | bash
 source "$HOME/.bashrc"
 ```
 
-### 4. GigE Vision Network Socket Buffer & FQ-CoDel Tuning
-
-Industrial GigE Vision cameras stream high-throughput packet bursts. Increase Linux UDP socket buffer limits while enabling FQ-CoDel smart queueing to prevent Wi-Fi bufferbloat:
-
+#### 4. GigE Vision Network Socket Buffer & FQ-CoDel Tuning
 ```bash
 sudo bash -c 'cat > /etc/sysctl.d/60-gige-camera.conf <<EOF
 net.core.rmem_max = 134217728
@@ -121,147 +218,36 @@ sudo sysctl -p /etc/sysctl.d/60-gige-camera.conf
 
 ---
 
-## Deployment Procedures
+## Network Script Reference (`setup-network.sh`)
 
-All deployment and maintenance procedures can be executed directly from your development laptop over SSH.
-
-> [!IMPORTANT]
-> **Internet Requirement for Build/Deploy**: Because the Pi compiles dependencies and pulls from Git, `bun run install:pi` and `bun run deploy:pi` must be executed while the Pi is in **Home LAN / DHCP** or **Client Wi-Fi Mode** (with internet access).
-> If your Pi is currently in standalone **Field Mode** (`192.168.4.1` hotspot), connect the Pi to your Wi-Fi router first via SSH:
-> ```bash
-> ssh pi@192.168.4.1 '~/speedcamera/headless-rust/scripts/setup-network.sh internet "MyHomeWiFi" "MyPassword"'
-> ```
-> Or plug in an Ethernet cable and run:
-> ```bash
-> ssh pi@192.168.4.1 '~/speedcamera/headless-rust/scripts/setup-network.sh dhcp'
-> ```
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│ Command                      │ Purpose                                 │
-├──────────────────────────────┼─────────────────────────────────────────┤
-│ bun run install:pi [target]  │ Fresh Pi install on Home LAN / DHCP     │
-│ bun run deploy:pi [target]   │ Upgrade existing Pi (in Internet Mode)  │
-│ bun run cleanup:pi [target]  │ Complete teardown & restore DHCP network│
-└──────────────────────────────┴─────────────────────────────────────────┘
-```
-
----
-
-### Scenario 1: Fresh Pi Setup (Home LAN / Wi-Fi with DHCP)
-
-Use this scenario when you have a freshly flashed Raspberry Pi connected to your home router / Wi-Fi via DHCP and want to provision the complete speedcamera suite.
-
-#### Run from your laptop:
-```bash
-cd headless-rust
-
-# Standard fresh installation (SSH key auth):
-bun run install:pi pi@raspberrypi.local
-
-# With password prompt (if SSH keys are not configured):
-bun run install:pi pi@raspberrypi.local --password
-
-# Using direct IP and automatically switching to Field Mode at the very end:
-bun run install:pi pi@192.168.1.50 --field
-
-# Stay in Home LAN mode (skip field network setup):
-bun run install:pi pi@raspberrypi.local --lan
-
-# Deploy a specific branch:
-bun run install:pi pi@raspberrypi.local --branch feature/headless
-```
-
-#### What this command does:
-1. Connects to the Raspberry Pi over SSH and verifies internet reachability.
-2. Clones or pulls the `speedcamera` git repository directly to `~/speedcamera` on the Pi.
-3. Updates Pi system packages (`libaravis-0.8-0`, `libaravis-dev`, `libglib2.0-dev`, `libudev-dev`, `build-essential`, `esptool`, `network-manager`, etc.).
-4. Installs the Rust toolchain (`rustup`) and Bun runtime on the Pi.
-5. Builds the frontend assets (`bun run build`) and compiles the release binary (`cargo build --release`) natively on Pi 5.
-6. Registers, enables, and starts the `speedcamera.service` systemd daemon.
-7. **Only after all software and builds succeed**: Transitions network mode to Field Mode if requested (`--field`).
-
----
-
-### Scenario 2: Upgrading an Existing Installation
-
-Use this scenario to push code updates to an already configured Pi while connected to your **Home LAN** or **Client Wi-Fi**.
-
-#### Run from your laptop:
-```bash
-cd headless-rust
-
-# Deploy to Pi on Home LAN:
-bun run deploy:pi pi@raspberrypi.local
-
-# With password authentication:
-bun run deploy:pi pi@raspberrypi.local --password
-
-# Force rebuild frontend & Rust binary:
-bun run deploy:pi pi@raspberrypi.local --build
-```
-
-#### What this command does:
-1. Connects to the Pi via SSH and verifies active internet connectivity.
-2. Runs `git pull` in `~/speedcamera` to fetch and apply the latest commits.
-3. Automatically rebuilds the frontend bundle on the Pi if frontend files changed.
-4. Automatically recompiles the native Rust release binary on the Pi if Rust code or frontend bundle changed.
-5. Restarts `speedcamera.service` and verifies that the daemon is active and running.
-6. Preserves existing network configuration without causing unexpected disconnections.
-
----
-
-### Scenario 3: Complete Cleanup & Network Reset
-
-Use this scenario to completely uninstall Speedcamera, remove systemd services, delete application files, and restore standard DHCP networking on Ethernet and Wi-Fi.
-
-#### Option A: Remote cleanup from your laptop
-```bash
-cd headless-rust
-
-# Clean up speedcamera and restore DHCP network:
-bun run cleanup:pi pi@raspberrypi.local
-
-# Clean up in Field Mode and purge all SQLite databases/images:
-bun run cleanup:pi pi@192.168.4.1 --password --purge
-
-# Non-interactive cleanup:
-bun run cleanup:pi pi@raspberrypi.local --yes --purge
-```
-
-#### Option B: Direct cleanup on the Raspberry Pi
-```bash
-# SSH into Pi
-ssh pi@raspberrypi.local
-
-# Run cleanup script
-~/speedcamera/headless-rust/scripts/cleanup-pi.sh
-
-# Or with complete data purge (database & images):
-~/speedcamera/headless-rust/scripts/cleanup-pi.sh --purge --yes
-```
-
----
-
-## Network Mode Management (`setup-network.sh`)
-
-You can switch the Pi's networking mode at any time via the Web UI Settings (**Camera** tab) or via the network management script:
+You can inspect or change network modes at any time via the Web UI Settings (**Network** tab) or via CLI:
 
 ```bash
-# 1. Wi-Fi Client Mode (External Wi-Fi + Direct GigE Camera LAN 192.168.1.100)
-# Connects Pi as Wi-Fi client (avoids Broadcom AP radio drops) while preserving isolated Camera LAN:
-~/speedcamera/headless-rust/scripts/setup-network.sh client "MyHomeWiFi" "SecretPassword123"
+# 1. Start Open AP Setup Hotspot (192.168.4.1, no password, captive portal active)
+sudo ~/speedcamera/headless-rust/scripts/setup-network.sh ap
 
-# 2. Standalone Field Mode (Camera LAN 192.168.1.100 + Standalone 5GHz Hotspot AP 192.168.4.1)
-~/speedcamera/headless-rust/scripts/setup-network.sh field
+# 2. Connect to Wi-Fi network in Client Mode (normal operation)
+sudo ~/speedcamera/headless-rust/scripts/setup-network.sh client "MyHomeWiFi" "SecretPassword123"
 
-# 3. Scan nearby Wi-Fi networks (SSIDs, signal quality, security)
+# 3. Boot auto-mode (reconnects saved client Wi-Fi, falls back to AP if unreachable)
+sudo ~/speedcamera/headless-rust/scripts/setup-network.sh auto
+
+# 4. Forget saved Wi-Fi credentials and return to Open AP Setup mode
+sudo ~/speedcamera/headless-rust/scripts/setup-network.sh forget
+
+# 5. Set Ethernet interface to dedicated Camera LAN (Static 192.168.1.100, MTU 9000)
+sudo ~/speedcamera/headless-rust/scripts/setup-network.sh lan-camera
+
+# 6. Set Ethernet interface to standard DHCP (for wired internet/updates)
+sudo ~/speedcamera/headless-rust/scripts/setup-network.sh lan-dhcp
+
+# 7. Scan nearby visible Wi-Fi networks (SSID, BSSID, channel, signal, security)
 ~/speedcamera/headless-rust/scripts/setup-network.sh scan
 
-# 4. Revert Ethernet and Wi-Fi to standard DHCP
-~/speedcamera/headless-rust/scripts/setup-network.sh dhcp
+# 8. Revert both Ethernet and Wi-Fi to standard DHCP
+sudo ~/speedcamera/headless-rust/scripts/setup-network.sh dhcp
 
-# 5. Check active network mode, IP addresses, power management, and internet reachability
+# 9. Check active network status, IP addresses, power management, and internet reachability
 ~/speedcamera/headless-rust/scripts/setup-network.sh status
 ```
 
@@ -291,8 +277,6 @@ sudo systemctl start speedcamera
 ---
 
 ## Local Development & Testing
-
-You can develop and test the entire system on your local laptop without physical hardware using mock mode:
 
 ```bash
 cd headless-rust

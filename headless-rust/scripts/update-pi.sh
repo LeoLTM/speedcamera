@@ -157,6 +157,14 @@ SERVICE_EOF
   sudo systemctl enable speedcamera.service
 fi
 
+# Ensure WiFi power management disable service is active
+if [ -f "${PROJECT_DIR}/scripts/wifi-power-off.service" ]; then
+  sudo cp "${PROJECT_DIR}/scripts/wifi-power-off.service" /etc/systemd/system/wifi-power-off.service 2>/dev/null || true
+  sudo systemctl daemon-reload
+  sudo systemctl enable wifi-power-off.service 2>/dev/null || true
+  sudo systemctl restart wifi-power-off.service 2>/dev/null || true
+fi
+
 echo "[*] Restarting speedcamera service on Pi..."
 sudo systemctl daemon-reload
 sudo systemctl restart speedcamera.service

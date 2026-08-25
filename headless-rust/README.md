@@ -99,17 +99,22 @@ curl -fsSL https://bun.sh/install | bash
 source "$HOME/.bashrc"
 ```
 
-### 4. GigE Vision Network Socket Buffer Tuning
+### 4. GigE Vision Network Socket Buffer & FQ-CoDel Tuning
 
-Industrial GigE Vision cameras stream high-throughput packet bursts. Increase Linux UDP socket buffer limits:
+Industrial GigE Vision cameras stream high-throughput packet bursts. Increase Linux UDP socket buffer limits while enabling FQ-CoDel smart queueing to prevent Wi-Fi bufferbloat:
 
 ```bash
 sudo bash -c 'cat > /etc/sysctl.d/60-gige-camera.conf <<EOF
-net.core.rmem_max = 67108864
-net.core.rmem_default = 33554432
-net.core.wmem_max = 67108864
-net.core.wmem_default = 33554432
-net.core.netdev_max_backlog = 10000
+net.core.rmem_max = 134217728
+net.core.wmem_max = 134217728
+net.core.rmem_default = 262144
+net.core.wmem_default = 262144
+net.ipv4.tcp_rmem = 4096 131072 67108864
+net.ipv4.tcp_wmem = 4096 65536 67108864
+net.core.netdev_max_backlog = 30000
+net.core.default_qdisc = fq_codel
+vm.dirty_background_ratio = 5
+vm.dirty_ratio = 10
 EOF'
 sudo sysctl -p /etc/sysctl.d/60-gige-camera.conf
 ```

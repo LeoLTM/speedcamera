@@ -95,14 +95,19 @@ sudo apt-get install -y \
   sqlite3 \
   libsqlite3-dev
 
-# Apply GigE Vision socket buffer tuning (64MB)
-echo "[*] Configuring Linux socket buffers for GigE camera..."
+# Apply GigE Vision socket buffer tuning with fq_codel to prevent bufferbloat
+echo "[*] Configuring Linux socket buffers for GigE camera (with fq_codel)..."
 sudo bash -c 'cat > /etc/sysctl.d/60-gige-camera.conf <<EOF
-net.core.rmem_max = 67108864
-net.core.rmem_default = 33554432
-net.core.wmem_max = 67108864
-net.core.wmem_default = 33554432
-net.core.netdev_max_backlog = 10000
+net.core.rmem_max = 134217728
+net.core.wmem_max = 134217728
+net.core.rmem_default = 262144
+net.core.wmem_default = 262144
+net.ipv4.tcp_rmem = 4096 131072 67108864
+net.ipv4.tcp_wmem = 4096 65536 67108864
+net.core.netdev_max_backlog = 30000
+net.core.default_qdisc = fq_codel
+vm.dirty_background_ratio = 5
+vm.dirty_ratio = 10
 EOF'
 sudo sysctl -p /etc/sysctl.d/60-gige-camera.conf 2>/dev/null || sudo sysctl --system 2>/dev/null || true
 
@@ -187,8 +192,25 @@ LimitMEMLOCK=infinity
 WantedBy=multi-user.target
 EOF
 
+# Install WiFi power management disable service
+sudo cp "${PROJECT_DIR}/scripts/wifi-power-off.service" /etc/systemd/system/wifi-power-off.service 2>/dev/null || sudo bash -c "cat > /etc/systemd/system/wifi-power-off.service <<'EOF'
+[Unit]
+Description=Disable WiFi Power Management
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/iwconfig wlan0 power off
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+
 sudo systemctl daemon-reload
 sudo systemctl enable speedcamera.service
+sudo systemctl enable wifi-power-off.service
+sudo systemctl restart wifi-power-off.service 2>/dev/null || true
 sudo systemctl restart speedcamera.service
 
 echo ""

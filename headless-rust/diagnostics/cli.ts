@@ -174,7 +174,7 @@ TCPKeepAlive yes
 EOF'
     sudo systemctl reload ssh 2>/dev/null || sudo systemctl reload sshd 2>/dev/null || true
 
-    echo "=== 3. Tuning Sysctl Network Buffers for Wi-Fi + GigE ==="
+    echo "=== 3. Tuning Sysctl Network Buffers for Wi-Fi + GigE (with fq_codel) ==="
     sudo bash -c 'cat > /etc/sysctl.d/60-speedcamera-optimized.conf <<EOF
 # Keep large limits for GigE camera socket allocation (SO_RCVBUF)
 net.core.rmem_max = 134217728
@@ -185,14 +185,32 @@ net.core.wmem_default = 262144
 net.ipv4.tcp_rmem = 4096 131072 67108864
 net.ipv4.tcp_wmem = 4096 65536 67108864
 net.core.netdev_max_backlog = 30000
+net.core.default_qdisc = fq_codel
 # Prevent dirty writeback stalls
 vm.dirty_background_ratio = 5
 vm.dirty_ratio = 10
 EOF'
     sudo sysctl -p /etc/sysctl.d/60-speedcamera-optimized.conf 2>/dev/null || sudo sysctl --system
 
-    echo "=== 4. Optimizing NetworkManager Hotspot Connection ==="
-    sudo nmcli connection modify "Speedcamera-Hotspot" 802-11-wireless.powersave 2 802-11-wireless.channel 6 2>/dev/null || true
+    echo "=== 4. Optimizing NetworkManager Hotspot Connection (5GHz Band A, Ch 36) ==="
+    sudo nmcli connection modify "Speedcamera-Hotspot" 802-11-wireless.powersave 2 802-11-wireless.band a 802-11-wireless.channel 36 2>/dev/null || true
+
+    echo "=== 5. Locking Down Wi-Fi Power Management Permanently ==="
+    sudo bash -c 'cat > /etc/systemd/system/wifi-power-off.service <<EOF
+[Unit]
+Description=Disable WiFi Power Management
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/iwconfig wlan0 power off
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF'
+    sudo systemctl daemon-reload 2>/dev/null || true
+    sudo systemctl enable --now wifi-power-off.service 2>/dev/null || true
 
     echo "=== Optimization Complete! ==="
   `;

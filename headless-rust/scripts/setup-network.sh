@@ -31,7 +31,7 @@ apply_field_mode() {
   echo ""
 
   # Apply GigE Vision kernel socket buffer optimizations without causing Wi-Fi bufferbloat
-  echo "[*] Applying optimized network socket buffer configuration (128MB max, clean TCP defaults)..."
+  echo "[*] Applying optimized network socket buffer configuration (128MB max, clean TCP defaults, fq_codel)..."
   sudo bash -c 'cat > /etc/sysctl.d/60-gige-camera.conf <<EOF
 # Keep high buffer limits for GigE camera explicit SO_RCVBUF allocation
 net.core.rmem_max = 134217728
@@ -42,6 +42,8 @@ net.core.wmem_default = 262144
 net.ipv4.tcp_rmem = 4096 131072 67108864
 net.ipv4.tcp_wmem = 4096 65536 67108864
 net.core.netdev_max_backlog = 30000
+# Smart queuing algorithm: small interactive packets jump ahead of massive GigE camera streams
+net.core.default_qdisc = fq_codel
 # Prevent dirty-page writeback stalls when saving capture images
 vm.dirty_background_ratio = 5
 vm.dirty_ratio = 10
@@ -53,8 +55,8 @@ EOF'
   echo "[*] Enabling jumbo frames (MTU 9000) on ${ETH_IFACE}..."
   sudo ip link set dev "${ETH_IFACE}" mtu 9000 2>/dev/null || echo "Note: MTU 9000 not supported by NIC/driver, keeping default."
 
-  # Configure Wi-Fi Hotspot AP
-  echo "[1/2] Configuring Wi-Fi Hotspot AP on ${WIFI_IFACE}..."
+  # Configure Wi-Fi Hotspot AP (5GHz Band A, Channel 36 to avoid 2.4GHz congestion and Broadcom AP firmware bugs)
+  echo "[1/2] Configuring 5GHz Wi-Fi Hotspot AP on ${WIFI_IFACE}..."
   SSID="speedcamera"
   PASS="speedcamerapass"
   
@@ -73,8 +75,8 @@ EOF'
     autoconnect yes \
     ssid "${SSID}" \
     mode ap \
-    802-11-wireless.band bg \
-    802-11-wireless.channel 6 \
+    802-11-wireless.band a \
+    802-11-wireless.channel 36 \
     802-11-wireless.powersave 2 \
     ipv4.method shared \
     ipv4.addresses 192.168.4.1/24 \
@@ -95,9 +97,24 @@ EOF'
     802-3-ethernet.mtu 9000
   sudo nmcli connection up "Speedcamera-CameraLAN" 2>/dev/null || echo "Note: Ethernet link active when camera cable is connected."
 
-  # Disable Wi-Fi power saving on AP interface to eliminate latency spikes and disconnects
-  echo "[*] Disabling Wi-Fi power saving on ${WIFI_IFACE}..."
-  sudo iw dev "${WIFI_IFACE}" set power_save off 2>/dev/null || sudo iwconfig "${WIFI_IFACE}" power off 2>/dev/null || true
+  # Permanently disable Wi-Fi power saving via persistent systemd service
+  echo "[*] Locking down Wi-Fi power management permanently (wifi-power-off.service)..."
+  sudo bash -c "cat > /etc/systemd/system/wifi-power-off.service <<EOF
+[Unit]
+Description=Disable WiFi Power Management
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/iwconfig ${WIFI_IFACE} power off
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+  sudo systemctl daemon-reload 2>/dev/null || true
+  sudo systemctl enable wifi-power-off.service 2>/dev/null || true
+  sudo systemctl restart wifi-power-off.service 2>/dev/null || sudo iw dev "${WIFI_IFACE}" set power_save off 2>/dev/null || sudo iwconfig "${WIFI_IFACE}" power off 2>/dev/null || true
 
   # Block Bluetooth to free 2.4GHz spectrum and internal resources for Wi-Fi
   echo "[*] Blocking Bluetooth to improve Wi-Fi performance..."
@@ -106,9 +123,9 @@ EOF'
   echo ""
   echo "========================================================="
   echo " Field Mode Active!"
-  echo "  • Wi-Fi Hotspot: SSID '${SSID}' (Password: '${PASS}')"
-  echo "  • Web UI:        http://192.168.4.1:3000"
-  echo "  • Camera LAN:    http://192.168.1.100:3000"
+  echo "  • 5GHz Wi-Fi Hotspot: SSID '${SSID}' (Password: '${PASS}')"
+  echo "  • Web UI:             http://192.168.4.1:3000"
+  echo "  • Camera LAN:         http://192.168.1.100:3000"
   echo "========================================================="
 }
 

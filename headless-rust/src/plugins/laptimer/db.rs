@@ -97,6 +97,7 @@ pub fn insert_lap(
     })
 }
 
+// ponytail: single batched query for laps to avoid N+1 query overhead
 pub fn get_lap_sessions(
     conn: &Connection,
     page: i64,
@@ -122,20 +123,84 @@ pub fn get_lap_sessions(
     })?;
 
     let mut sessions = Vec::new();
+    let mut session_map: std::collections::HashMap<i64, Vec<Lap>> = std::collections::HashMap::new();
     for s in session_rows {
         let session = s?;
-        let laps = get_laps_for_session(conn, session.id)?;
-        sessions.push(LapSessionWithLaps {
-            id: session.id,
-            started_at: session.started_at,
-            ended_at: session.ended_at,
-            lap_mode: session.lap_mode,
-            created_at: session.created_at,
-            laps,
-        });
+        session_map.insert(session.id, Vec::new());
+        sessions.push(session);
     }
 
-    Ok((sessions, total))
+    if !sessions.is_empty() {
+        let placeholders: Vec<String> = sessions.iter().map(|_| "?".to_string()).collect();
+        let sql = format!(
+            "SELECT id, sessionId, lapNumber, startTimestamp, endTimestamp, durationMs,
+                    speedAtStart, speedAtEnd, startImagePath, endImagePath
+             FROM laps WHERE sessionId IN ({}) ORDER BY lapNumber ASC",
+            placeholders.join(",")
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let id_params: Vec<&dyn rusqlite::ToSql> =
+            sessions.iter().map(|s| &s.id as &dyn rusqlite::ToSql).collect();
+        let lap_rows = stmt.query_map(id_params.as_slice(), |row| {
+            Ok(Lap {
+                id: row.get(0)?,
+                session_id: row.get(1)?,
+                lap_number: row.get(2)?,
+                start_timestamp: row.get(3)?,
+                end_timestamp: row.get(4)?,
+                duration_ms: row.get(5)?,
+                speed_at_start: row.get(6)?,
+                speed_at_end: row.get(7)?,
+                start_image_path: row.get(8)?,
+                end_image_path: row.get(9)?,
+            })
+        })?;
+
+        for lap in lap_rows {
+            let l = lap?;
+            if let Some(vec) = session_map.get_mut(&l.session_id) {
+                vec.push(l);
+            }
+        }
+    }
+
+    let result = sessions
+        .into_iter()
+        .map(|s| {
+            let laps = session_map.remove(&s.id).unwrap_or_default();
+            LapSessionWithLaps {
+                id: s.id,
+                started_at: s.started_at,
+                ended_at: s.ended_at,
+                lap_mode: s.lap_mode,
+                created_at: s.created_at,
+                laps,
+            }
+        })
+        .collect();
+
+    Ok((result, total))
+}
+
+pub fn get_active_session(conn: &Connection) -> Result<Option<LapSession>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, startedAt, endedAt, lapMode, createdAt FROM lap_sessions WHERE endedAt IS NULL ORDER BY id DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map([], |row| {
+        Ok(LapSession {
+            id: row.get(0)?,
+            started_at: row.get(1)?,
+            ended_at: row.get(2)?,
+            lap_mode: row.get(3)?,
+            created_at: row.get(4)?,
+        })
+    })?;
+
+    if let Some(row) = rows.next() {
+        Ok(Some(row?))
+    } else {
+        Ok(None)
+    }
 }
 
 pub fn get_lap_session_by_id(conn: &Connection, id: i64) -> Result<Option<LapSessionWithLaps>> {
@@ -169,7 +234,7 @@ pub fn get_lap_session_by_id(conn: &Connection, id: i64) -> Result<Option<LapSes
     }
 }
 
-fn get_laps_for_session(conn: &Connection, session_id: i64) -> Result<Vec<Lap>> {
+pub fn get_laps_for_session(conn: &Connection, session_id: i64) -> Result<Vec<Lap>> {
     let mut stmt = conn.prepare(
         "SELECT id, sessionId, lapNumber, startTimestamp, endTimestamp, durationMs,
                 speedAtStart, speedAtEnd, startImagePath, endImagePath

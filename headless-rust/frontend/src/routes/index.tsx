@@ -6,8 +6,8 @@ import { LastCapturedImage } from "@/components/LastCapturedImage";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ViolationCard } from "@/components/ViolationCard";
 import { ArmingButton } from "@/components/ArmingButton";
-import { LapTimerDisplay } from "@/components/LapTimerDisplay";
 import { useAppStore } from "@/stores/useAppStore";
+import { pluginRegistry } from "@/plugins";
 import { getRpc } from "@/lib/rpc";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowUpBigIcon, ArrowDownBigIcon } from "@hugeicons/core-free-icons";
@@ -26,7 +26,8 @@ function HomePage() {
   const lastViolation = useAppStore((s) => s.lastViolation);
   const setMaxSpeed = useAppStore((s) => s.setMaxSpeed);
   const appMode = useAppStore((s) => s.appMode);
-  const currentLaps = useAppStore((s) => s.currentLaps);
+
+  const SidePanel = pluginRegistry.getSidePanel(appMode);
 
   const serialStatus = connectedPort ? "connected" : "disconnected";
   const cameraStatus = cameraConnected ? "connected" : "unknown";
@@ -64,13 +65,8 @@ function HomePage() {
 
         {/* Side panel */}
         <div className="w-72 shrink-0 flex flex-col gap-4 p-4 border-l border-border overflow-y-auto">
-          {appMode === "laptimer" ? (
-            /* ── Lap timer panel ── */
-            <LapTimerDisplay
-              compact
-              laps={currentLaps}
-              className="flex-1 py-6"
-            />
+          {SidePanel ? (
+            <SidePanel />
           ) : (
             /* ── Speed camera panel ── */
             <>

@@ -4,8 +4,8 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Delete02Icon, CheckmarkCircle01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatTimestamp } from "@/lib/format";
-import { useAppStore } from "@/stores/useAppStore";
-import { LapImageThumbnails } from "@/components/LapImageThumbnails";
+import { useLapStore } from "../store";
+import { LapImageThumbnails } from "../components/LapImageThumbnails";
 import type { Lap } from "@/shared/types";
 
 interface LapRowProps {
@@ -22,7 +22,7 @@ interface LapRowProps {
  * session expansion. `deletable` opts in to the history-only delete affordance.
  */
 export function LapRow({ lap, isBest, deletable = false, onDelete }: LapRowProps) {
-  const deleteHistoryLap = useAppStore((s) => s.deleteHistoryLap);
+  const deleteHistoryLap = useLapStore((s) => s.deleteHistoryLap);
   const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {

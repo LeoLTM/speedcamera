@@ -3,10 +3,9 @@ import { getRpc } from "@/lib/rpc";
 import type { SerialSlice } from "./serialSlice";
 import type { CameraSlice } from "./cameraSlice";
 import type { MeasurementSlice } from "./measurementSlice";
-import type { LapSlice } from "./lapSlice";
 
 export type SystemState = "PASSIVE" | "DISARMED" | "ARMED";
-export type AppMode = "speedcamera" | "laptimer";
+export type AppMode = "speedcamera" | string;
 
 export interface SystemSlice {
   /** Underlying daemon armed state */
@@ -17,13 +16,13 @@ export interface SystemSlice {
   setArmed: (armed: boolean) => Promise<void>;
   handleArmedStatus: (armed: boolean) => void;
   refreshArmedStatus: () => Promise<void>;
-  /** Active mode — routes serial events to violation or lap handler */
+  /** Active mode — routes serial events to violation or plugin handler */
   appMode: AppMode;
   setAppMode: (mode: AppMode) => void;
 }
 
 export const createSystemSlice: StateCreator<
-  SystemSlice & SerialSlice & CameraSlice & MeasurementSlice & LapSlice,
+  SystemSlice & SerialSlice & CameraSlice & MeasurementSlice,
   [],
   [],
   SystemSlice

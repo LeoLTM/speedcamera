@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { useAppStore } from "@/stores/useAppStore";
+import { useLapStore } from "../store";
 import type { AppSettings } from "@/shared/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,9 +11,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export function LapTimerTab() {
-  const lapSettings = useAppStore((s) => s.lapSettings);
-  const updateLapSetting = useAppStore((s) => s.updateLapSetting);
+export function LapTimerSettingsTab() {
+  const lapSettings = useLapStore((s) => s.lapSettings);
+  const updateLapSetting = useLapStore((s) => s.updateLapSetting);
   const [saving, setSaving] = useState<string | null>(null);
 
   const handleUpdate = async (key: keyof AppSettings, value: string) => {

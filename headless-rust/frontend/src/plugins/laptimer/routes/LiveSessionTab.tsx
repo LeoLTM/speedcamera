@@ -5,9 +5,9 @@ import { PlayIcon, StopIcon, Timer01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { LapTimerDisplay } from "@/components/LapTimerDisplay";
+import { LapTimerDisplay } from "../components/LapTimerDisplay";
+import { useLapStore, type LapState } from "../store";
 import { useAppStore } from "@/stores/useAppStore";
-import type { LapState } from "@/stores/slices/lapSlice";
 import { LapRow } from "./LapRow";
 import type { Lap } from "@/shared/types";
 
@@ -26,13 +26,13 @@ const stateColor: Record<LapState, string> = {
 };
 
 export function LiveSessionTab() {
-  const lapState = useAppStore((s) => s.lapState);
-  const currentSession = useAppStore((s) => s.currentSession);
-  const currentLaps = useAppStore((s) => s.currentLaps);
-  const lapSettings = useAppStore((s) => s.lapSettings);
-  const isLapSaving = useAppStore((s) => s.isLapSaving);
-  const startLapSession = useAppStore((s) => s.startLapSession);
-  const stopLapSession = useAppStore((s) => s.stopLapSession);
+  const lapState = useLapStore((s) => s.lapState);
+  const currentSession = useLapStore((s) => s.currentSession);
+  const currentLaps = useLapStore((s) => s.currentLaps);
+  const lapSettings = useLapStore((s) => s.lapSettings);
+  const isLapSaving = useLapStore((s) => s.isLapSaving);
+  const startLapSession = useLapStore((s) => s.startLapSession);
+  const stopLapSession = useLapStore((s) => s.stopLapSession);
   const connectedPort = useAppStore((s) => s.connectedPort);
 
   const [starting, setStarting] = useState(false);

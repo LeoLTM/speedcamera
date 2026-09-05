@@ -1,17 +1,9 @@
-import { createRoute } from "@tanstack/react-router";
 import { Tabs as TabsPrimitive } from "radix-ui";
-import { RootRoute } from "./__root";
 import { cn } from "@/lib/utils";
-import { LiveSessionTab } from "./laps/LiveSessionTab";
-import { HistoryTab } from "./laps/HistoryTab";
+import { LiveSessionTab } from "./LiveSessionTab";
+import { HistoryTab } from "./HistoryTab";
 
-export const LapsRoute = createRoute({
-  getParentRoute: () => RootRoute,
-  path: "/laps",
-  component: LapsPage,
-});
-
-function LapsPage() {
+export function LapsPage() {
   return (
     <div className="h-full overflow-hidden flex flex-col">
       <TabsPrimitive.Root defaultValue="live" className="flex flex-col h-full">

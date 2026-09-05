@@ -6,9 +6,9 @@ import { IndexRoute } from "@/routes/index";
 import { ViolationsRoute } from "@/routes/violations";
 import { SettingsRoute } from "@/routes/settings";
 import { AboutRoute } from "@/routes/about";
-import { LapsRoute } from "@/routes/laps";
 import { TeableRoute } from "@/routes/teable";
 import { SetupRoute } from "@/routes/setup";
+import { pluginRegistry } from "@/plugins";
 
 // ─── Router ─────────────────────────────────────────────────────────────────────
 
@@ -17,9 +17,9 @@ const routeTree = RootRoute.addChildren([
   ViolationsRoute,
   SettingsRoute,
   AboutRoute,
-  LapsRoute,
   TeableRoute,
   SetupRoute,
+  ...pluginRegistry.getRoutes(RootRoute),
 ]);
 
 const history = createMemoryHistory({ initialEntries: ["/"] });

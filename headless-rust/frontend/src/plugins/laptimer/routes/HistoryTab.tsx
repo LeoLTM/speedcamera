@@ -4,15 +4,15 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAppStore } from "@/stores/useAppStore";
+import { useLapStore } from "../store";
 import { SessionCard } from "./SessionCard";
 
 const HISTORY_PAGE_SIZE = 10;
 
 export function HistoryTab() {
-  const lapHistory = useAppStore((s) => s.lapHistory);
-  const fetchLapHistory = useAppStore((s) => s.fetchLapHistory);
-  const deleteHistorySession = useAppStore((s) => s.deleteHistorySession);
+  const lapHistory = useLapStore((s) => s.lapHistory);
+  const fetchLapHistory = useLapStore((s) => s.fetchLapHistory);
+  const deleteHistorySession = useLapStore((s) => s.deleteHistorySession);
 
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);

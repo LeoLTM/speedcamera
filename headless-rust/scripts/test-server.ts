@@ -136,6 +136,24 @@ try {
         }
         console.log("SUCCESS: Armed RPC validated!");
 
+        // Test RPC: getPlugins
+        const pluginsResp: any = await socket.timeout(3000).emitWithAck("rpc", { method: "getPlugins", params: {} });
+        console.log("RPC getPlugins response:", pluginsResp);
+        if (pluginsResp.error || !Array.isArray(pluginsResp.result) || !pluginsResp.result.some((p: any) => p.id === "laptimer")) {
+          throw new Error("getPlugins RPC failed or laptimer plugin missing");
+        }
+        console.log("SUCCESS: Plugin listing validated!");
+
+        // Test RPC: createLapSession (handled via LapTimerPlugin)
+        const lapSessionResp: any = await socket.timeout(3000).emitWithAck("rpc", { method: "createLapSession", params: { lapMode: "single" } });
+        console.log("RPC createLapSession response:", lapSessionResp);
+        if (lapSessionResp.error || typeof lapSessionResp.result?.id !== "number") {
+          throw new Error("createLapSession plugin RPC failed");
+        }
+        // Clean up created session
+        await socket.timeout(3000).emitWithAck("rpc", { method: "deleteLapSession", params: { id: lapSessionResp.result.id } });
+        console.log("SUCCESS: LapTimer plugin RPC validated!");
+
         clearTimeout(timer);
         socket.disconnect();
         resolve();

@@ -12,7 +12,6 @@ export const RootRoute = createRootRoute({
 
 function Root() {
   useSystemStateSync();
-  const loadLapSettings = useAppStore((s) => s.loadLapSettings);
   const loadTeableState = useAppStore((s) => s.loadTeableState);
   const refreshCameraStatus = useAppStore((s) => s.refreshCameraStatus);
   const refreshSerialStatus = useAppStore((s) => s.refreshSerialStatus);
@@ -37,7 +36,6 @@ function Root() {
     void refreshCameraStatus();
     void refreshSerialStatus();
     void refreshArmedStatus();
-    void loadLapSettings();
     void loadTeableState();
 
     // 3. Hydrate latest violation for instant preview on home screen
@@ -56,7 +54,6 @@ function Root() {
     refreshCameraStatus,
     refreshSerialStatus,
     refreshArmedStatus,
-    loadLapSettings,
     loadTeableState,
     setLastViolation,
   ]);

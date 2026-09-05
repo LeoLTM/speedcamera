@@ -1,8 +1,6 @@
 import { create } from "zustand";
 import type { Lap, LapSession, LapSessionWithLaps, SerialStatusPayload, AppSettings } from "@/shared/types";
 import { getRpc } from "@/lib/rpc";
-import { useAppStore } from "@/stores/useAppStore";
-import { toast } from "sonner";
 
 export type LapState = "idle" | "waiting" | "timing";
 
@@ -24,6 +22,7 @@ export interface LapStore {
 
   startLapSession: () => Promise<void>;
   stopLapSession: () => Promise<void>;
+  syncActiveSession: () => Promise<void>;
   handleSerialStatusForLap: (payload: SerialStatusPayload) => void;
   loadLapSettings: () => Promise<void>;
   updateLapSetting: (key: keyof AppSettings, value: string) => Promise<void>;
@@ -32,9 +31,7 @@ export interface LapStore {
   deleteHistoryLap: (id: number) => Promise<void>;
 }
 
-let pendingStartImageBase64: string | null = null;
-let lapSaving = false;
-
+// ponytail: thin reactive store that reflects backend state instead of handling raw camera I/O
 export const useLapStore = create<LapStore>()((set, get) => ({
   lapState: "idle",
   currentSession: null,
@@ -51,32 +48,22 @@ export const useLapStore = create<LapStore>()((set, get) => ({
 
   startLapSession: async () => {
     const { lapSettings } = get();
-    const session = await getRpc().request.createLapSession({ lapMode: lapSettings.lapMode });
-    pendingStartImageBase64 = null;
-    lapSaving = false;
+    const session = await getRpc().request.startLapSession({
+      lapMode: lapSettings.lapMode,
+      dirFilter: lapSettings.dirFilter,
+      saveImages: lapSettings.saveImages,
+    });
     set({
       currentSession: session,
       currentLaps: [],
       lapNumber: 0,
       lapState: "waiting",
+      lapTimingStartedAt: null,
     });
-    useAppStore.getState().setAppMode("laptimer");
-
-    await getRpc().request
-      .sendCommand({ json: JSON.stringify({ command: "startLapSession", mode: lapSettings.lapMode, autoFlash: true, dirFilter: lapSettings.dirFilter }) })
-      .catch((err: unknown) => console.error("[lapStore] startLapSession command failed:", err));
   },
 
   stopLapSession: async () => {
-    const { currentSession } = get();
-    if (currentSession) {
-      await getRpc().request.closeLapSession({ id: currentSession.id });
-    }
-    await getRpc().request
-      .sendCommand({ json: JSON.stringify({ command: "stopLapSession" }) })
-      .catch((err: unknown) => console.error("[lapStore] stopLapSession command failed:", err));
-    pendingStartImageBase64 = null;
-    lapSaving = false;
+    await getRpc().request.stopLapSession({});
     set({
       lapState: "idle",
       currentSession: null,
@@ -84,102 +71,67 @@ export const useLapStore = create<LapStore>()((set, get) => ({
     });
   },
 
+  syncActiveSession: async () => {
+    try {
+      const resp = await getRpc().request.getActiveLapSession({});
+      if (resp.session) {
+        set({
+          currentSession: resp.session,
+          currentLaps: resp.session.laps,
+          lapState: resp.lapState as LapState,
+          lapNumber: resp.lapNumber,
+          lapTimingStartedAt: resp.lapTimingStartedAt,
+        });
+      } else {
+        set({
+          currentSession: null,
+          lapState: resp.lapState as LapState,
+          lapNumber: resp.lapNumber,
+          lapTimingStartedAt: resp.lapTimingStartedAt,
+        });
+      }
+    } catch (e) {
+      console.warn("[lapStore] Failed to sync active session:", e);
+    }
+  },
+
   handleSerialStatusForLap: (payload) => {
     if (payload.status === "LAPWAITING") {
-      const { lapState, currentSession } = get();
-      if (currentSession && lapState === "idle") {
-        set({ lapState: "waiting" });
-      }
+      set({ lapState: "waiting" });
       return;
     }
 
     if (payload.status === "LAPSTOPPED") {
-      pendingStartImageBase64 = null;
-      lapSaving = false;
       set({ lapState: "idle", lapTimingStartedAt: null });
       return;
     }
 
     if (payload.status === "LAPSTART") {
-      const { lapState, lapSettings, currentSession } = get();
-      const isMultiContinuation = lapState === "timing" && lapSettings.lapMode === "multi";
-      if (lapState !== "waiting" && (lapState !== "idle" || !currentSession) && !isMultiContinuation) return;
-
-      set({ lapState: "timing", lapNumber: payload.lapNumber, lapTimingStartedAt: Date.now() });
-
-      (async () => {
-        if (isMultiContinuation) return;
-        if (lapSettings.saveImages) {
-          const b64 = await getRpc().request.captureFrame({});
-          pendingStartImageBase64 = b64;
-        } else {
-          pendingStartImageBase64 = null;
-        }
-      })().catch((err: unknown) =>
-        console.error("[lapStore] Start image capture failed:", err)
-      );
+      const { lapSettings } = get();
+      set({
+        lapState: "timing",
+        lapNumber: payload.lapNumber,
+        lapTimingStartedAt: payload.timestamp || Date.now(),
+      });
       return;
     }
 
     if (payload.status === "LAPEND") {
-      const { lapState, currentSession, lapSettings, lapNumber } = get();
-      if (lapState !== "timing" || !currentSession) return;
-      if (lapSaving) return;
-      lapSaving = true;
-
-      const currentLapNumber = lapNumber;
-      const savedStartImage = pendingStartImageBase64;
-      pendingStartImageBase64 = null;
-
-      const capturedSessionId = currentSession.id;
-      const capturedSession = currentSession;
-
-      const durationMs = Math.round(payload.durationMs);
-      const { speedAtStart, speedAtEnd } = payload;
-      const endTimestamp = payload.timestamp;
-      const startTimestamp = endTimestamp - durationMs;
-
+      const { lapSettings } = get();
       if (lapSettings.lapMode === "multi") {
-        set({ lapTimingStartedAt: null, isLapSaving: true });
+        set({
+          lapNumber: payload.lapNumber + 1,
+          lapTimingStartedAt: payload.timestamp || Date.now(),
+        });
       } else {
-        set({ lapState: "waiting", lapNumber: 1, lapTimingStartedAt: null, isLapSaving: true });
+        set({
+          lapState: "waiting",
+          lapTimingStartedAt: null,
+        });
       }
 
-      (async () => {
-        const endImageBase64 = lapSettings.saveImages ? await getRpc().request.captureFrame({}) : null;
-
-        const lap = await getRpc().request.saveLap({
-          sessionId: capturedSessionId,
-          lapNumber: currentLapNumber,
-          startTimestamp,
-          endTimestamp,
-          durationMs,
-          speedAtStart,
-          speedAtEnd,
-          startImageBase64: savedStartImage,
-          endImageBase64,
-        });
-
-        set((state) => ({ currentLaps: [...state.currentLaps, lap], isLapSaving: false }));
-
-        const teableEnabled = (useAppStore.getState() as any).teableSyncEnabled;
-        if (teableEnabled && capturedSession) {
-          getRpc().request.syncLapToTeable({ lap, session: capturedSession }).catch((e: unknown) => {
-            toast.error(`Teable sync failed: ${String(e)}`);
-          });
-        }
-
-        if (lapSettings.lapMode === "multi") {
-          pendingStartImageBase64 = endImageBase64;
-        }
-      })()
-        .catch((err: unknown) => {
-          console.error("[lapStore] Lap save failed:", err);
-          set({ isLapSaving: false });
-        })
-        .finally(() => {
-          lapSaving = false;
-        });
+      // Backend in Rust has captured photo and inserted lap in DB; re-sync to get new lap + image paths
+      void get().syncActiveSession();
     }
   },
 
@@ -188,7 +140,7 @@ export const useLapStore = create<LapStore>()((set, get) => ({
     set({
       lapSettings: {
         lapMode: settings.lapMode === "multi" ? "multi" : "single",
-        saveImages: settings.lapSaveImages === "true",
+        saveImages: settings.lapSaveImages !== "false",
         dirFilter: (settings.lapDirFilter === "forward" || settings.lapDirFilter === "reverse")
           ? settings.lapDirFilter
           : "both",
@@ -201,7 +153,7 @@ export const useLapStore = create<LapStore>()((set, get) => ({
     set((state) => {
       const s = { ...state.lapSettings };
       if (key === "lapMode") s.lapMode = value === "multi" ? "multi" : "single";
-      else if (key === "lapSaveImages") s.saveImages = value === "true";
+      else if (key === "lapSaveImages") s.saveImages = value !== "false";
       else if (key === "lapDirFilter") s.dirFilter = (value === "forward" || value === "reverse") ? value : "both";
       return { lapSettings: s };
     });

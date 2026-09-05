@@ -213,6 +213,17 @@ export interface SaveLapInput {
   endImageBase64: string | null;   // raw base64, no data-URL prefix
 }
 
+export interface ActiveLapSessionResponse {
+  session: LapSessionWithLaps | null;
+  lapState: "idle" | "waiting" | "timing";
+  lapNumber: number;
+  lapTimingStartedAt: number | null;
+  lapMode: string;
+  dirFilter: string;
+  saveImages: boolean;
+}
+
+
 // ─── Teable Types ────────────────────────────────────────────────────────────
 
 export interface TeableUser {
@@ -326,6 +337,18 @@ export type SpeedcameraRPC = {
     };
 
     // DB – lap sessions
+    startLapSession: {
+      params: { lapMode?: string; dirFilter?: string; saveImages?: boolean };
+      response: LapSession;
+    };
+    stopLapSession: {
+      params: Record<string, never>;
+      response: void;
+    };
+    getActiveLapSession: {
+      params: Record<string, never>;
+      response: ActiveLapSessionResponse;
+    };
     createLapSession: {
       params: { lapMode: string };
       response: LapSession;

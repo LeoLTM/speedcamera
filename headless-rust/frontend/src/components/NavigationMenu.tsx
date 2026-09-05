@@ -1,8 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { DashboardCircleIcon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
-import { useAppStore } from "@/stores/useAppStore";
 import { pluginRegistry } from "@/plugins";
 import { ConnectionIndicator } from "./ConnectionIndicator";
 
@@ -20,11 +17,7 @@ interface NavigationMenuProps {
 }
 
 export function NavigationMenu({ className }: NavigationMenuProps) {
-  const appMode = useAppStore((s) => s.appMode);
-  const setAppMode = useAppStore((s) => s.setAppMode);
-
   const pluginNavItems = pluginRegistry.getNavItems();
-  const pluginModes = pluginRegistry.getModes();
 
   const allNavItems = [
     CORE_NAV_ITEMS[0], // Home
@@ -47,45 +40,6 @@ export function NavigationMenu({ className }: NavigationMenuProps) {
           {item.label}
         </Link>
       ))}
-
-      {/* Mode toggle */}
-      <div className="ml-2 flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-0.5">
-        <button
-          type="button"
-          onClick={() => setAppMode("speedcamera")}
-          title="Speed Camera mode"
-          className={cn(
-            "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
-            appMode === "speedcamera"
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <HugeiconsIcon icon={DashboardCircleIcon} strokeWidth={2} className="w-3.5 h-3.5" />
-          Speed
-        </button>
-        {pluginModes.map((m) => {
-          const Icon = m.icon;
-          const isActive = appMode === m.id;
-          return (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => setAppMode(m.id as any)}
-              title={`${m.label} mode`}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
-                isActive
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <HugeiconsIcon icon={Icon as any} strokeWidth={2} className="w-3.5 h-3.5" />
-              {m.label}
-            </button>
-          );
-        })}
-      </div>
 
       <div className="ml-auto flex items-center">
         <ConnectionIndicator />

@@ -191,6 +191,7 @@ export interface Lap {
   startTimestamp: number;       // ms (Date.now())
   endTimestamp: number;         // ms (Date.now())
   durationMs: number;
+  durationUs?: number;
   speedAtStart: number;
   speedAtEnd: number;
   startImagePath: string | null;
@@ -207,11 +208,23 @@ export interface SaveLapInput {
   startTimestamp: number;
   endTimestamp: number;
   durationMs: number;
+  durationUs?: number;
   speedAtStart: number;
   speedAtEnd: number;
   startImageBase64: string | null; // raw base64, no data-URL prefix
   endImageBase64: string | null;   // raw base64, no data-URL prefix
 }
+
+export interface ActiveLapSessionResponse {
+  session: LapSessionWithLaps | null;
+  lapState: "idle" | "waiting" | "timing";
+  lapNumber: number;
+  lapTimingStartedAt: number | null;
+  lapMode: string;
+  dirFilter: string;
+  saveImages: boolean;
+}
+
 
 // ─── Teable Types ────────────────────────────────────────────────────────────
 
@@ -285,9 +298,10 @@ export type SerialStatusPayload =
   | { status: "OK";       value: number; tolerance: number; direction: "forward" | "reverse"; timestamp: number }
   | { status: "PONG"; config: EspPongConfig }
   | { status: "LAPSTART"; lapNumber: number; speedAtStart: number; timestamp: number }
-  | { status: "LAPEND";   lapNumber: number; durationMs: number; speedAtStart: number; speedAtEnd: number; timestamp: number }
+  | { status: "LAPEND";   lapNumber: number; durationMs: number; durationUs?: number; speedAtStart: number; speedAtEnd: number; timestamp: number }
   | { status: "LAPWAITING" }
   | { status: "LAPSTOPPED" }
+  | { status: "BARRIER_STATUS"; sensor1Interrupted: boolean; sensor2Interrupted: boolean; timestamp: number }
   | { status: "CONNECTED"; port?: string }
   | { status: "DISCONNECTED" };
 
@@ -326,6 +340,18 @@ export type SpeedcameraRPC = {
     };
 
     // DB – lap sessions
+    startLapSession: {
+      params: { lapMode?: string; dirFilter?: string; saveImages?: boolean };
+      response: LapSession;
+    };
+    stopLapSession: {
+      params: Record<string, never>;
+      response: void;
+    };
+    getActiveLapSession: {
+      params: Record<string, never>;
+      response: ActiveLapSessionResponse;
+    };
     createLapSession: {
       params: { lapMode: string };
       response: LapSession;

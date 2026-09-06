@@ -3,6 +3,8 @@
 #include "state.h"
 #include "json_output.h"
 #include "serial_io.h"
+#include "modules/laptimer.h"
+#include "modules/alignment.h"
 
 // ─── State Reset ─────────────────────────────────────────────────────────────
 void resetMeasurement() {
@@ -17,11 +19,16 @@ void setup() {
   Serial.begin(115200);
   pinMode(sensor1,  INPUT_PULLUP);
   pinMode(sensor2,  INPUT_PULLUP);
+  LapTimer::init();
+  Alignment::init();
   sendJsonStatus("ready");
 }
 
 // ─── Main Loop ───────────────────────────────────────────────────────────────
 void loop() {
+  LapTimer::update();
+  Alignment::update();
+
   // Process incoming serial commands every iteration
   handleSerial();
   if (stringComplete) {
@@ -102,67 +109,17 @@ void loop() {
     resetMeasurement();
 
     if (speedInKmH > 0.0f && speedInKmH < (float)maxSpeedHardCap) {
+      MeasurementEvent event = { speedInKmH, speedTolerance, direction, boundaryUs };
 
-      // ================================================================
-      // SPEED CAMERA MODE  (no active lap session)
-      // Behavior unchanged: host-controlled flash, violation tracking.
-      // ================================================================
-      if (lapSessionState == LapSessionState::IDLE) {
-        if (speedInKmH > maxSpeedKmH) {
-          sendJsonStatus("speeding", speedInKmH, speedTolerance, direction);
-        } else {
-          sendJsonStatus("legal", speedInKmH, speedTolerance, direction);
-        }
-
-      // ================================================================
-      // LAP TIMER MODE  (active lap session)
-      // Lap boundaries are firstTriggerUs (µs-precise first beam break),
-      // captured before any serial output or state change.
-      // ================================================================
+      // Base speed status (speeding or legal)
+      if (speedInKmH > maxSpeedKmH) {
+        sendJsonStatus("speeding", speedInKmH, speedTolerance, direction);
       } else {
-        // Emit speed event for UI display only — no blocking call follows
-        if (speedInKmH > maxSpeedKmH) {
-          sendJsonStatus("speeding", speedInKmH, speedTolerance, direction);
-        } else {
-          sendJsonStatus("legal", speedInKmH, speedTolerance, direction);
-        }
-
-        // Direction filter — configured per session
-        bool passValid = (lapDirectionFilter == LapDirectionFilter::BOTH)
-                      || (lapDirectionFilter == LapDirectionFilter::FORWARD_ONLY && strcmp(direction, "forward") == 0)
-                      || (lapDirectionFilter == LapDirectionFilter::REVERSE_ONLY && strcmp(direction, "reverse") == 0);
-
-        if (passValid) {
-          if (lapSessionState == LapSessionState::WAITING) {
-            // ── WAITING → TIMING: open lap N ────────────────────────────────
-            lapStartUs       = boundaryUs; // µs-precise first beam break
-            lapStartSpeedKmH = speedInKmH;
-            lapSessionState  = LapSessionState::TIMING;
-            sendLapStart(lapNumber, speedInKmH);
-
-          } else if (lapSessionState == LapSessionState::TIMING) {
-            // ── TIMING: close lap N ──────────────────────────────────────────
-            float lapDurationMs = (float)(boundaryUs - lapStartUs) * 0.001f;
-            sendLapEnd(lapNumber, lapDurationMs, lapStartSpeedKmH, speedInKmH);
-
-            if (lapMode == LapMode::SINGLE) {
-              lapSessionState  = LapSessionState::WAITING;
-              lapNumber        = 1;
-              lapStartUs       = 0;
-              lapStartSpeedKmH = 0.0f;
-
-            } else {
-              // MULTI: this same boundary crossing closes lap N and opens lap N+1.
-              // Reuse boundaryUs so there is zero gap between consecutive laps.
-              lapStartUs       = boundaryUs;
-              lapStartSpeedKmH = speedInKmH;
-              lapNumber++;
-              // lapSessionState stays TIMING
-              sendLapStart(lapNumber, speedInKmH); // resets host live timer immediately
-            }
-          }
-        }
+        sendJsonStatus("legal", speedInKmH, speedTolerance, direction);
       }
+
+      // ponytail: notify active modules with zero heap allocation or dynamic dispatch
+      LapTimer::onMeasurement(event);
 
     } else {
       sendJsonStatus("timeout"); // Speed out of valid range — discard
@@ -174,21 +131,24 @@ void loop() {
 
 // ─── Protocol Reference ───────────────────────────────────────────────────────
 //
-// SPEED CAMERA MODE (lapSessionState == IDLE)
+// SYSTEM / CORE
 //   Out: speeding {value, tolerance, direction} | legal {value, tolerance, direction}
 //        timeout | measuring | ready | pong | config | configError | jsonError
+//        capabilities {features: [...]}
 //   In:  setMaxSpeed {value:1–250}     — set speed limit
 //        setDebug {value:0|1}
 //        ping
+//        getCapabilities
 //
-// LAP TIMER MODE (lapSessionState != IDLE)
+// MODULE: LAP TIMER (dormant until startLapSession received)
 //   Out: lapWaiting                    — session opened, awaiting first pass
 //        lapStopped                    — session closed by host
 //        lapStart {lapNumber, speedAtStart}              — first beam break
 //        lapEnd   {lapNumber, durationMs, speedAtStart, speedAtEnd}  — lap closed
 //        speeding / legal still emitted (UI speed display)
 //   In:  startLapSession {mode, dirFilter?}  — open session
-//        stopLapSession                                   — close session
+//        stopLapSession                      — close session
 //
 // startLapSession optional fields:
 //   dirFilter:  "both" | "forward" | "reverse"  (default "both")
+

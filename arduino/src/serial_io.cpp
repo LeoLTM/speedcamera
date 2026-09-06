@@ -1,6 +1,8 @@
 #include "serial_io.h"
 #include "state.h"
 #include "json_output.h"
+#include "modules/laptimer.h"
+#include "modules/alignment.h"
 
 // ─── Serial Input ─────────────────────────────────────────────────────────────
 void handleSerial() {
@@ -65,31 +67,18 @@ void handleCommand(JsonDocument &doc) {
     debugEnabled = (val == 1);
     sendJsonConfig("debug", debugEnabled ? 1.0f : 0.0f);
 
-  } else if (strcmp(command, "startLapSession") == 0) {
-    const char *modeStr = doc["mode"] | "single";
-    lapMode = (strcmp(modeStr, "multi") == 0) ? LapMode::MULTI : LapMode::SINGLE;
-
-    // dirFilter: which crossing directions advance the lap state machine
-    const char *dirStr = doc["dirFilter"] | "both";
-    if      (strcmp(dirStr, "forward") == 0) lapDirectionFilter = LapDirectionFilter::FORWARD_ONLY;
-    else if (strcmp(dirStr, "reverse") == 0) lapDirectionFilter = LapDirectionFilter::REVERSE_ONLY;
-    else                                      lapDirectionFilter = LapDirectionFilter::BOTH;
-
-    lapSessionState  = LapSessionState::WAITING;
-    lapNumber        = 1;
-    lapStartUs       = 0;
-    lapStartSpeedKmH = 0.0f;
-    sendJsonStatus("lapWaiting");
-
-  } else if (strcmp(command, "stopLapSession") == 0) {
-    lapSessionState  = LapSessionState::IDLE;
-    lapNumber        = 1;
-    lapStartUs       = 0;
-    lapStartSpeedKmH = 0.0f;
-    sendJsonStatus("lapStopped");
-
   } else if (strcmp(command, "ping") == 0) {
     sendJsonPong();
+
+  } else if (strcmp(command, "getCapabilities") == 0) {
+    sendJsonCapabilities();
+
+  // ponytail: route module-specific commands without bloated registry abstractions
+  } else if (LapTimer::handleCommand(command, doc)) {
+    return;
+
+  } else if (Alignment::handleCommand(command, doc)) {
+    return;
 
   } else {
     sendJsonStatus("jsonError");

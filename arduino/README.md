@@ -2,6 +2,12 @@
 
 This submodule contains the firmware for an ESP8266 that reads two light barriers and measures the speed of passing vehicles. It sends the measurement data to the companion app using serial communication. It also controls a relay to trigger the flash when the companion app requests it when it takes a picture.
 
+## Module Architecture
+
+The firmware follows a monolithic companion architecture with dormant feature modules (e.g. `LapTimer`). All modules compile into a single firmware binary and are activated on-demand via serial commands from the companion daemon (`headless-rust`).
+
+For implementation details and instructions on adding new modules, see the [Module Architecture Guide](src/modules/README.md).
+
 ## Setup
 
 1. Install the Platformio IDE extension in Visual Studio Code.

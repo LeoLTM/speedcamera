@@ -2,9 +2,7 @@ import type { StateCreator } from "zustand";
 import type { SerialStatusPayload, Violation, EspPongConfig } from "@/shared/types";
 import type { CameraSlice } from "./cameraSlice";
 import type { SystemSlice } from "./systemSlice";
-import type { LapSlice } from "./lapSlice";
-import { getRpc } from "@/lib/rpc";
-import { toast } from "sonner";
+import { pluginRegistry } from "@/plugins";
 
 export interface MeasurementSlice {
   /** Last measured speed in km/h (null = no reading yet) */
@@ -23,7 +21,7 @@ export interface MeasurementSlice {
 }
 
 export const createMeasurementSlice: StateCreator<
-  MeasurementSlice & CameraSlice & SystemSlice & LapSlice,
+  MeasurementSlice & CameraSlice & SystemSlice,
   [],
   [],
   MeasurementSlice
@@ -46,33 +44,25 @@ export const createMeasurementSlice: StateCreator<
     }
 
     if (payload.status === "CONNECTED") {
-      const port = (payload as any).port || get().selectedPort || "connected";
-      get().setConnectedPort(port);
+      const port = (payload as any).port || (get() as any).selectedPort || "connected";
+      (get() as any).setConnectedPort(port);
       return;
     }
 
     if (payload.status === "DISCONNECTED") {
-      get().setConnectedPort("");
+      (get() as any).setConnectedPort("");
       return;
     }
 
-    // Lap-specific events MUST ALWAYS be forwarded to the lap state machine,
-    // regardless of systemState (e.g. even if camera is disconnected / PASSIVE)
-    if (
-      payload.status === "LAPSTART" ||
-      payload.status === "LAPEND" ||
-      payload.status === "LAPWAITING" ||
-      payload.status === "LAPSTOPPED"
-    ) {
-      get().handleSerialStatusForLap(payload);
+    // Forward plugin-specific events (e.g. lap timer) to registered plugins
+    if (pluginRegistry.dispatchSerialStatus(payload)) {
       return;
     }
 
-    const { systemState, appMode, currentSession } = get();
+    const { systemState, appMode } = get();
 
-    // If in lap timer mode or an active lap session is running, speed events
-    // update the display without creating speed camera violations
-    if (appMode === "laptimer" || currentSession !== null) {
+    // If in plugin mode (e.g. lap timer), speed events update display without recording violations
+    if (appMode !== "speedcamera") {
       if (payload.status === "SPEEDING" || payload.status === "OK") {
         set({ lastSpeed: payload.value, lastDirection: payload.direction });
       }

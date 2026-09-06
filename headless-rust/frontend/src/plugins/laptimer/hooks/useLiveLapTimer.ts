@@ -1,13 +1,13 @@
 import { useState, useEffect } from "react";
-import { useAppStore } from "@/stores/useAppStore";
+import { useLapStore } from "../store";
 
 /**
  * Returns the elapsed milliseconds for the current lap being timed,
  * updated every 50 ms. Returns null when not actively timing.
  */
 export function useLiveLapTimer(): number | null {
-  const lapState = useAppStore((s) => s.lapState);
-  const lapTimingStartedAt = useAppStore((s) => s.lapTimingStartedAt);
+  const lapState = useLapStore((s) => s.lapState);
+  const lapTimingStartedAt = useLapStore((s) => s.lapTimingStartedAt);
   const [elapsed, setElapsed] = useState<number | null>(null);
 
   useEffect(() => {

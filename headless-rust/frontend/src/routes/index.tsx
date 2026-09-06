@@ -6,11 +6,13 @@ import { LastCapturedImage } from "@/components/LastCapturedImage";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ViolationCard } from "@/components/ViolationCard";
 import { ArmingButton } from "@/components/ArmingButton";
-import { LapTimerDisplay } from "@/components/LapTimerDisplay";
 import { useAppStore } from "@/stores/useAppStore";
+import { useLapStore } from "@/plugins/laptimer/store";
+import { pluginRegistry } from "@/plugins";
 import { getRpc } from "@/lib/rpc";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowUpBigIcon, ArrowDownBigIcon } from "@hugeicons/core-free-icons";
+import { ArrowUpBigIcon, ArrowDownBigIcon, DashboardCircleIcon, Timer01Icon } from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
 
 export const IndexRoute = createRoute({
   getParentRoute: () => RootRoute,
@@ -26,7 +28,12 @@ function HomePage() {
   const lastViolation = useAppStore((s) => s.lastViolation);
   const setMaxSpeed = useAppStore((s) => s.setMaxSpeed);
   const appMode = useAppStore((s) => s.appMode);
-  const currentLaps = useAppStore((s) => s.currentLaps);
+  const setAppMode = useAppStore((s) => s.setAppMode);
+
+  const lapState = useLapStore((s) => s.lapState);
+  const isLapActive = lapState !== "idle";
+
+  const SidePanel = pluginRegistry.getSidePanel(appMode);
 
   const serialStatus = connectedPort ? "connected" : "disconnected";
   const cameraStatus = cameraConnected ? "connected" : "unknown";
@@ -43,44 +50,91 @@ function HomePage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Status bar */}
-      <div className="flex items-center gap-4 px-4 py-2 border-b border-border/50 bg-muted/30 shrink-0">
-        <StatusBadge
-          status={serialStatus}
-          label={connectedPort ? `Serial: ${connectedPort}` : "Serial: disconnected"}
-        />
-        <StatusBadge
-          status={cameraStatus}
-          label={cameraConnected ? "Camera: connected" : "Camera: disconnected"}
-        />
+      {/* Top Header: Status Badges & Home Mode Switcher */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border/50 bg-muted/30 shrink-0">
+        <div className="flex items-center gap-3">
+          <StatusBadge
+            status={serialStatus}
+            label={connectedPort ? `Serial: ${connectedPort}` : "Serial: disconnected"}
+          />
+          <StatusBadge
+            status={cameraStatus}
+            label={cameraConnected ? "Camera: connected" : "Camera: disconnected"}
+          />
+        </div>
+
+        {/* Home Mode Switcher */}
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-background/80 p-1 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setAppMode("speedcamera")}
+            className={cn(
+              "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all",
+              appMode === "speedcamera"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
+            )}
+          >
+            <HugeiconsIcon icon={DashboardCircleIcon} strokeWidth={2} className="w-4 h-4" />
+            <span>Speed Camera</span>
+          </button>
+
+          {pluginRegistry.getModes().map((m) => {
+            const isCurrent = appMode === m.id;
+            const Icon = m.icon as any;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setAppMode(m.id)}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all relative",
+                  isCurrent
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
+                )}
+              >
+                {Array.isArray(Icon) ? (
+                  <HugeiconsIcon icon={Icon} strokeWidth={2} className="w-4 h-4" />
+                ) : (
+                  <Icon className="w-4 h-4" />
+                )}
+                <span>{m.label}</span>
+                {m.id === "laptimer" && isLapActive && (
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="Lap timer session running" />
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Content */}
+      {/* Main workspace */}
       <div className="flex flex-1 overflow-hidden gap-0">
-        {/* Main: camera feed */}
+        {/* Camera feed */}
         <div className="flex-1 flex items-center justify-center p-4 overflow-hidden bg-black/5 dark:bg-black/20">
           <LastCapturedImage />
         </div>
 
-        {/* Side panel */}
-        <div className="w-72 shrink-0 flex flex-col gap-4 p-4 border-l border-border overflow-y-auto">
-          {appMode === "laptimer" ? (
-            /* ── Lap timer panel ── */
-            <LapTimerDisplay
-              compact
-              laps={currentLaps}
-              className="flex-1 py-6"
-            />
+        {/* Contextual side panel */}
+        <div
+          className={cn(
+            "shrink-0 flex flex-col gap-4 p-4 border-l border-border overflow-y-auto transition-all duration-200",
+            appMode !== "speedcamera" ? "w-[480px] lg:w-[540px]" : "w-80",
+          )}
+        >
+          {SidePanel ? (
+            <SidePanel />
           ) : (
             /* ── Speed camera panel ── */
             <>
-              {/* Arming control — most important element */}
+              {/* Arming control */}
               <ArmingButton />
 
               {/* Speed reading */}
-              <div className="rounded-xl border border-border bg-card p-4 text-center flex flex-row items- justify-around">
+              <div className="rounded-xl border border-border bg-card p-4 text-center flex flex-row items-center justify-around shadow-sm">
                 {lastSpeed !== null && lastDirection !== null && (
-                  <p className="mt-1 flex items-center justify-center gap-1">
+                  <p className="flex items-center justify-center gap-1">
                     <HugeiconsIcon
                       icon={lastDirection === "forward" ? ArrowUpBigIcon : ArrowDownBigIcon}
                       size={48}

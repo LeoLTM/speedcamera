@@ -4,6 +4,7 @@ mod db;
 mod integrations;
 mod models;
 mod network;
+mod plugins;
 mod serial;
 mod storage;
 mod web;
@@ -105,6 +106,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (armed_tx, _) = tokio::sync::broadcast::channel::<bool>(32);
     let pipeline_armed = armed.clone();
 
+    // ─── Plugin System Initialization ────────────────────────────────────────
+    let plugin_ctx = plugins::PluginContext {
+        config: config.clone(),
+        db: db.clone(),
+        store: store.clone(),
+        camera: camera.clone(),
+        serial: serial.clone(),
+        armed: armed.clone(),
+        armed_tx: armed_tx.clone(),
+    };
+    let mut plugin_reg = plugins::PluginRegistry::new();
+    // ponytail: modular plugins isolated from core daemon
+    plugin_reg.register(Box::new(plugins::laptimer::LapTimerPlugin::new()));
+    plugin_reg.register(Box::new(plugins::alignment::AlignmentPlugin::new()));
+    plugin_reg.init(plugin_ctx)?;
+    let plugin_registry = std::sync::Arc::new(plugin_reg);
+    let pipeline_plugins = plugin_registry.clone();
+
     // ─── Instant Shutter Trigger Pipeline (<10ms latency) ─────────────────────
     let (violation_tx, _) = tokio::sync::broadcast::channel::<models::Violation>(32);
     let pipeline_violation_tx = violation_tx.clone();
@@ -117,6 +136,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         loop {
             match serial_rx.recv().await {
                 Ok(msg) => {
+                    pipeline_plugins.on_serial_event(&msg);
                     if let models::SerialStatusPayload::Speeding { value, direction, .. } = msg {
                         if !pipeline_armed.load(std::sync::atomic::Ordering::SeqCst) {
                             tracing::debug!("[trigger-pipeline] Speeding detected ({} km/h) but system is DISARMED — skipping capture", value);
@@ -176,7 +196,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build and launch Axum web server
     let bind_addr = format!("{}:{}", config.host, config.port);
-    let app = web::build_app(config, db, store, camera, serial, violation_tx, armed, armed_tx);
+    let app = web::build_app(config, db, store, camera, serial, violation_tx, armed, armed_tx, plugin_registry);
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     tracing::info!("  🚀 Server listening on http://{}", bind_addr);
     axum::serve(listener, app).await?;

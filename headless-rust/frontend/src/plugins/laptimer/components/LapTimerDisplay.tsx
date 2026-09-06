@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
-import { useAppStore } from "@/stores/useAppStore";
-import { useLiveLapTimer } from "@/hooks/useLiveLapTimer";
+import { useLapStore } from "../store";
+import { useLiveLapTimer } from "../hooks/useLiveLapTimer";
 import type { Lap } from "@/shared/types";
 
 function formatDurationParts(ms: number) {
@@ -16,17 +16,15 @@ function formatDurationParts(ms: number) {
   };
 }
 
-interface LapTimerDisplayProps {
-  /** Compact variant for narrower containers (e.g. side panel) */
+export interface LapTimerDisplayProps {
   compact?: boolean;
-  /** Laps to display best/last time from. If omitted, no comparison shown. */
   laps?: Lap[];
   className?: string;
 }
 
 export function LapTimerDisplay({ compact = false, laps = [], className }: LapTimerDisplayProps) {
-  const lapState = useAppStore((s) => s.lapState);
-  const lapNumber = useAppStore((s) => s.lapNumber);
+  const lapState = useLapStore((s) => s.lapState);
+  const lapNumber = useLapStore((s) => s.lapNumber);
   const elapsed = useLiveLapTimer();
 
   const bestLap = laps.length > 0

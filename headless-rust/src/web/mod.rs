@@ -30,6 +30,7 @@ pub fn build_app(
     violation_tx: broadcast::Sender<Violation>,
     armed: Arc<AtomicBool>,
     armed_tx: broadcast::Sender<bool>,
+    plugins: Arc<crate::plugins::PluginRegistry>,
 ) -> Router {
     let (flash_tx, _) = broadcast::channel::<FlashProgressPayload>(32);
 
@@ -44,6 +45,7 @@ pub fn build_app(
         violation_tx,
         armed,
         armed_tx,
+        plugins: plugins.clone(),
     });
 
     // 10 MB payload capacity, 5s keepalive ping interval to keep Wi-Fi sleep-disabled,
@@ -72,7 +74,7 @@ pub fn build_app(
         .allow_methods(Any)
         .allow_headers(Any);
 
-    Router::new()
+    let mut router = Router::new()
         .route("/api/health", get(routes::health))
         .route("/api/network", get(routes::network))
         .route("/image", get(routes::get_image))
@@ -90,7 +92,11 @@ pub fn build_app(
         .route("/generate_204", get(routes::generate_204_handler))
         .route("/gen_204", get(routes::generate_204_handler))
         // Apple / macOS captive portal probe
-        .route("/hotspot-detect.html", get(routes::apple_hotspot_handler))
+        .route("/hotspot-detect.html", get(routes::apple_hotspot_handler));
+
+    router = plugins.register_routes(router);
+
+    router
         .fallback(routes::static_handler)
         .layer(layer)
         .layer(cors)

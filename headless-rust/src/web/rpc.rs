@@ -42,6 +42,7 @@ pub struct RpcContext {
     pub violation_tx: broadcast::Sender<Violation>,
     pub armed: Arc<std::sync::atomic::AtomicBool>,
     pub armed_tx: broadcast::Sender<bool>,
+    pub plugins: Arc<crate::plugins::PluginRegistry>,
 }
 
 pub async fn handle_rpc(ctx: &RpcContext, req: RpcRequest) -> RpcResponse {
@@ -170,140 +171,10 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             Ok(serde_json::to_value(v).unwrap())
         }
 
-        // ─── Lap Sessions ─────────────────────────────────────────────────────
-        "createLapSession" => {
-            let lap_mode = params["lapMode"].as_str().unwrap_or("single").to_string();
-            let db = ctx.db.clone();
-            let session = tokio::task::spawn_blocking(move || {
-                let conn = db.lock();
-                crate::db::laps::create_lap_session(&conn, &lap_mode)
-            })
-            .await
-            .map_err(|e| e.to_string())?
-            .map_err(|e| e.to_string())?;
-            Ok(serde_json::to_value(session).unwrap())
-        }
-
-        "closeLapSession" => {
-            let id = params["id"].as_i64().ok_or("Missing id parameter")?;
-            let db = ctx.db.clone();
-            tokio::task::spawn_blocking(move || {
-                let conn = db.lock();
-                crate::db::laps::close_lap_session(&conn, id)
-            })
-            .await
-            .map_err(|e| e.to_string())?
-            .map_err(|e| e.to_string())?;
-            Ok(Value::Null)
-        }
-
-        "saveLap" => {
-            let input: SaveLapInput = serde_json::from_value(params).map_err(|e| e.to_string())?;
-            let store = ctx.store.clone();
-            let db = ctx.db.clone();
-            let lap = tokio::task::spawn_blocking(move || -> Result<Lap, String> {
-                let start_img_path = if let Some(ref b64) = input.start_image_base64 {
-                    store.save_base64_image(b64).ok()
-                } else {
-                    None
-                };
-
-                let end_img_path = if let Some(ref b64) = input.end_image_base64 {
-                    store.save_base64_image(b64).ok()
-                } else {
-                    None
-                };
-
-                let conn = db.lock();
-                crate::db::laps::insert_lap(
-                    &conn,
-                    &input,
-                    start_img_path.as_deref(),
-                    end_img_path.as_deref(),
-                )
-                .map_err(|e| e.to_string())
-            })
-            .await
-            .map_err(|e| e.to_string())??;
-
-            Ok(serde_json::to_value(lap).unwrap())
-        }
-
-        "getLapSessions" => {
-            let page = params["page"].as_i64().unwrap_or(1);
-            let limit = params["limit"].as_i64().unwrap_or(20);
-            let db = ctx.db.clone();
-            let (sessions, total) = tokio::task::spawn_blocking(move || {
-                let conn = db.lock();
-                crate::db::laps::get_lap_sessions(&conn, page, limit)
-            })
-            .await
-            .map_err(|e| e.to_string())?
-            .map_err(|e| e.to_string())?;
-
-            Ok(json!({
-                "sessions": sessions,
-                "total": total
-            }))
-        }
-
-        "getLapSessionById" => {
-            let id = params["id"].as_i64().ok_or("Missing id parameter")?;
-            let db = ctx.db.clone();
-            let session = tokio::task::spawn_blocking(move || {
-                let conn = db.lock();
-                crate::db::laps::get_lap_session_by_id(&conn, id)
-            })
-            .await
-            .map_err(|e| e.to_string())?
-            .map_err(|e| e.to_string())?;
-            Ok(serde_json::to_value(session).unwrap())
-        }
-
-        "deleteLapSession" => {
-            let id = params["id"].as_i64().ok_or("Missing id parameter")?;
-            let db = ctx.db.clone();
-            let store = ctx.store.clone();
-            tokio::task::spawn_blocking(move || -> Result<(), String> {
-                let img_paths = {
-                    let conn = db.lock();
-                    crate::db::laps::get_lap_image_paths_for_session(&conn, id).unwrap_or_default()
-                };
-                {
-                    let conn = db.lock();
-                    crate::db::laps::delete_lap_session(&conn, id).map_err(|e| e.to_string())?;
-                }
-                for p in img_paths {
-                    store.delete_image(&p);
-                }
-                Ok(())
-            })
-            .await
-            .map_err(|e| e.to_string())??;
-            Ok(Value::Null)
-        }
-
-        "deleteLap" => {
-            let id = params["id"].as_i64().ok_or("Missing id parameter")?;
-            let db = ctx.db.clone();
-            let store = ctx.store.clone();
-            tokio::task::spawn_blocking(move || -> Result<(), String> {
-                let img_paths = {
-                    let conn = db.lock();
-                    crate::db::laps::get_lap_image_paths_for_lap(&conn, id).unwrap_or_default()
-                };
-                {
-                    let conn = db.lock();
-                    crate::db::laps::delete_lap(&conn, id).map_err(|e| e.to_string())?;
-                }
-                for p in img_paths {
-                    store.delete_image(&p);
-                }
-                Ok(())
-            })
-            .await
-            .map_err(|e| e.to_string())??;
-            Ok(Value::Null)
+        // ─── Plugins ──────────────────────────────────────────────────────────
+        "getPlugins" => {
+            let plugins = ctx.plugins.list_plugins();
+            Ok(serde_json::to_value(plugins).unwrap())
         }
 
         // ─── Images ───────────────────────────────────────────────────────────
@@ -849,28 +720,6 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             Ok(serde_json::to_value(table).unwrap())
         }
 
-        "syncLapToTeable" => {
-            let input: SyncLapInput = serde_json::from_value(params).map_err(|e| e.to_string())?;
-            let db = ctx.db.clone();
-            let settings = tokio::task::spawn_blocking(move || {
-                let conn = db.lock();
-                crate::db::settings::get_settings(&conn)
-            })
-            .await
-            .map_err(|e| e.to_string())?
-            .map_err(|e| e.to_string())?;
-
-            ctx.teable
-                .sync_lap(
-                    &settings.teable_url,
-                    &settings.teable_token,
-                    &settings.teable_table_id,
-                    &input,
-                )
-                .await?;
-            Ok(Value::Null)
-        }
-
         // ─── Firmware Flasher ─────────────────────────────────────────────────
         "testGithubToken" => {
             let token = params["token"].as_str().unwrap_or("");
@@ -942,7 +791,13 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             "ok": true
         })),
 
-        _ => Err(format!("Method '{}' not found", method)),
+        _ => {
+            if let Some(res) = ctx.plugins.handle_rpc(method, params).await {
+                res
+            } else {
+                Err(format!("Method '{}' not found", method))
+            }
+        }
     }
 }
 

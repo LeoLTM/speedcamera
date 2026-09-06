@@ -1,10 +1,10 @@
-export function formatDuration(ms: number): string {
-  const total = Math.round(ms);
-  const totalSeconds = Math.floor(total / 1000);
+export function formatDuration(ms: number, precision: number = 3): string {
+  const totalSeconds = ms / 1000;
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  const millis = total % 1000;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
+  const minStr = String(minutes).padStart(2, "0");
+  const secStr = seconds.toFixed(precision).padStart(3 + precision, "0");
+  return `${minStr}:${secStr}`;
 }
 
 export function formatTimestamp(ts: number): string {

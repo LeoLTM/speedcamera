@@ -9,12 +9,9 @@ void sendJsonStatus(const char *status, float value, float tolerance, const char
 void sendJsonConfig(const char *key, float value);
 void sendJsonConfigError(const char *message);
 
-// ─── Ping / Pong ─────────────────────────────────────────────────────────────
+// ─── Ping / Capabilities ─────────────────────────────────────────────────────
 void sendJsonPong();
-
-// ─── Lap Timer ───────────────────────────────────────────────────────────────
-void sendLapStart(int lapNum, float speedAtStart);
-void sendLapEnd(int lapNum, float durationMs, float speedAtStart, float speedAtEnd);
+void sendJsonCapabilities();
 
 // ─── Debug ───────────────────────────────────────────────────────────────────
 void sendDebug(const String &message);

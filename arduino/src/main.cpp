@@ -4,6 +4,7 @@
 #include "json_output.h"
 #include "serial_io.h"
 #include "modules/laptimer.h"
+#include "modules/alignment.h"
 
 // ─── State Reset ─────────────────────────────────────────────────────────────
 void resetMeasurement() {
@@ -19,12 +20,14 @@ void setup() {
   pinMode(sensor1,  INPUT_PULLUP);
   pinMode(sensor2,  INPUT_PULLUP);
   LapTimer::init();
+  Alignment::init();
   sendJsonStatus("ready");
 }
 
 // ─── Main Loop ───────────────────────────────────────────────────────────────
 void loop() {
   LapTimer::update();
+  Alignment::update();
 
   // Process incoming serial commands every iteration
   handleSerial();

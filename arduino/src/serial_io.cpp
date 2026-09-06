@@ -2,6 +2,7 @@
 #include "state.h"
 #include "json_output.h"
 #include "modules/laptimer.h"
+#include "modules/alignment.h"
 
 // ─── Serial Input ─────────────────────────────────────────────────────────────
 void handleSerial() {
@@ -74,6 +75,9 @@ void handleCommand(JsonDocument &doc) {
 
   // ponytail: route module-specific commands without bloated registry abstractions
   } else if (LapTimer::handleCommand(command, doc)) {
+    return;
+
+  } else if (Alignment::handleCommand(command, doc)) {
     return;
 
   } else {

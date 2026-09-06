@@ -4,6 +4,7 @@
 #include "state.h"
 
 #include "modules/laptimer.h"
+#include "modules/alignment.h"
 
 // ─── Serial Output Helpers ────────────────────────────────────────────────────
 // Serial.flush() is intentionally omitted for most messages: the TX FIFO
@@ -61,6 +62,7 @@ void sendJsonPong() {
   cfg["sensorDistance"] = sensorDistance;
   cfg["debugEnabled"]   = debugEnabled;
   LapTimer::populatePongConfig(cfg);
+  Alignment::populatePongConfig(cfg);
   String out;
   serializeJson(doc, out);
   out += '\n';
@@ -74,6 +76,7 @@ void sendJsonCapabilities() {
   JsonArray features = doc["features"].to<JsonArray>();
   features.add("speed");
   features.add("laptimer");
+  features.add("alignment");
   String out;
   serializeJson(doc, out);
   out += '\n';

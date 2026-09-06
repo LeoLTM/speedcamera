@@ -140,6 +140,7 @@ impl Plugin for LapTimerPlugin {
             SerialStatusPayload::LapEnd {
                 lap_number,
                 duration_ms,
+                duration_us,
                 speed_at_start,
                 speed_at_end,
                 timestamp,
@@ -158,7 +159,8 @@ impl Plugin for LapTimerPlugin {
                 let store = ctx.store.clone();
                 let db = ctx.db.clone();
                 let state_clone = self.state.clone();
-                let duration_i64 = duration_ms.round() as i64;
+                let dur_ms = *duration_ms;
+                let dur_us = duration_us.map(|u| u as i64);
                 let lap_num = *lap_number;
                 let spd_start = *speed_at_start;
                 let spd_end = *speed_at_end;
@@ -201,7 +203,8 @@ impl Plugin for LapTimerPlugin {
                         lap_number: lap_num,
                         start_timestamp: start_ts,
                         end_timestamp: end_ts,
-                        duration_ms: duration_i64,
+                        duration_ms: dur_ms,
+                        duration_us: dur_us,
                         speed_at_start: spd_start,
                         speed_at_end: spd_end,
                         start_image_base64: None,
@@ -212,7 +215,7 @@ impl Plugin for LapTimerPlugin {
                     match db::insert_lap(&conn, &input, start_img.as_deref(), end_img.as_deref()) {
                         Ok(lap) => {
                             tracing::info!(
-                                "[plugin:laptimer] Recorded lap #{} for session #{} ({} ms)",
+                                "[plugin:laptimer] Recorded lap #{} for session #{} ({:.3} ms)",
                                 lap.lap_number,
                                 lap.session_id,
                                 lap.duration_ms

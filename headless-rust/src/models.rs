@@ -317,6 +317,8 @@ pub enum SerialStatusPayload {
         lap_number: i64,
         #[serde(rename = "durationMs")]
         duration_ms: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none", rename = "durationUs")]
+        duration_us: Option<u64>,
         #[serde(rename = "speedAtStart")]
         speed_at_start: f64,
         #[serde(rename = "speedAtEnd")]

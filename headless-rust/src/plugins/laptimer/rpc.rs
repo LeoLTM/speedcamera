@@ -305,6 +305,7 @@ pub fn register_rpc_methods(registry: &mut RpcRegistry, state: Arc<Mutex<LapTime
                 start_timestamp: input.lap.start_timestamp,
                 end_timestamp: input.lap.end_timestamp,
                 duration_ms: input.lap.duration_ms,
+                duration_us: input.lap.duration_us,
                 speed_at_start: input.lap.speed_at_start,
                 speed_at_end: input.lap.speed_at_end,
                 start_image_path: input.lap.start_image_path,

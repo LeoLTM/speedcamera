@@ -24,6 +24,8 @@ void setup() {
 
 // ─── Main Loop ───────────────────────────────────────────────────────────────
 void loop() {
+  LapTimer::update();
+
   // Process incoming serial commands every iteration
   handleSerial();
   if (stringComplete) {

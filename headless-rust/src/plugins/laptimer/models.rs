@@ -18,7 +18,9 @@ pub struct Lap {
     pub lap_number: i64,
     pub start_timestamp: i64,
     pub end_timestamp: i64,
-    pub duration_ms: i64,
+    pub duration_ms: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_us: Option<i64>,
     pub speed_at_start: f64,
     pub speed_at_end: f64,
     pub start_image_path: Option<String>,
@@ -36,7 +38,7 @@ pub struct LapSessionWithLaps {
     pub laps: Vec<Lap>,
 }
 
-fn deserialize_duration_ms<'de, D>(deserializer: D) -> Result<i64, D::Error>
+fn deserialize_duration_ms<'de, D>(deserializer: D) -> Result<f64, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -47,8 +49,8 @@ where
         Float(f64),
     }
     match IntOrFloat::deserialize(deserializer)? {
-        IntOrFloat::Int(i) => Ok(i),
-        IntOrFloat::Float(f) => Ok(f.round() as i64),
+        IntOrFloat::Int(i) => Ok(i as f64),
+        IntOrFloat::Float(f) => Ok(f),
     }
 }
 
@@ -60,7 +62,9 @@ pub struct SaveLapInput {
     pub start_timestamp: i64,
     pub end_timestamp: i64,
     #[serde(deserialize_with = "deserialize_duration_ms")]
-    pub duration_ms: i64,
+    pub duration_ms: f64,
+    #[serde(default)]
+    pub duration_us: Option<i64>,
     pub speed_at_start: f64,
     pub speed_at_end: f64,
     pub start_image_base64: Option<String>,

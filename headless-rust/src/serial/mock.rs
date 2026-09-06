@@ -104,6 +104,7 @@ impl MockSerial {
                         let _ = tx.send(SerialStatusPayload::LapEnd {
                             lap_number: lap_num,
                             duration_ms,
+                            duration_us: Some(start_time.elapsed().as_micros() as u64),
                             speed_at_start: start_speed,
                             speed_at_end: end_speed,
                             timestamp: now,

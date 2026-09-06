@@ -13,6 +13,7 @@ enum class LapDirectionFilter : uint8_t { BOTH, FORWARD_ONLY, REVERSE_ONLY };
 void init();
 void reset();
 bool isActive();
+void update();
 
 // Query helpers for pong response
 void populatePongConfig(JsonObject &cfg);

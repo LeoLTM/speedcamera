@@ -191,6 +191,7 @@ export interface Lap {
   startTimestamp: number;       // ms (Date.now())
   endTimestamp: number;         // ms (Date.now())
   durationMs: number;
+  durationUs?: number;
   speedAtStart: number;
   speedAtEnd: number;
   startImagePath: string | null;
@@ -207,6 +208,7 @@ export interface SaveLapInput {
   startTimestamp: number;
   endTimestamp: number;
   durationMs: number;
+  durationUs?: number;
   speedAtStart: number;
   speedAtEnd: number;
   startImageBase64: string | null; // raw base64, no data-URL prefix
@@ -296,7 +298,7 @@ export type SerialStatusPayload =
   | { status: "OK";       value: number; tolerance: number; direction: "forward" | "reverse"; timestamp: number }
   | { status: "PONG"; config: EspPongConfig }
   | { status: "LAPSTART"; lapNumber: number; speedAtStart: number; timestamp: number }
-  | { status: "LAPEND";   lapNumber: number; durationMs: number; speedAtStart: number; speedAtEnd: number; timestamp: number }
+  | { status: "LAPEND";   lapNumber: number; durationMs: number; durationUs?: number; speedAtStart: number; speedAtEnd: number; timestamp: number }
   | { status: "LAPWAITING" }
   | { status: "LAPSTOPPED" }
   | { status: "CONNECTED"; port?: string }

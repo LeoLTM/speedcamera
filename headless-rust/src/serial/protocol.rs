@@ -31,6 +31,8 @@ pub enum EspMessage {
         lap_number: i64,
         #[serde(rename = "durationMs")]
         duration_ms: f64,
+        #[serde(default, rename = "durationUs")]
+        duration_us: Option<u64>,
         #[serde(rename = "speedAtStart")]
         speed_at_start: f64,
         #[serde(rename = "speedAtEnd")]
@@ -83,11 +85,13 @@ impl EspMessage {
             Self::LapEnd {
                 lap_number,
                 duration_ms,
+                duration_us,
                 speed_at_start,
                 speed_at_end,
             } => Some(SerialStatusPayload::LapEnd {
                 lap_number: *lap_number,
                 duration_ms: *duration_ms,
+                duration_us: *duration_us,
                 speed_at_start: *speed_at_start,
                 speed_at_end: *speed_at_end,
                 timestamp,

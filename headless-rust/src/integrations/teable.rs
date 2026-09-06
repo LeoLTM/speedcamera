@@ -297,10 +297,10 @@ impl TeableClient {
             .map(|dt| dt.to_rfc3339())
             .unwrap_or_default();
 
-        let total_sec = input.lap.duration_ms as f64 / 1000.0;
+        let total_sec = input.lap.duration_ms / 1000.0;
         let min = (total_sec / 60.0).floor() as i64;
         let sec = (total_sec % 60.0).floor() as i64;
-        let ms = input.lap.duration_ms % 1000;
+        let ms = (input.lap.duration_ms % 1000.0).floor() as i64;
         let dur_str = format!("{:02}:{:02}.{:03}", min, sec, ms);
 
         let body = json!({

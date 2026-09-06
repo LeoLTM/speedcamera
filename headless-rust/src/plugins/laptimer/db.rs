@@ -19,7 +19,8 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             lapNumber        INTEGER NOT NULL,
             startTimestamp   INTEGER NOT NULL,
             endTimestamp     INTEGER NOT NULL,
-            durationMs       INTEGER NOT NULL,
+            durationMs       REAL    NOT NULL,
+            durationUs       INTEGER,
             speedAtStart     REAL    NOT NULL,
             speedAtEnd       REAL    NOT NULL,
             startImagePath   TEXT,
@@ -27,6 +28,8 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_laps_session ON laps(sessionId);",
     )?;
+    // Safe auto-migration for existing databases
+    let _ = conn.execute("ALTER TABLE laps ADD COLUMN durationUs INTEGER", []);
     Ok(())
 }
 
@@ -65,15 +68,16 @@ pub fn insert_lap(
 ) -> Result<Lap> {
     conn.execute(
         "INSERT INTO laps (
-            sessionId, lapNumber, startTimestamp, endTimestamp, durationMs,
+            sessionId, lapNumber, startTimestamp, endTimestamp, durationMs, durationUs,
             speedAtStart, speedAtEnd, startImagePath, endImagePath
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params![
             input.session_id,
             input.lap_number,
             input.start_timestamp,
             input.end_timestamp,
             input.duration_ms,
+            input.duration_us,
             input.speed_at_start,
             input.speed_at_end,
             start_image_path,
@@ -90,6 +94,7 @@ pub fn insert_lap(
         start_timestamp: input.start_timestamp,
         end_timestamp: input.end_timestamp,
         duration_ms: input.duration_ms,
+        duration_us: input.duration_us,
         speed_at_start: input.speed_at_start,
         speed_at_end: input.speed_at_end,
         start_image_path: start_image_path.map(|s| s.to_string()),
@@ -133,7 +138,7 @@ pub fn get_lap_sessions(
     if !sessions.is_empty() {
         let placeholders: Vec<String> = sessions.iter().map(|_| "?".to_string()).collect();
         let sql = format!(
-            "SELECT id, sessionId, lapNumber, startTimestamp, endTimestamp, durationMs,
+            "SELECT id, sessionId, lapNumber, startTimestamp, endTimestamp, durationMs, durationUs,
                     speedAtStart, speedAtEnd, startImagePath, endImagePath
              FROM laps WHERE sessionId IN ({}) ORDER BY lapNumber ASC",
             placeholders.join(",")
@@ -149,10 +154,11 @@ pub fn get_lap_sessions(
                 start_timestamp: row.get(3)?,
                 end_timestamp: row.get(4)?,
                 duration_ms: row.get(5)?,
-                speed_at_start: row.get(6)?,
-                speed_at_end: row.get(7)?,
-                start_image_path: row.get(8)?,
-                end_image_path: row.get(9)?,
+                duration_us: row.get(6)?,
+                speed_at_start: row.get(7)?,
+                speed_at_end: row.get(8)?,
+                start_image_path: row.get(9)?,
+                end_image_path: row.get(10)?,
             })
         })?;
 
@@ -236,7 +242,7 @@ pub fn get_lap_session_by_id(conn: &Connection, id: i64) -> Result<Option<LapSes
 
 pub fn get_laps_for_session(conn: &Connection, session_id: i64) -> Result<Vec<Lap>> {
     let mut stmt = conn.prepare(
-        "SELECT id, sessionId, lapNumber, startTimestamp, endTimestamp, durationMs,
+        "SELECT id, sessionId, lapNumber, startTimestamp, endTimestamp, durationMs, durationUs,
                 speedAtStart, speedAtEnd, startImagePath, endImagePath
          FROM laps WHERE sessionId = ? ORDER BY lapNumber ASC",
     )?;
@@ -249,10 +255,11 @@ pub fn get_laps_for_session(conn: &Connection, session_id: i64) -> Result<Vec<La
             start_timestamp: row.get(3)?,
             end_timestamp: row.get(4)?,
             duration_ms: row.get(5)?,
-            speed_at_start: row.get(6)?,
-            speed_at_end: row.get(7)?,
-            start_image_path: row.get(8)?,
-            end_image_path: row.get(9)?,
+            duration_us: row.get(6)?,
+            speed_at_start: row.get(7)?,
+            speed_at_end: row.get(8)?,
+            start_image_path: row.get(9)?,
+            end_image_path: row.get(10)?,
         })
     })?;
 

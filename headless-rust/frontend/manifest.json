@@ -1,0 +1,11 @@
+{
+  "name": "Speedcamera",
+  "short_name": "Speedcam",
+  "description": "Speedcamera Web UI for Raspberry Pi and remote browser control",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": []
+}

@@ -18,6 +18,7 @@ struct MockState {
     lap_number: i64,
     lap_start_time: Option<Instant>,
     lap_start_speed: f64,
+    alignment_active: bool,
 }
 
 pub struct MockSerial {
@@ -35,10 +36,32 @@ impl MockSerial {
             lap_number: 1,
             lap_start_time: None,
             lap_start_speed: 0.0,
+            alignment_active: false,
         }));
 
         let r = running.clone();
         let s = state.clone();
+
+        let r_align = running.clone();
+        let s_align = state.clone();
+        let tx_align = tx.clone();
+        tokio::spawn(async move {
+            let mut tick = 0u64;
+            while r_align.load(Ordering::SeqCst) {
+                tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
+                let is_active = s_align.lock().unwrap().alignment_active;
+                if is_active {
+                    tick += 1;
+                    let s1 = (tick % 8) == 0;
+                    let s2 = (tick % 12) == 0;
+                    let _ = tx_align.send(SerialStatusPayload::BarrierStatus {
+                        sensor1_interrupted: s1,
+                        sensor2_interrupted: s2,
+                        timestamp: chrono::Utc::now().timestamp_millis(),
+                    });
+                }
+            }
+        });
 
         tokio::spawn(async move {
             let mut counter = 0;
@@ -153,6 +176,19 @@ impl MockSerial {
                     guard.lap_start_time = None;
                     guard.lap_start_speed = 0.0;
                     let _ = tx.send(SerialStatusPayload::LapStopped);
+                }
+                "startAlignment" => {
+                    let mut guard = self.state.lock().unwrap();
+                    guard.alignment_active = true;
+                    let _ = tx.send(SerialStatusPayload::BarrierStatus {
+                        sensor1_interrupted: false,
+                        sensor2_interrupted: false,
+                        timestamp: chrono::Utc::now().timestamp_millis(),
+                    });
+                }
+                "stopAlignment" => {
+                    let mut guard = self.state.lock().unwrap();
+                    guard.alignment_active = false;
                 }
                 "ping" => {
                     let guard = self.state.lock().unwrap();

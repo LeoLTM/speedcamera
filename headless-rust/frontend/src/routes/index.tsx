@@ -51,8 +51,8 @@ function HomePage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Top Header: Status Badges & Home Mode Switcher */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border/50 bg-muted/30 shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 sm:px-4 py-2 border-b border-border/50 bg-muted/30 shrink-0">
+        <div className="hidden sm:flex items-center gap-3">
           <StatusBadge
             status={serialStatus}
             label={connectedPort ? `Serial: ${connectedPort}` : "Serial: disconnected"}
@@ -64,12 +64,12 @@ function HomePage() {
         </div>
 
         {/* Home Mode Switcher */}
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-background/80 p-1 shadow-sm">
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-background/80 p-1 shadow-sm overflow-x-auto no-scrollbar w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setAppMode("speedcamera")}
             className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all",
+              "flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all shrink-0 flex-1 sm:flex-initial",
               appMode === "speedcamera"
                 ? "bg-primary text-primary-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
@@ -88,7 +88,7 @@ function HomePage() {
                 type="button"
                 onClick={() => setAppMode(m.id)}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all relative",
+                  "flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all relative shrink-0 flex-1 sm:flex-initial",
                   isCurrent
                     ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
@@ -110,17 +110,17 @@ function HomePage() {
       </div>
 
       {/* Main workspace */}
-      <div className="flex flex-1 overflow-hidden gap-0">
+      <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden gap-0">
         {/* Camera feed */}
-        <div className="flex-1 flex items-center justify-center p-4 overflow-hidden bg-black/5 dark:bg-black/20">
+        <div className="w-full md:flex-1 h-64 sm:h-80 md:h-auto shrink-0 flex items-center justify-center p-2 sm:p-4 overflow-hidden bg-black/5 dark:bg-black/20 border-b md:border-b-0 border-border">
           <LastCapturedImage />
         </div>
 
         {/* Contextual side panel */}
         <div
           className={cn(
-            "shrink-0 flex flex-col gap-4 p-4 border-l border-border overflow-y-auto transition-all duration-200",
-            appMode !== "speedcamera" ? "w-[480px] lg:w-[540px]" : "w-80",
+            "w-full shrink-0 flex flex-col gap-4 p-3 sm:p-4 md:border-l border-border md:overflow-y-auto transition-all duration-200",
+            appMode !== "speedcamera" ? "md:w-[480px] lg:w-[540px]" : "md:w-80",
           )}
         >
           {SidePanel ? (

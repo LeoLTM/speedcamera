@@ -4,7 +4,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { RootRoute } from "./__root";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ViolationsToolbar } from "./violations/ViolationsToolbar";
 import { ViolationsTable } from "./violations/ViolationsTable";
 import { ViolationsGrid } from "./violations/ViolationsGrid";
@@ -83,7 +83,7 @@ function ViolationsPage() {
         onViewModeChange={handleViewModeChange}
       />
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-y-auto">
         {viewMode === "grid" ? (
           <ViolationsGrid
             violations={v.violations}
@@ -149,9 +149,10 @@ function ViolationsPage() {
 
       <Dialog open={lightboxUrl !== null} onOpenChange={(open) => !open && setLightboxUrl(null)}>
         <DialogContent
-          className="max-w-[96vw] sm:max-w-[96vw] w-[96vw] sm:w-[96vw] h-[96vh] sm:h-[96vh] max-h-[96vh] sm:max-h-[96vh] p-0 rounded-none bg-black/95 border-none flex items-center justify-center overflow-hidden"
+          className="w-screen sm:w-[96vw] max-w-full sm:max-w-[96vw] h-[100dvh] sm:h-[96vh] max-h-[100dvh] sm:max-h-[96vh] p-0 rounded-none sm:rounded-xl bg-black border-none flex items-center justify-center overflow-hidden"
           showCloseButton
         >
+          <DialogTitle className="sr-only">Violation Full Resolution Image</DialogTitle>
           {lightboxUrl && (
             <div className="relative w-full h-full flex items-center justify-center">
               <img

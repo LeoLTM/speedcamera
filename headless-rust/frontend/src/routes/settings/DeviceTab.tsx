@@ -109,43 +109,47 @@ export function DeviceTab() {
     <div className="max-w-lg space-y-8">
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">Serial Port</h2>
-        <div className="flex items-center gap-2">
-          <Select value={selectedPort} onValueChange={setSelectedPort}>
-            <SelectTrigger className="flex-1">
-              <SelectValue placeholder="Select port…" />
-            </SelectTrigger>
-            <SelectContent>
-              {filteredPorts.length === 0 ? (
-                <SelectItem value="__none" disabled>
-                  {availablePorts.length === 0 ? "No ports found" : "No ESP/USB ports found"}
-                </SelectItem>
-              ) : (
-                filteredPorts.map((p) => (
-                  <SelectItem key={p.path} value={p.path}>
-                    {p.path}
-                    {p.manufacturer ? ` — ${p.manufacturer}` : ""}
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">
+            <Select value={selectedPort} onValueChange={setSelectedPort}>
+              <SelectTrigger className="flex-1 h-9">
+                <SelectValue placeholder="Select port…" />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredPorts.length === 0 ? (
+                  <SelectItem value="__none" disabled>
+                    {availablePorts.length === 0 ? "No ports found" : "No ESP/USB ports found"}
                   </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={refreshPorts}
-            disabled={loadingPorts}
-            aria-label="Refresh ports"
-          >
-            <HugeiconsIcon
-              icon={RefreshIcon}
-              strokeWidth={2}
-              className={loadingPorts ? "animate-spin" : ""}
-            />
-          </Button>
+                ) : (
+                  filteredPorts.map((p) => (
+                    <SelectItem key={p.path} value={p.path}>
+                      {p.path}
+                      {p.manufacturer ? ` — ${p.manufacturer}` : ""}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={refreshPorts}
+              disabled={loadingPorts}
+              aria-label="Refresh ports"
+            >
+              <HugeiconsIcon
+                icon={RefreshIcon}
+                strokeWidth={2}
+                className={loadingPorts ? "animate-spin" : ""}
+              />
+            </Button>
+          </div>
           {connectedPort ? (
             <Button
               variant="destructive"
               size="sm"
+              className="w-full sm:w-auto h-9 shrink-0"
               onClick={handleDisconnect}
               disabled={connecting}
             >
@@ -155,6 +159,7 @@ export function DeviceTab() {
           ) : (
             <Button
               size="sm"
+              className="w-full sm:w-auto h-9 shrink-0"
               onClick={handleConnect}
               disabled={!selectedPort || connecting}
             >

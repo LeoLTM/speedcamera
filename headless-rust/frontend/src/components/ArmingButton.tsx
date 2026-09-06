@@ -8,6 +8,15 @@ import {
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/useAppStore";
 
+// ponytail: native navigator.vibrate for mobile haptic feedback, zero dependencies
+const triggerHaptic = (pattern: number | number[]) => {
+  if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+    try {
+      navigator.vibrate(pattern);
+    } catch {}
+  }
+};
+
 const HOLD_DURATION_MS = 3000;
 /** How long after a successful arm to ignore click-to-disarm (ms) */
 const POST_ARM_DEBOUNCE_MS = 600;
@@ -24,6 +33,7 @@ export function ArmingButton() {
   const startTimeRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
   const completedRef = useRef(false);
+  const hapticStepRef = useRef<number>(0);
   /** Set to true right after arm completes; cleared after debounce window */
   const justArmedRef = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -35,6 +45,7 @@ export function ArmingButton() {
     }
     startTimeRef.current = null;
     completedRef.current = false;
+    hapticStepRef.current = 0;
     setIsHolding(false);
     setProgress(0);
   }, []);
@@ -44,9 +55,11 @@ export function ArmingButton() {
     if (systemState !== "DISARMED") return;
 
     completedRef.current = false;
+    hapticStepRef.current = 0;
     startTimeRef.current = performance.now();
     setIsHolding(true);
     setProgress(0);
+    triggerHaptic(20);
 
     const tick = (now: number) => {
       if (!startTimeRef.current) return;
@@ -54,10 +67,18 @@ export function ArmingButton() {
       const p = Math.min(elapsed / HOLD_DURATION_MS, 1);
       setProgress(p);
 
+      // Subtle pulse on each 25% progression
+      const currentStep = Math.floor(p * 4);
+      if (currentStep > hapticStepRef.current && currentStep < 4) {
+        hapticStepRef.current = currentStep;
+        triggerHaptic(10);
+      }
+
       if (p >= 1 && !completedRef.current) {
         completedRef.current = true;
         setIsHolding(false);
         setProgress(0);
+        triggerHaptic([40, 60, 40]);
         // Mark debounce window so the imminent click event is ignored
         justArmedRef.current = true;
         if (debounceTimerRef.current !== null) clearTimeout(debounceTimerRef.current);
@@ -86,6 +107,7 @@ export function ArmingButton() {
     // Ignore the click that fires right after a successful hold-to-arm
     if (justArmedRef.current) return;
     if (systemState === "ARMED") {
+      triggerHaptic(30);
       void setArmed(false);
     }
   }, [systemState, setArmed]);
@@ -172,7 +194,7 @@ export function ArmingButton() {
         onClick={handleClick}
         className={cn(
           "relative w-full overflow-hidden rounded-lg border font-semibold text-sm",
-          "h-12 select-none transition-all duration-200",
+          "h-13 sm:h-12 min-h-[48px] select-none touch-none transition-all duration-200",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1",
           isPassive
             ? "cursor-not-allowed border-border/40 bg-muted/20 text-muted-foreground/40"

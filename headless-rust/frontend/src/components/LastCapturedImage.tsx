@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getRpc } from "@/lib/rpc";
 import { useAppStore } from "@/stores/useAppStore";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Image as ImageIcon } from "lucide-react";
 
 export function LastCapturedImage() {
@@ -67,15 +67,31 @@ export function LastCapturedImage() {
 
     <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
       <DialogContent
-        className="max-w-[96vw] sm:max-w-[96vw] w-[96vw] sm:w-[96vw] h-[96vh] sm:h-[96vh] max-h-[96vh] sm:max-h-[96vh] p-0 rounded-none bg-black/95 border-none flex items-center justify-center overflow-hidden"
+        className="w-screen sm:w-[96vw] max-w-full sm:max-w-[96vw] h-[100dvh] sm:h-[96vh] max-h-[100dvh] sm:max-h-[96vh] p-0 rounded-none sm:rounded-xl bg-black border-none flex items-center justify-center overflow-hidden"
         showCloseButton
       >
+        <DialogTitle className="sr-only">Violation Image Full Preview</DialogTitle>
         {fullResUrl && (
-          <img
-            src={fullResUrl}
-            alt="Last capture full resolution"
-            className="w-full h-full object-contain rounded-none"
-          />
+          <div className="relative w-full h-full flex items-center justify-center">
+            <img
+              src={fullResUrl}
+              alt="Last capture full resolution"
+              className="w-full h-full object-contain"
+            />
+            {lastViolation && (
+              <div className="absolute bottom-6 left-6 bg-background/85 backdrop-blur-md px-3.5 py-2 rounded-xl border border-border/80 shadow-lg flex items-center gap-3">
+                <span className="font-mono text-xs text-muted-foreground">
+                  {new Date(lastViolation.timestamp).toLocaleTimeString()}
+                </span>
+                <div className="flex items-baseline gap-1">
+                  <span className="font-mono text-base font-bold text-destructive">
+                    {lastViolation.measuredSpeed}
+                  </span>
+                  <span className="font-mono text-[10px] text-muted-foreground">km/h</span>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </DialogContent>
     </Dialog>

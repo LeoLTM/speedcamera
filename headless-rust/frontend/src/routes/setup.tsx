@@ -77,33 +77,33 @@ function SetupPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center justify-between border-b px-6 py-4">
+      <div className="flex flex-col sm:flex-row shrink-0 sm:items-center justify-between gap-3 border-b px-4 py-3 sm:px-6 sm:py-4 bg-muted/10">
         <div>
-          <h1 className="text-xl font-bold">Camera Setup</h1>
-          <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
-            <AlertCircleIcon className="h-4 w-4" />
-            Flash strobe is temporarily disabled during setup. Auto-gain is active.
+          <h1 className="text-lg sm:text-xl font-bold">Camera Setup</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 flex items-center gap-1.5">
+            <AlertCircleIcon className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+            <span>Flash strobe disabled during setup. Auto-gain active.</span>
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
           <Badge variant={setupStreamActive ? "default" : "secondary"}>
             {setupStreamActive ? "Streaming" : "Stopped"}
           </Badge>
           {!setupStreamActive ? (
-            <Button onClick={handleStart} disabled={!connected || isToggling}>
+            <Button onClick={handleStart} disabled={!connected || isToggling} size="sm" className="h-9">
               {isToggling ? (
-                <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2Icon className="mr-1.5 h-4 w-4 animate-spin" />
               ) : (
-                <PlayIcon className="mr-2 h-4 w-4" />
+                <PlayIcon className="mr-1.5 h-4 w-4" />
               )}
               Start Stream
             </Button>
           ) : (
-            <Button variant="destructive" onClick={handleStop} disabled={isToggling}>
+            <Button variant="destructive" onClick={handleStop} disabled={isToggling} size="sm" className="h-9">
               {isToggling ? (
-                <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2Icon className="mr-1.5 h-4 w-4 animate-spin" />
               ) : (
-                <SquareIcon className="mr-2 h-4 w-4" />
+                <SquareIcon className="mr-1.5 h-4 w-4" />
               )}
               Stop Stream
             </Button>

@@ -61,7 +61,7 @@ export function LapTimerDisplay({ compact = false, laps = [], className }: LapTi
       <div
         className={cn(
           "font-mono font-black tabular-nums leading-none tracking-tight",
-          compact ? "text-5xl" : "text-8xl",
+          compact ? "text-4xl sm:text-5xl" : "text-5xl sm:text-7xl md:text-8xl",
           isTiming
             ? "text-foreground"
             : "text-muted-foreground/30",
@@ -73,7 +73,7 @@ export function LapTimerDisplay({ compact = false, laps = [], className }: LapTi
             <span
               className={cn(
                 "font-mono font-bold",
-                compact ? "text-3xl" : "text-5xl",
+                compact ? "text-2xl sm:text-3xl" : "text-3xl sm:text-4xl md:text-5xl",
                 "text-muted-foreground",
               )}
             >
@@ -81,7 +81,7 @@ export function LapTimerDisplay({ compact = false, laps = [], className }: LapTi
             </span>
           </>
         ) : (
-          <span>{isWaiting ? "—" : "00:00"}<span className={cn("font-bold", compact ? "text-3xl" : "text-5xl", "text-muted-foreground/30")}>.000</span></span>
+          <span>{isWaiting ? "—" : "00:00"}<span className={cn("font-bold", compact ? "text-2xl sm:text-3xl" : "text-3xl sm:text-4xl md:text-5xl", "text-muted-foreground/30")}>.000</span></span>
         )}
       </div>
 

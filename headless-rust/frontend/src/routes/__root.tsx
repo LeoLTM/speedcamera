@@ -1,6 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, createRootRoute } from "@tanstack/react-router";
 import { NavigationMenu } from "@/components/NavigationMenu";
+import { MobileNav } from "@/components/MobileNav";
+import { MobileMenuSheet } from "@/components/MobileMenuSheet";
+import { ConnectionIndicator } from "@/components/ConnectionIndicator";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useSystemStateSync } from "@/hooks/useSystemStateSync";
 import { useAppStore } from "@/stores/useAppStore";
@@ -12,6 +15,8 @@ export const RootRoute = createRootRoute({
 
 function Root() {
   useSystemStateSync();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   const loadTeableState = useAppStore((s) => s.loadTeableState);
   const refreshCameraStatus = useAppStore((s) => s.refreshCameraStatus);
   const refreshSerialStatus = useAppStore((s) => s.refreshSerialStatus);
@@ -59,19 +64,41 @@ function Root() {
   ]);
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground">
-      {/* App-level navigation bar */}
-      <div className="flex items-center justify-between border-b border-border">
+    <div className="flex flex-col h-[100dvh] overflow-hidden bg-background text-foreground">
+      {/* Desktop navigation bar */}
+      <header className="hidden md:flex items-center justify-between border-b border-border shrink-0">
         <NavigationMenu />
         <div className="px-2">
           <ThemeToggle />
         </div>
-      </div>
+      </header>
+
+      {/* Mobile top bar */}
+      <header className="flex md:hidden items-center justify-between px-3 py-2 border-b border-border bg-background/90 backdrop-blur-md shrink-0 pt-[calc(0.5rem+env(safe-area-inset-top))]">
+        <button
+          type="button"
+          onClick={() => setMobileMenuOpen(true)}
+          className="flex items-center gap-2 font-bold tracking-tight text-sm focus:outline-none"
+        >
+          <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+          <span>Speedcamera</span>
+        </button>
+        <div className="flex items-center gap-2">
+          <ConnectionIndicator />
+          <ThemeToggle />
+        </div>
+      </header>
 
       {/* Page content */}
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-hidden pb-14 md:pb-0">
         <Outlet />
       </main>
+
+      {/* Mobile bottom navigation bar */}
+      <MobileNav onOpenMenu={() => setMobileMenuOpen(true)} />
+
+      {/* Mobile slide-over drawer */}
+      <MobileMenuSheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen} />
     </div>
   );
 }

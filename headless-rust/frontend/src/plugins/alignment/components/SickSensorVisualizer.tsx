@@ -1,5 +1,5 @@
 import { useAlignmentStore } from "../store";
-import { Volume2, VolumeX, CheckCircle2, AlertTriangle, XCircle, ArrowRight } from "lucide-react";
+import { Volume2, VolumeX, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SickSensorVisualizerProps {
@@ -16,147 +16,119 @@ export function SickSensorVisualizer({ compact = false }: SickSensorVisualizerPr
     toggleAudio,
   } = useAlignmentStore();
 
-  const renderSensorUnit = (
+  const isS1Aligned = !sensor1Interrupted && !sensor1Flutter;
+  const isS2Aligned = !sensor2Interrupted && !sensor2Flutter;
+  const bothAligned = isS1Aligned && isS2Aligned;
+
+  const renderSensorPuck = (
     label: string,
+    role: string,
     pin: string,
-    role: "Entry (S1)" | "Exit (S2)",
     isInterrupted: boolean,
     isFlutter: boolean
   ) => {
-    // Sick status:
-    // Aligned: !isInterrupted && !isFlutter -> Solid Orange LED
-    // Flutter: isFlutter -> Blinking Orange LED
-    // Interrupted / Missing: isInterrupted -> LED OFF
     const isAligned = !isInterrupted && !isFlutter;
 
     return (
       <div
         className={cn(
-          "flex-1 flex flex-col items-center justify-between rounded-xl border p-4 transition-all duration-200 shadow-sm",
+          "flex-1 flex flex-col justify-between rounded-xl border p-2.5 sm:p-3.5 transition-all duration-200 shadow-xs",
           isAligned
-            ? "border-emerald-500/50 bg-emerald-950/10 dark:bg-emerald-950/20"
+            ? "border-emerald-500/50 bg-emerald-950/20 text-emerald-300 dark:bg-emerald-950/30"
             : isFlutter
-            ? "border-amber-500/60 bg-amber-950/15 dark:bg-amber-950/25"
-            : "border-red-500/50 bg-red-950/15 dark:bg-red-950/25"
+            ? "border-amber-500/60 bg-amber-950/20 text-amber-300 dark:bg-amber-950/30"
+            : "border-red-500/50 bg-red-950/20 text-red-300 dark:bg-red-950/30"
         )}
       >
-        {/* Sensor Header */}
-        <div className="w-full flex items-center justify-between border-b border-border/40 pb-2 mb-3">
+        {/* Sensor Header Row */}
+        <div className="flex items-center justify-between border-b border-border/30 pb-1.5 mb-2">
           <div>
-            <span className="text-xs font-mono font-bold tracking-wider uppercase text-foreground">
+            <div className="text-xs font-bold font-mono tracking-wider text-foreground">
               {label}
-            </span>
-            <span className="text-[10px] block font-mono text-muted-foreground">{role}</span>
+            </div>
+            <div className="text-[10px] font-mono text-muted-foreground">{role}</div>
           </div>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-background/60 border border-border/50 text-muted-foreground">
             {pin}
           </span>
         </div>
 
-        {/* Industrial Sick Housing Graphic */}
-        <div
-          className={cn(
-            "relative w-full max-w-[180px] bg-gradient-to-b from-neutral-800 to-neutral-900 border border-neutral-700 rounded-lg p-3 shadow-inner flex flex-col items-center",
-            compact ? "my-2" : "my-4"
-          )}
-        >
-          {/* Sick Brand Badge */}
-          <div className="w-full flex items-center justify-between mb-2">
-            <span className="text-[9px] font-black tracking-widest text-neutral-400">SICK</span>
-            <span className="text-[8px] font-mono text-neutral-500">WL12 / OPTIC</span>
-          </div>
-
-          {/* Lens Aperture */}
-          <div className="w-12 h-12 rounded-full border-2 border-neutral-600 bg-neutral-950 flex items-center justify-center relative overflow-hidden shadow-inner my-1">
+        {/* Clustered Optical Beacon Puck */}
+        <div className="flex flex-col items-center justify-center my-1">
+          <div className="relative flex items-center justify-center size-12 sm:size-14 rounded-full bg-neutral-900 border-2 border-neutral-700 shadow-inner">
+            {/* Glowing Aperture Ring */}
             <div
               className={cn(
-                "w-7 h-7 rounded-full transition-all duration-150",
+                "size-6 sm:size-7 rounded-full transition-all duration-150",
                 isAligned
-                  ? "bg-emerald-500/80 shadow-[0_0_12px_rgba(16,185,129,0.9)]"
+                  ? "bg-emerald-500 shadow-[0_0_14px_#10b981]"
                   : isFlutter
-                  ? "bg-amber-500/80 animate-ping shadow-[0_0_12px_rgba(245,158,11,0.9)]"
+                  ? "bg-amber-500 animate-ping shadow-[0_0_14px_#f59e0b]"
                   : "bg-neutral-800 border border-neutral-700"
+              )}
+            />
+            {/* Center LED Dot */}
+            <div
+              className={cn(
+                "absolute size-2.5 sm:size-3 rounded-full",
+                isAligned
+                  ? "bg-orange-500 shadow-[0_0_6px_#ea580c]"
+                  : isFlutter
+                  ? "bg-orange-500 animate-pulse shadow-[0_0_8px_#ea580c]"
+                  : "bg-neutral-950"
               )}
             />
           </div>
 
-          {/* Simulated Sick Orange Indicator LED */}
-          <div className="w-full mt-3 pt-2 border-t border-neutral-800/80 flex items-center justify-between">
-            <span className="text-[9px] font-mono uppercase text-neutral-400">LED Status</span>
-            <div className="flex items-center gap-1.5">
-              <div
-                className={cn(
-                  "w-3 h-3 rounded-full transition-all duration-150",
-                  isAligned
-                    ? "bg-orange-500 shadow-[0_0_10px_#f97316] ring-2 ring-orange-500/30"
-                    : isFlutter
-                    ? "bg-orange-500 animate-pulse shadow-[0_0_12px_#f97316]"
-                    : "bg-neutral-800 border border-neutral-700 opacity-40"
-                )}
-              />
-              <span className="text-[9px] font-mono font-medium text-neutral-300">
-                {isAligned ? "ON" : isFlutter ? "BLINK" : "OFF"}
+          {/* State Badge */}
+          <div className="mt-2 text-center">
+            {isAligned ? (
+              <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-emerald-400">
+                <CheckCircle2 className="size-3.5" />
+                <span>ALIGNED</span>
               </span>
-            </div>
+            ) : isFlutter ? (
+              <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-amber-400">
+                <AlertTriangle className="size-3.5" />
+                <span>FLUTTER</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold text-red-400">
+                <XCircle className="size-3.5" />
+                <span>BLOCKED</span>
+              </span>
+            )}
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              {isAligned ? "Beam locked" : isFlutter ? "Adjust angle" : "No signal"}
+            </p>
           </div>
         </div>
 
-        {/* Optical Beam Projection Bar */}
-        <div className="w-full my-2 flex items-center gap-1.5 px-1">
-          <span className="text-[10px] font-mono uppercase text-muted-foreground whitespace-nowrap">
-            Beam:
-          </span>
-          <div className="flex-1 h-2 rounded-full overflow-hidden bg-neutral-200 dark:bg-neutral-800 relative">
+        {/* Optical Line Indicator */}
+        <div className="w-full mt-2 pt-1.5 border-t border-border/30">
+          <div className="w-full h-1.5 rounded-full overflow-hidden bg-neutral-900">
             <div
               className={cn(
-                "h-full w-full transition-all duration-200",
+                "h-full w-full transition-all duration-150",
                 isAligned
-                  ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"
+                  ? "bg-emerald-500 shadow-[0_0_6px_#10b981]"
                   : isFlutter
                   ? "bg-amber-500 animate-pulse"
                   : "bg-red-500/30"
               )}
             />
           </div>
-          <ArrowRight
-            className={cn(
-              "w-3.5 h-3.5 transition-colors",
-              isAligned ? "text-emerald-500" : isFlutter ? "text-amber-500" : "text-muted-foreground/40"
-            )}
-          />
-        </div>
-
-        {/* Status Badge */}
-        <div className="w-full mt-2">
-          {isAligned ? (
-            <div className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md bg-emerald-500/20 text-emerald-400 font-semibold text-xs border border-emerald-500/40">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Aligned (Intact)</span>
-            </div>
-          ) : isFlutter ? (
-            <div className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md bg-amber-500/20 text-amber-400 font-semibold text-xs border border-amber-500/40">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>Marginal / Flutter</span>
-            </div>
-          ) : (
-            <div className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md bg-red-500/20 text-red-400 font-semibold text-xs border border-red-500/40">
-              <XCircle className="w-3.5 h-3.5" />
-              <span>Interrupted / Off</span>
-            </div>
-          )}
         </div>
       </div>
     );
   };
 
-  const bothAligned = !sensor1Interrupted && !sensor2Interrupted && !sensor1Flutter && !sensor2Flutter;
-
   return (
-    <div className="flex flex-col gap-4 w-full">
-      {/* Overview Status Banner */}
+    <div className="flex flex-col gap-2.5 w-full">
+      {/* Overview Status Bar with Audio Assist */}
       <div
         className={cn(
-          "flex items-center justify-between px-3 py-2 rounded-lg border text-xs font-mono",
+          "flex items-center justify-between px-3 py-1.5 rounded-lg border text-xs font-mono",
           bothAligned
             ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
             : "border-amber-500/40 bg-amber-500/10 text-amber-400"
@@ -165,12 +137,14 @@ export function SickSensorVisualizer({ compact = false }: SickSensorVisualizerPr
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              "w-2.5 h-2.5 rounded-full",
-              bothAligned ? "bg-emerald-500 animate-pulse shadow-[0_0_6px_#10b981]" : "bg-amber-500"
+              "size-2.5 rounded-full shrink-0",
+              bothAligned
+                ? "bg-emerald-500 animate-pulse shadow-[0_0_6px_#10b981]"
+                : "bg-amber-500"
             )}
           />
-          <span className="font-semibold">
-            {bothAligned ? "Both Light Barriers Aligned" : "Alignment Incomplete"}
+          <span className="font-semibold text-xs truncate">
+            {bothAligned ? "Dual Barriers Locked" : "Alignment Incomplete"}
           </span>
         </div>
 
@@ -179,45 +153,34 @@ export function SickSensorVisualizer({ compact = false }: SickSensorVisualizerPr
           type="button"
           onClick={toggleAudio}
           className={cn(
-            "flex items-center gap-1 px-2 py-1 rounded text-[11px] font-sans transition-colors border",
+            "flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-sans transition-colors border shrink-0",
             audioFeedbackEnabled
               ? "bg-primary text-primary-foreground border-primary"
-              : "bg-background/60 text-muted-foreground border-border hover:text-foreground"
+              : "bg-background/80 text-muted-foreground border-border hover:text-foreground"
           )}
-          title="Audio assist for hands-free outdoor roadside alignment"
+          title="Audio assist for hands-free roadside alignment"
         >
-          {audioFeedbackEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
-          <span>{audioFeedbackEnabled ? "Audio On" : "Audio Off"}</span>
+          {audioFeedbackEnabled ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
+          <span className="text-[10px] font-medium">
+            {audioFeedbackEnabled ? "Audio On" : "Audio Assist"}
+          </span>
         </button>
       </div>
 
-      {/* Side-by-side Dual Light Barrier Assembly */}
-      <div className={cn("relative flex items-stretch gap-3", compact ? "flex-col sm:flex-row" : "flex-row")}>
-        {renderSensorUnit("Sensor 1", "GPIO 16", "Entry (S1)", sensor1Interrupted, sensor1Flutter)}
-
-        {/* Assembly Spacing Callout */}
-        <div className="hidden sm:flex flex-col items-center justify-center px-1 text-center select-none">
-          <div className="h-full w-px bg-border/60 relative flex items-center justify-center">
-            <span className="absolute bg-card border border-border px-1.5 py-0.5 rounded text-[10px] font-mono text-muted-foreground whitespace-nowrap shadow-xs">
-              135 mm
-            </span>
-          </div>
+      {/* Side-by-side Dual Light Barrier Assembly — ALWAYS horizontal grid */}
+      <div className="relative">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full">
+          {renderSensorPuck("Sensor 1", "Entry (S1)", "GPIO 16", sensor1Interrupted, sensor1Flutter)}
+          {renderSensorPuck("Sensor 2", "Exit (S2)", "GPIO 12", sensor2Interrupted, sensor2Flutter)}
         </div>
 
-        {renderSensorUnit("Sensor 2", "GPIO 12", "Exit (S2)", sensor2Interrupted, sensor2Flutter)}
+        {/* Physical 135 mm Spacing Badge in Center */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10 hidden xs:flex items-center justify-center">
+          <span className="bg-background/95 border border-border/80 px-2 py-0.5 rounded-full text-[9px] font-mono text-muted-foreground shadow-xs">
+            135 mm
+          </span>
+        </div>
       </div>
-
-      {/* Alignment Instructions Helper */}
-      {!compact && (
-        <div className="rounded-lg border border-border/50 bg-muted/20 p-3 text-[11px] text-muted-foreground space-y-1">
-          <p className="font-semibold text-foreground">Sick Sensor Alignment Guide:</p>
-          <ul className="list-disc list-inside space-y-0.5 font-mono text-[10px]">
-            <li><span className="text-orange-400 font-bold">Solid Orange LED:</span> Reflector correctly targeted and locked.</li>
-            <li><span className="text-amber-400 font-bold">Blinking Orange:</span> Marginal connection — adjust angle or clean reflector.</li>
-            <li><span className="text-neutral-400 font-bold">LED Off:</span> Beam blocked or reflector out of field.</li>
-          </ul>
-        </div>
-      )}
     </div>
   );
 }

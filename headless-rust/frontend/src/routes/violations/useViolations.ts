@@ -12,7 +12,13 @@ export type ViewMode = "list" | "grid";
 const VIEW_MODE_KEY = "violations_view_mode";
 
 export function readViewMode(): ViewMode {
-  return (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) || "list";
+  const stored = localStorage.getItem(VIEW_MODE_KEY) as ViewMode | null;
+  if (stored) return stored;
+  // ponytail: default to grid on mobile so cards render without horizontal overflow
+  if (typeof window !== "undefined" && window.innerWidth < 768) {
+    return "grid";
+  }
+  return "list";
 }
 
 export function writeViewMode(mode: ViewMode) {

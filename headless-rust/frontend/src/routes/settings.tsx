@@ -27,13 +27,13 @@ function SettingsPage() {
   return (
     <div className="h-full overflow-hidden flex flex-col">
       <TabsPrimitive.Root defaultValue="device" className="flex flex-col h-full">
-        <TabsPrimitive.List className="flex shrink-0 border-b border-border px-4 gap-0.5">
+        <TabsPrimitive.List className="flex shrink-0 border-b border-border px-2 sm:px-4 gap-0.5 overflow-x-auto no-scrollbar scroll-smooth">
           {allTabs.map((tab) => (
             <TabsPrimitive.Trigger
               key={tab.id}
               value={tab.id}
               className={cn(
-                "px-4 py-2.5 text-sm font-medium text-muted-foreground",
+                "shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium text-muted-foreground",
                 "border-b-2 border-transparent -mb-px transition-colors",
                 "hover:text-foreground",
                 "data-[state=active]:text-foreground data-[state=active]:border-primary",
@@ -47,7 +47,7 @@ function SettingsPage() {
         {allTabs.map((tab) => {
           const Component = tab.component;
           return (
-            <TabsPrimitive.Content key={tab.id} value={tab.id} className="flex-1 overflow-y-auto p-6">
+            <TabsPrimitive.Content key={tab.id} value={tab.id} className="flex-1 overflow-y-auto p-3.5 sm:p-6">
               <Component />
             </TabsPrimitive.Content>
           );

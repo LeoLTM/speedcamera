@@ -23,11 +23,11 @@ interface ViolationsGridProps {
 export function ViolationsGrid(props: ViolationsGridProps) {
   if (props.loading) {
     return (
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4 p-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4 p-3 sm:p-4 auto-rows-max">
         {Array.from({ length: props.limit > 25 ? 12 : 8 }).map((_, i) => (
-          <div key={i} className="flex flex-col rounded-xl border border-border bg-card overflow-hidden">
-            <Skeleton className="w-full h-52 rounded-none" />
-            <div className="p-3 space-y-2">
+          <div key={i} className="flex flex-row sm:flex-col rounded-xl border border-border bg-card overflow-hidden p-2 sm:p-0 gap-3 sm:gap-0">
+            <Skeleton className="w-28 sm:w-full h-20 sm:h-48 rounded-lg sm:rounded-none shrink-0" />
+            <div className="p-1 sm:p-3 flex-1 space-y-2">
               <div className="flex justify-between">
                 <Skeleton className="h-4 w-20" />
                 <Skeleton className="h-4 w-16" />
@@ -42,7 +42,7 @@ export function ViolationsGrid(props: ViolationsGridProps) {
 
   if (props.violations.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-8">
+      <div className="flex flex-col items-center justify-center py-16 gap-3 text-center px-8">
         <div className="flex items-center justify-center size-16 rounded-2xl bg-muted text-muted-foreground/40">
           <HugeiconsIcon icon={FilterIcon} strokeWidth={1.5} className="size-8" />
         </div>
@@ -55,8 +55,9 @@ export function ViolationsGrid(props: ViolationsGridProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-2 bg-muted/10 border-b border-border text-xs text-muted-foreground shrink-0">
+    <div className="flex flex-col min-h-full">
+      {/* Sticky Selection Bar */}
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs flex items-center justify-between px-3 sm:px-4 py-2 bg-muted/10 border-b border-border text-xs text-muted-foreground shrink-0">
         <div className="flex items-center gap-2">
           <Checkbox
             checked={props.allSelected || (props.someSelected ? "indeterminate" : false)}
@@ -69,7 +70,9 @@ export function ViolationsGrid(props: ViolationsGridProps) {
         </div>
         <span>{props.violations.length} items on page</span>
       </div>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4 p-4 overflow-auto flex-1">
+
+      {/* Grid Container with auto-rows-max */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4 p-3 sm:p-4 auto-rows-max">
         {props.violations.map((v) => (
           <ViolationGridTile
             key={v.id}

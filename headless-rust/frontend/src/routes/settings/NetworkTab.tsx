@@ -167,7 +167,7 @@ export function NetworkTab() {
   const handleToggleEthernetMode = async () => {
     if (!network) return;
     const isCameraLan = network.ethernetMode === "camera-lan" || network.cameraLan.status === "ok";
-    const targetMode = isCameraLan ? "lan-dhcp" : "lan-camera";
+    const targetMode = isCameraLan ? "lan-dhcp" : "camera-lan";
 
     setSwitchingEth(true);
     try {

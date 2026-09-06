@@ -117,8 +117,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         armed_tx: armed_tx.clone(),
     };
     let mut plugin_reg = plugins::PluginRegistry::new();
-    // ponytail: modular lap timer plugin isolated from core daemon
+    // ponytail: modular plugins isolated from core daemon
     plugin_reg.register(Box::new(plugins::laptimer::LapTimerPlugin::new()));
+    plugin_reg.register(Box::new(plugins::alignment::AlignmentPlugin::new()));
     plugin_reg.init(plugin_ctx)?;
     let plugin_registry = std::sync::Arc::new(plugin_reg);
     let pipeline_plugins = plugin_registry.clone();

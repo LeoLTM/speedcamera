@@ -301,6 +301,7 @@ export type SerialStatusPayload =
   | { status: "LAPEND";   lapNumber: number; durationMs: number; durationUs?: number; speedAtStart: number; speedAtEnd: number; timestamp: number }
   | { status: "LAPWAITING" }
   | { status: "LAPSTOPPED" }
+  | { status: "BARRIER_STATUS"; sensor1Interrupted: boolean; sensor2Interrupted: boolean; timestamp: number }
   | { status: "CONNECTED"; port?: string }
   | { status: "DISCONNECTED" };
 

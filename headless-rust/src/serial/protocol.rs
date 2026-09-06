@@ -42,6 +42,11 @@ pub enum EspMessage {
     LapWaiting,
     #[serde(rename = "lapStopped")]
     LapStopped,
+    #[serde(rename = "barrierStatus")]
+    BarrierStatus {
+        s1: bool,
+        s2: bool,
+    },
     #[serde(rename = "configError")]
     ConfigError { message: String },
     #[serde(other)]
@@ -98,6 +103,11 @@ impl EspMessage {
             }),
             Self::LapWaiting => Some(SerialStatusPayload::LapWaiting),
             Self::LapStopped => Some(SerialStatusPayload::LapStopped),
+            Self::BarrierStatus { s1, s2 } => Some(SerialStatusPayload::BarrierStatus {
+                sensor1_interrupted: *s1,
+                sensor2_interrupted: *s2,
+                timestamp,
+            }),
             Self::ConfigError { .. } | Self::Unknown => None,
         }
     }

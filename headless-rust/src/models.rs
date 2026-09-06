@@ -329,6 +329,14 @@ pub enum SerialStatusPayload {
     LapWaiting,
     #[serde(rename = "LAPSTOPPED")]
     LapStopped,
+    #[serde(rename = "BARRIER_STATUS")]
+    BarrierStatus {
+        #[serde(rename = "sensor1Interrupted")]
+        sensor1_interrupted: bool,
+        #[serde(rename = "sensor2Interrupted")]
+        sensor2_interrupted: bool,
+        timestamp: i64,
+    },
     #[serde(rename = "CONNECTED")]
     Connected {
         #[serde(default, skip_serializing_if = "Option::is_none")]

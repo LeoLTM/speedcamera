@@ -79,22 +79,33 @@ function HomePage() {
             <span>Speed Camera</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setAppMode("laptimer")}
-            className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all relative",
-              appMode === "laptimer"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
-            )}
-          >
-            <HugeiconsIcon icon={Timer01Icon} strokeWidth={2} className="w-4 h-4" />
-            <span>Lap Timer</span>
-            {isLapActive && (
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="Lap timer session running" />
-            )}
-          </button>
+          {pluginRegistry.getModes().map((m) => {
+            const isCurrent = appMode === m.id;
+            const Icon = m.icon as any;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setAppMode(m.id)}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all relative",
+                  isCurrent
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
+                )}
+              >
+                {Array.isArray(Icon) ? (
+                  <HugeiconsIcon icon={Icon} strokeWidth={2} className="w-4 h-4" />
+                ) : (
+                  <Icon className="w-4 h-4" />
+                )}
+                <span>{m.label}</span>
+                {m.id === "laptimer" && isLapActive && (
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="Lap timer session running" />
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -109,7 +120,7 @@ function HomePage() {
         <div
           className={cn(
             "shrink-0 flex flex-col gap-4 p-4 border-l border-border overflow-y-auto transition-all duration-200",
-            appMode === "laptimer" ? "w-[480px] lg:w-[540px]" : "w-80",
+            appMode !== "speedcamera" ? "w-[480px] lg:w-[540px]" : "w-80",
           )}
         >
           {SidePanel ? (

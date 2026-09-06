@@ -7,11 +7,11 @@
 enum class MeasurementState : uint8_t { IDLE, WAITING_FOR_SECOND };
 enum class FirstSensor      : uint8_t { NONE, SENSOR_ONE, SENSOR_TWO };
 
-// ─── Lap Timer State Machine ──────────────────────────────────────────────────
-// The host starts/stops a lap session via serial commands.  Once a session is
-// active the firmware drives the state machine: the first car pass opens a
-// lap (WAITING → TIMING) and the second car pass closes it (TIMING → WAITING
-// for SINGLE mode, or TIMING → TIMING with an incremented counter for MULTI).
-enum class LapMode            : uint8_t { SINGLE, MULTI };
-enum class LapSessionState    : uint8_t { IDLE, WAITING, TIMING };
-enum class LapDirectionFilter : uint8_t { BOTH, FORWARD_ONLY, REVERSE_ONLY };
+// ─── Measurement Event ────────────────────────────────────────────────────────
+// Emitted when a passing vehicle triggers both sensors within valid window.
+struct MeasurementEvent {
+  float speedKmH;
+  float toleranceKmH;
+  const char *direction;     // "forward" | "reverse"
+  unsigned long boundaryUs;  // µs timestamp of first beam break
+};

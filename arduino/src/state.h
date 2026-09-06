@@ -18,15 +18,6 @@ extern unsigned long    firstTriggerUs;
 extern unsigned long    measurementStartMs;
 extern unsigned long    lastMeasurementEndMs;
 
-// ─── Lap Timer State ──────────────────────────────────────────────────────────
-extern LapMode            lapMode;
-extern LapSessionState    lapSessionState;
-extern LapDirectionFilter lapDirectionFilter;
-extern unsigned long      lapStartUs;       // µs timestamp of lap start (= firstTriggerUs)
-extern float              lapStartSpeedKmH;
-extern int                lapNumber;
-
-
 // ─── Speed Measurement Results ────────────────────────────────────────────────
 extern float speedInKmH;
 extern float speedTolerance;

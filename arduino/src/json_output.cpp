@@ -3,6 +3,8 @@
 #include "config.h"
 #include "state.h"
 
+#include "modules/laptimer.h"
+
 // ─── Serial Output Helpers ────────────────────────────────────────────────────
 // Serial.flush() is intentionally omitted for most messages: the TX FIFO
 // buffers them at 115200 baud while the loop continues polling sensors.
@@ -58,10 +60,7 @@ void sendJsonPong() {
   cfg["maxSpeed"]       = maxSpeedKmH;
   cfg["sensorDistance"] = sensorDistance;
   cfg["debugEnabled"]   = debugEnabled;
-  cfg["lapMode"]        = (lapMode == LapMode::MULTI) ? "multi" : "single";
-  cfg["lapActive"]      = (lapSessionState != LapSessionState::IDLE);
-  cfg["lapDirFilter"]   = (lapDirectionFilter == LapDirectionFilter::FORWARD_ONLY) ? "forward"
-                        : (lapDirectionFilter == LapDirectionFilter::REVERSE_ONLY) ? "reverse" : "both";
+  LapTimer::populatePongConfig(cfg);
   String out;
   serializeJson(doc, out);
   out += '\n';
@@ -69,24 +68,12 @@ void sendJsonPong() {
   Serial.flush(); // Ensure full pong reply is sent before next command is processed
 }
 
-void sendLapStart(int lapNum, float speedAtStart) {
+void sendJsonCapabilities() {
   JsonDocument doc;
-  doc["status"]       = "lapStart";
-  doc["lapNumber"]    = lapNum;
-  doc["speedAtStart"] = round(speedAtStart * 10.0f) / 10.0f;
-  String out;
-  serializeJson(doc, out);
-  out += '\n';
-  Serial.write(out.c_str(), out.length());
-}
-
-void sendLapEnd(int lapNum, float durationMs, float speedAtStart, float speedAtEnd) {
-  JsonDocument doc;
-  doc["status"]       = "lapEnd";
-  doc["lapNumber"]    = lapNum;
-  doc["durationMs"]   = durationMs; // full float precision (~0.001 ms)
-  doc["speedAtStart"] = round(speedAtStart * 10.0f) / 10.0f;
-  doc["speedAtEnd"]   = round(speedAtEnd   * 10.0f) / 10.0f;
+  doc["status"] = "capabilities";
+  JsonArray features = doc["features"].to<JsonArray>();
+  features.add("speed");
+  features.add("laptimer");
   String out;
   serializeJson(doc, out);
   out += '\n';

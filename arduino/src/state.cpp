@@ -15,15 +15,6 @@ unsigned long    firstTriggerUs       = 0;
 unsigned long    measurementStartMs   = 0;
 unsigned long    lastMeasurementEndMs = 0;
 
-// ─── Lap Timer State ──────────────────────────────────────────────────────────
-LapMode            lapMode            = LapMode::SINGLE;
-LapSessionState    lapSessionState    = LapSessionState::IDLE;
-LapDirectionFilter lapDirectionFilter = LapDirectionFilter::BOTH;
-unsigned long      lapStartUs         = 0;
-float              lapStartSpeedKmH   = 0.0f;
-int                lapNumber          = 1;
-
-
 // ─── Speed Measurement Results ────────────────────────────────────────────────
 float speedInKmH    = 0.0f;
 float speedTolerance = 0.0f;

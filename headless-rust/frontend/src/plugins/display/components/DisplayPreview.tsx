@@ -111,7 +111,7 @@ export function DisplayPreview() {
             ref={canvasRef}
             width={128}
             height={64}
-            className="w-[256px] h-[128px] sm:w-[320px] sm:h-[160px] block"
+            className="w-[256px] h-32 sm:w-[320px] sm:h-40 block"
             style={{ imageRendering: "pixelated" }}
           />
         </div>

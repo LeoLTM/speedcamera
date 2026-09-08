@@ -29,5 +29,6 @@ export interface UiPlugin {
   settingsTabs?: PluginSettingsTab[];
   getRoutes?: (rootRoute: any) => AnyRoute[];
   onSerialStatus?: (payload: SerialStatusPayload) => boolean | void;
+  onModeChange?: (mode: string) => void;
   init?: () => void;
 }

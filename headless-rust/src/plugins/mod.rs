@@ -1,4 +1,5 @@
 pub mod alignment;
+pub mod display;
 pub mod laptimer;
 
 use crate::camera::CameraService;

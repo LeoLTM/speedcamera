@@ -3,32 +3,42 @@ use super::models::*;
 use super::renderer::FrameBuffer;
 use crate::plugins::{PluginContext, RpcRegistry};
 use serde_json::json;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
 
-// ponytail: lightweight rpc handler mapping typed inputs directly to mutex state and db
+// ponytail: lightweight rpc handlers reporting live dynamic connection status and real hardware errors
 pub fn register_rpc_methods(
     registry: &mut RpcRegistry,
     config: Arc<Mutex<DisplayConfig>>,
     framebuffer: Arc<Mutex<FrameBuffer>>,
     active_mode: Arc<Mutex<String>>,
-    is_mock: bool,
+    is_connected: Arc<AtomicBool>,
+    is_mock_mode: bool,
+    last_error: Arc<Mutex<Option<String>>>,
     notify_render: Arc<Notify>,
 ) {
     // getDisplayConfig
     let cfg_clone = config.clone();
     let mode_clone = active_mode.clone();
+    let connected_clone = is_connected.clone();
+    let error_clone = last_error.clone();
+
     registry.register("getDisplayConfig", move |_ctx, _params| {
         let cfg = cfg_clone.lock().unwrap().clone();
         let act = mode_clone.lock().unwrap().clone();
+        let conn = connected_clone.load(Ordering::Relaxed);
+        let err = error_clone.lock().unwrap().clone();
+
         let status = DisplayStatus {
-            connected: !is_mock,
-            mock_mode: is_mock,
+            connected: conn,
+            mock_mode: is_mock_mode,
             active_screen: act,
             bus: cfg.i2c_bus.clone(),
             address: format!("0x{:02X}", cfg.i2c_address),
             width: 128,
             height: 64,
+            error: err,
         };
         async move {
             Ok(json!({

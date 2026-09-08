@@ -92,6 +92,8 @@ pub struct DisplayStatus {
     pub address: String,
     pub width: u32,
     pub height: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

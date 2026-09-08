@@ -47,14 +47,41 @@ export function DisplaySettingsTab() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={status?.connected ? "default" : "secondary"} className="text-xs font-mono">
-            {status?.connected ? "I²C Connected" : "Mock / Virtual"}
-          </Badge>
+          {status?.mockMode ? (
+            <Badge variant="secondary" className="text-xs font-mono border-amber-500/30 text-amber-500 bg-amber-500/10">
+              Mock Mode
+            </Badge>
+          ) : status?.connected ? (
+            <Badge variant="default" className="text-xs font-mono bg-emerald-600 hover:bg-emerald-600 text-white">
+              I²C Connected
+            </Badge>
+          ) : (
+            <Badge variant="destructive" className="text-xs font-mono">
+              Disconnected
+            </Badge>
+          )}
           <Badge variant="outline" className="text-xs font-mono">
             {config.enabled ? "Power: ON" : "Power: OFF"}
           </Badge>
         </div>
       </div>
+
+      {/* Hardware Disconnected / Error Diagnostic Banner */}
+      {!status?.connected && !status?.mockMode && (
+        <div className="p-3 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs font-mono text-rose-400 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <span className="font-semibold">OLED Hardware: Disconnected</span>
+            {status?.error && (
+              <span className="block text-[11px] text-rose-300/80 mt-0.5">
+                Reason: {status.error}
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] text-rose-400/70">
+            Auto-reconnecting every 2s...
+          </span>
+        </div>
+      )}
 
       {/* Live Screen Preview */}
       <DisplayPreview />

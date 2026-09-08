@@ -12,7 +12,7 @@ use ssd1306::{
     I2CDisplayInterface, Ssd1306,
 };
 
-// ponytail: hardware abstraction with zero-crash mock fallback for non-pi environments
+// ponytail: hardware abstraction with dynamic auto-reconnect and error reporting
 type Ssd1306Instance = Ssd1306<
     I2CInterface<I2cdev>,
     DisplaySize128x64,
@@ -21,10 +21,9 @@ type Ssd1306Instance = Ssd1306<
 
 pub struct DisplayDriver {
     physical: Option<Ssd1306Instance>,
-    pub is_mock: bool,
-    #[allow(dead_code)]
+    pub is_mock_mode: bool,
+    pub last_error: Option<String>,
     pub bus_name: String,
-    #[allow(dead_code)]
     pub address: u8,
 }
 
@@ -37,38 +36,58 @@ impl DisplayDriver {
             tracing::info!("[plugin:display] Mock mode active — physical I2C initialization skipped");
             return Self {
                 physical: None,
-                is_mock: true,
+                is_mock_mode: true,
+                last_error: None,
                 bus_name: bus,
                 address,
             };
         }
 
-        match Self::try_init_hardware(&bus, address, cfg.rotation, cfg.contrast) {
+        let mut driver = Self {
+            physical: None,
+            is_mock_mode: false,
+            last_error: None,
+            bus_name: bus,
+            address,
+        };
+
+        driver.try_reconnect(cfg);
+        driver
+    }
+
+    pub fn is_connected(&self) -> bool {
+        self.physical.is_some()
+    }
+
+    pub fn try_reconnect(&mut self, cfg: &DisplayConfig) -> bool {
+        if self.is_mock_mode {
+            return false;
+        }
+
+        self.bus_name = cfg.i2c_bus.clone();
+        self.address = cfg.i2c_address;
+
+        match Self::try_init_hardware(&cfg.i2c_bus, cfg.i2c_address, cfg.rotation, cfg.contrast) {
             Ok(instance) => {
                 tracing::info!(
-                    "[plugin:display] Connected to SSD1306 OLED at {} (addr 0x{:02X})",
-                    bus,
-                    address
+                    "[plugin:display] Successfully connected to SSD1306 OLED at {} (addr 0x{:02X})",
+                    cfg.i2c_bus,
+                    cfg.i2c_address
                 );
-                Self {
-                    physical: Some(instance),
-                    is_mock: false,
-                    bus_name: bus,
-                    address,
-                }
+                self.physical = Some(instance);
+                self.last_error = None;
+                true
             }
             Err(err) => {
-                tracing::warn!(
-                    "[plugin:display] Physical I2C init failed at {}: {}. Falling back to virtual mock display.",
-                    bus,
-                    err
+                let err_msg = err.to_string();
+                tracing::debug!(
+                    "[plugin:display] I2C connect attempt failed at {}: {}",
+                    cfg.i2c_bus,
+                    err_msg
                 );
-                Self {
-                    physical: None,
-                    is_mock: true,
-                    bus_name: bus,
-                    address,
-                }
+                self.physical = None;
+                self.last_error = Some(err_msg);
+                false
             }
         }
     }
@@ -105,7 +124,9 @@ impl DisplayDriver {
             let img = Image::new(&raw, Point::zero());
             let _ = img.draw(display);
             if let Err(e) = display.flush() {
-                tracing::debug!("[plugin:display] I2C flush error: {:?}", e);
+                tracing::warn!("[plugin:display] I2C flush failed (screen disconnected?): {:?}", e);
+                self.last_error = Some(format!("Flush error: {:?}", e));
+                self.physical = None; // Reset so next tick attempts reconnection
             }
         }
     }

@@ -36,6 +36,7 @@ export interface DisplayStatus {
   address: string;
   width: number;
   height: number;
+  error?: string | null;
 }
 
 export interface DisplayPreviewResponse {

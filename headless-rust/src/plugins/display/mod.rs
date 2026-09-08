@@ -9,19 +9,21 @@ use crate::plugins::{Plugin, PluginContext, RpcRegistry};
 use driver::DisplayDriver;
 use models::DisplayConfig;
 use renderer::{FrameBuffer, RenderTelemetry};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::Notify;
 
-// ponytail: self-contained plugin with dedicated background render thread and zero core impact
+// ponytail: self-contained plugin with dynamic auto-reconnect and accurate mock mode reporting
 pub struct DisplayPlugin {
     config: Arc<Mutex<DisplayConfig>>,
     telemetry: Arc<Mutex<RenderTelemetry>>,
     framebuffer: Arc<Mutex<FrameBuffer>>,
     active_mode: Arc<Mutex<String>>,
     notify_render: Arc<Notify>,
-    is_mock: Arc<Mutex<bool>>,
+    is_connected: Arc<AtomicBool>,
+    is_mock_mode: Arc<AtomicBool>,
+    last_error: Arc<Mutex<Option<String>>>,
 }
 
 impl DisplayPlugin {
@@ -32,7 +34,9 @@ impl DisplayPlugin {
             framebuffer: Arc::new(Mutex::new(FrameBuffer::default())),
             active_mode: Arc::new(Mutex::new("auto".to_string())),
             notify_render: Arc::new(Notify::new()),
-            is_mock: Arc::new(Mutex::new(false)),
+            is_connected: Arc::new(AtomicBool::new(false)),
+            is_mock_mode: Arc::new(AtomicBool::new(false)),
+            last_error: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -65,12 +69,15 @@ impl Plugin for DisplayPlugin {
             t.speed_limit = max_speed;
         }
 
+        let is_mock = ctx.config.mock_mode;
+        self.is_mock_mode.store(is_mock, Ordering::Relaxed);
+
         // Initialize Hardware / Mock Driver
-        let mut driver = DisplayDriver::new(&saved_cfg, ctx.config.mock_mode);
-        let mock_flag = driver.is_mock;
+        let mut driver = DisplayDriver::new(&saved_cfg, is_mock);
+        self.is_connected.store(driver.is_connected(), Ordering::Relaxed);
         {
-            let mut m = self.is_mock.lock().unwrap();
-            *m = mock_flag;
+            let mut err = self.last_error.lock().unwrap();
+            *err = driver.last_error.clone();
         }
 
         let cfg_thread = self.config.clone();
@@ -80,6 +87,8 @@ impl Plugin for DisplayPlugin {
         let armed_arc = ctx.armed.clone();
         let camera_svc = ctx.camera.clone();
         let serial_svc = ctx.serial.clone();
+        let is_conn_thread = self.is_connected.clone();
+        let last_err_thread = self.last_error.clone();
 
         // Spawn dedicated background render thread (non-blocking for main server)
         std::thread::Builder::new()
@@ -89,6 +98,7 @@ impl Plugin for DisplayPlugin {
                 let mut last_power = true;
                 let mut last_contrast = saved_cfg.contrast;
                 let mut last_rotation = saved_cfg.rotation;
+                let mut reconnect_timer = Instant::now();
 
                 loop {
                     // Update live system state
@@ -101,6 +111,21 @@ impl Plugin for DisplayPlugin {
 
                     let cfg = cfg_thread.lock().unwrap().clone();
                     let telem = telem_thread.lock().unwrap().clone();
+
+                    // Auto-reconnect if disconnected and not configured for mock mode
+                    if !is_mock && !driver.is_connected() {
+                        if reconnect_timer.elapsed() >= Duration::from_secs(2) {
+                            reconnect_timer = Instant::now();
+                            driver.try_reconnect(&cfg);
+                        }
+                    }
+
+                    // Update live status for RPC
+                    is_conn_thread.store(driver.is_connected(), Ordering::Relaxed);
+                    {
+                        let mut err = last_err_thread.lock().unwrap();
+                        *err = driver.last_error.clone();
+                    }
 
                     // Hardware power & contrast adjustments
                     if cfg.enabled != last_power {
@@ -184,13 +209,15 @@ impl Plugin for DisplayPlugin {
     }
 
     fn register_rpc(&self, registry: &mut RpcRegistry) {
-        let is_mock = *self.is_mock.lock().unwrap();
+        let is_mock = self.is_mock_mode.load(Ordering::Relaxed);
         rpc::register_rpc_methods(
             registry,
             self.config.clone(),
             self.framebuffer.clone(),
             self.active_mode.clone(),
+            self.is_connected.clone(),
             is_mock,
+            self.last_error.clone(),
             self.notify_render.clone(),
         );
         tracing::info!("[plugin:display] Registered RPC methods");

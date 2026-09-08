@@ -120,6 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ponytail: modular plugins isolated from core daemon
     plugin_reg.register(Box::new(plugins::laptimer::LapTimerPlugin::new()));
     plugin_reg.register(Box::new(plugins::alignment::AlignmentPlugin::new()));
+    plugin_reg.register(Box::new(plugins::display::DisplayPlugin::new()));
     plugin_reg.init(plugin_ctx)?;
     let plugin_registry = std::sync::Arc::new(plugin_reg);
     let pipeline_plugins = plugin_registry.clone();

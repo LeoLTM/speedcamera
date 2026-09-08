@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Monitor, Cpu, Cable, Sparkles } from "lucide-react";
+import { Monitor, Cpu, Sparkles } from "lucide-react";
 
 export function DisplaySettingsTab() {
   const { config, status, loading, saving, loadConfig, updateConfig, togglePower, setMode } = useDisplayStore();
@@ -58,47 +58,6 @@ export function DisplaySettingsTab() {
 
       {/* Live Screen Preview */}
       <DisplayPreview />
-
-      {/* Raspberry Pi 5 Physical Pinout Guide */}
-      <Card className="border-border/60 bg-muted/20">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Cable className="w-4 h-4 text-emerald-400" />
-            Raspberry Pi 5 GPIO Pinout Connection Guide
-          </CardTitle>
-          <CardDescription className="text-xs">
-            Connect your 4-pin I²C SSD1306 OLED module to the Raspberry Pi 5 40-pin GPIO header:
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
-            <div className="p-2.5 rounded-lg border border-border bg-card">
-              <span className="text-[10px] text-muted-foreground block">OLED PIN</span>
-              <span className="font-bold text-rose-400">VCC</span>
-              <span className="text-[11px] text-foreground/80 block mt-1">Pin 1 (3.3V Power)</span>
-            </div>
-            <div className="p-2.5 rounded-lg border border-border bg-card">
-              <span className="text-[10px] text-muted-foreground block">OLED PIN</span>
-              <span className="font-bold text-neutral-400">GND</span>
-              <span className="text-[11px] text-foreground/80 block mt-1">Pin 6 or 9 (Ground)</span>
-            </div>
-            <div className="p-2.5 rounded-lg border border-border bg-card">
-              <span className="text-[10px] text-muted-foreground block">OLED PIN</span>
-              <span className="font-bold text-cyan-400">SDA</span>
-              <span className="text-[11px] text-foreground/80 block mt-1">Pin 3 (GPIO 2 / I2C1 SDA)</span>
-            </div>
-            <div className="p-2.5 rounded-lg border border-border bg-card">
-              <span className="text-[10px] text-muted-foreground block">OLED PIN</span>
-              <span className="font-bold text-amber-400">SCL</span>
-              <span className="text-[11px] text-foreground/80 block mt-1">Pin 5 (GPIO 3 / I2C1 SCL)</span>
-            </div>
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-2 font-mono">
-            Linux bus: <span className="text-primary">{config.i2cBus}</span> • Address:{" "}
-            <span className="text-primary">0x{config.i2cAddress.toString(16).toUpperCase()}</span> (3.3V logic level)
-          </p>
-        </CardContent>
-      </Card>
 
       {/* Main Hardware Settings */}
       <Card>
@@ -305,6 +264,21 @@ export function DisplaySettingsTab() {
           </section>
         </CardContent>
       </Card>
+
+      {/* Compressed Wiring Reference (Footer) */}
+      <details className="text-[11px] font-mono text-muted-foreground border-t border-border/40 pt-3 cursor-pointer group">
+        <summary className="hover:text-foreground transition-colors select-none text-[10px] uppercase tracking-wider text-muted-foreground/70 flex items-center justify-between">
+          <span>Raspberry Pi 5 GPIO Pinout Reference</span>
+          <span className="text-[10px] text-muted-foreground/50 group-hover:text-muted-foreground">Click to expand</span>
+        </summary>
+        <div className="mt-2 p-2.5 rounded-lg bg-muted/20 border border-border/40 text-[11px] flex flex-wrap gap-x-5 gap-y-1.5 text-muted-foreground">
+          <span><strong className="text-rose-400">VCC:</strong> Pin 1 (3.3V)</span>
+          <span><strong className="text-neutral-400">GND:</strong> Pin 6</span>
+          <span><strong className="text-cyan-400">SDA:</strong> Pin 3 (GPIO 2)</span>
+          <span><strong className="text-amber-400">SCL:</strong> Pin 5 (GPIO 3)</span>
+          <span className="text-muted-foreground/60 ml-auto">Bus: {config.i2cBus} • Addr: 0x{config.i2cAddress.toString(16).toUpperCase()}</span>
+        </div>
+      </details>
     </div>
   );
 }

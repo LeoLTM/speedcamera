@@ -83,6 +83,12 @@ class PluginRegistry {
     }
     return handled;
   }
+
+  public dispatchModeChange(mode: string): void {
+    for (const plugin of this.plugins.values()) {
+      plugin.onModeChange?.(mode);
+    }
+  }
 }
 
 export const pluginRegistry = new PluginRegistry();

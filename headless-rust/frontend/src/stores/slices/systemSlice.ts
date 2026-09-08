@@ -3,6 +3,7 @@ import { getRpc } from "@/lib/rpc";
 import type { SerialSlice } from "./serialSlice";
 import type { CameraSlice } from "./cameraSlice";
 import type { MeasurementSlice } from "./measurementSlice";
+import { pluginRegistry } from "@/plugins";
 
 export type SystemState = "PASSIVE" | "DISARMED" | "ARMED";
 export type AppMode = "speedcamera" | string;
@@ -55,6 +56,9 @@ export const createSystemSlice: StateCreator<
     }
   },
   appMode: "speedcamera",
-  setAppMode: (mode) => set({ appMode: mode }),
+  setAppMode: (mode) => {
+    pluginRegistry.dispatchModeChange(mode);
+    set({ appMode: mode });
+  },
 });
 

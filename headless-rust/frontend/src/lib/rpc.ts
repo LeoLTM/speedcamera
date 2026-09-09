@@ -314,7 +314,7 @@ class SocketIoRpcClient {
     }
 
     // 2. Dispatch to custom pub-sub event listeners
-    this.emit(event, payload);
+    this.emit(event as any, payload as any);
   }
 
   public async call(method: string, params: any): Promise<any> {

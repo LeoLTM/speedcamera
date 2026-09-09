@@ -5,7 +5,7 @@ import type { SerialStatusPayload } from "@/shared/types";
 export interface PluginMode {
   id: string;
   label: string;
-  icon: ComponentType<{ className?: string; strokeWidth?: number; size?: number }>;
+  icon: ComponentType<any> | any;
 }
 
 export interface PluginNavItem {

@@ -3,10 +3,11 @@ import { getRpc } from "@/lib/rpc";
 import type { SerialSlice } from "./serialSlice";
 import type { CameraSlice } from "./cameraSlice";
 import type { MeasurementSlice } from "./measurementSlice";
+import type { ModeAvailability, OperatingModeStatus, SetOperatingModeResult } from "@/shared/types";
 import { pluginRegistry } from "@/plugins";
 
 export type SystemState = "PASSIVE" | "DISARMED" | "ARMED";
-export type AppMode = "speedcamera" | string;
+export type AppMode = "speedcamera" | "laptimer" | "alignment" | "setup" | string;
 
 export interface SystemSlice {
   /** Underlying daemon armed state */
@@ -17,9 +18,18 @@ export interface SystemSlice {
   setArmed: (armed: boolean) => Promise<void>;
   handleArmedStatus: (armed: boolean) => void;
   refreshArmedStatus: () => Promise<void>;
-  /** Active mode — routes serial events to violation or plugin handler */
+
+  /** Centralized synchronized operating mode */
+  operatingMode: AppMode;
+  previousMode: string | null;
+  availableModes: Record<string, ModeAvailability>;
+  handleOperatingModeStatus: (status: OperatingModeStatus) => void;
+  refreshOperatingMode: () => Promise<void>;
+  requestModeChange: (targetMode: string, force?: boolean) => Promise<SetOperatingModeResult>;
+
+  /** Backwards-compatible alias for UI components */
   appMode: AppMode;
-  setAppMode: (mode: AppMode) => void;
+  setAppMode: (mode: AppMode) => Promise<SetOperatingModeResult>;
 }
 
 export const createSystemSlice: StateCreator<
@@ -55,10 +65,58 @@ export const createSystemSlice: StateCreator<
       console.warn("[systemSlice] Failed to get armed status:", e);
     }
   },
+
+  operatingMode: "speedcamera",
+  previousMode: null,
+  availableModes: {},
   appMode: "speedcamera",
-  setAppMode: (mode) => {
-    pluginRegistry.dispatchModeChange(mode);
-    set({ appMode: mode });
+
+  handleOperatingModeStatus: (status: OperatingModeStatus) => {
+    pluginRegistry.dispatchModeChange(status.currentMode);
+    const isSetup = status.currentMode === "setup";
+    set({
+      operatingMode: status.currentMode,
+      previousMode: status.previousMode,
+      availableModes: status.availableModes || {},
+      appMode: status.currentMode,
+      isArmed: status.armed,
+      setupStreamActive: isSetup,
+      liveFrame: isSetup ? get().liveFrame : null,
+    });
+    get().handleArmedStatus(status.armed);
+  },
+
+
+  refreshOperatingMode: async () => {
+    try {
+      const res = await getRpc().request.getOperatingMode({});
+      if (res) {
+        get().handleOperatingModeStatus(res);
+      }
+    } catch (e) {
+      console.warn("[systemSlice] Failed to get operating mode:", e);
+    }
+  },
+
+  requestModeChange: async (targetMode: string, force?: boolean) => {
+    try {
+      const res = await getRpc().request.setOperatingMode({ targetMode, force });
+      if (res.success && res.status) {
+        get().handleOperatingModeStatus(res.status);
+      }
+      return res;
+    } catch (e: any) {
+      console.error("[systemSlice] Error setting operating mode:", e);
+      return {
+        success: false,
+        message: e?.message || "Failed to switch operating mode",
+      };
+    }
+  },
+
+  setAppMode: async (mode: AppMode) => {
+    return get().requestModeChange(mode);
   },
 });
+
 

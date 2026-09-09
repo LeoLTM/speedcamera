@@ -6,7 +6,9 @@ import { LastCapturedImage } from "@/components/LastCapturedImage";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ViolationCard } from "@/components/ViolationCard";
 import { ArmingButton } from "@/components/ArmingButton";
+import { ModeChangeGuardDialog } from "@/components/ModeChangeGuardDialog";
 import { useAppStore } from "@/stores/useAppStore";
+
 import { useLapStore } from "@/plugins/laptimer/store";
 import { pluginRegistry } from "@/plugins";
 import { getRpc } from "@/lib/rpc";
@@ -28,7 +30,13 @@ function HomePage() {
   const lastViolation = useAppStore((s) => s.lastViolation);
   const setMaxSpeed = useAppStore((s) => s.setMaxSpeed);
   const appMode = useAppStore((s) => s.appMode);
-  const setAppMode = useAppStore((s) => s.setAppMode);
+  const isArmed = useAppStore((s) => s.isArmed);
+  const availableModes = useAppStore((s) => s.availableModes);
+  const requestModeChange = useAppStore((s) => s.requestModeChange);
+
+  const [guardDialogOpen, setGuardDialogOpen] = useState(false);
+  const [pendingTargetMode, setPendingTargetMode] = useState<string | null>(null);
+  const [guardMessage, setGuardMessage] = useState<string | undefined>(undefined);
 
   const lapState = useLapStore((s) => s.lapState);
   const isLapActive = lapState !== "idle";
@@ -37,6 +45,31 @@ function HomePage() {
 
   const serialStatus = connectedPort ? "connected" : "disconnected";
   const cameraStatus = cameraConnected ? "connected" : "unknown";
+
+  const handleModeClick = async (targetMode: string) => {
+    if (appMode === targetMode) return;
+    const res = await requestModeChange(targetMode);
+    if (!res.success) {
+      if (res.safeguard === "ARMED") {
+        setPendingTargetMode(targetMode);
+        setGuardMessage(res.message);
+        setGuardDialogOpen(true);
+      } else {
+        toast.error(res.message || `Cannot switch to ${targetMode}`);
+      }
+    }
+  };
+
+  const handleConfirmDisarmAndSwitch = async () => {
+    if (!pendingTargetMode) return;
+    setGuardDialogOpen(false);
+    const res = await requestModeChange(pendingTargetMode, true);
+    if (!res.success) {
+      toast.error(res.message || "Failed to switch mode");
+    }
+    setPendingTargetMode(null);
+  };
+
 
   // Load relevant settings into the store on mount
   useEffect(() => {
@@ -67,7 +100,7 @@ function HomePage() {
         <div className="flex items-center gap-1 rounded-lg border border-border bg-background/80 p-1 shadow-sm overflow-x-auto no-scrollbar w-full sm:w-auto">
           <button
             type="button"
-            onClick={() => setAppMode("speedcamera")}
+            onClick={() => handleModeClick("speedcamera")}
             className={cn(
               "flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all shrink-0 flex-1 sm:flex-initial",
               appMode === "speedcamera"
@@ -82,16 +115,23 @@ function HomePage() {
           {pluginRegistry.getModes().map((m) => {
             const isCurrent = appMode === m.id;
             const Icon = m.icon as any;
+            const availInfo = availableModes[m.id];
+            const isAvail = availInfo?.available !== false;
+
             return (
               <button
                 key={m.id}
                 type="button"
-                onClick={() => setAppMode(m.id)}
+                onClick={() => handleModeClick(m.id)}
+                disabled={!isAvail}
+                title={!isAvail ? availInfo?.reason || "Mode not configured" : undefined}
                 className={cn(
                   "flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all relative shrink-0 flex-1 sm:flex-initial",
                   isCurrent
                     ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
+                    : isAvail
+                    ? "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                    : "opacity-40 cursor-not-allowed text-muted-foreground/60",
                 )}
               >
                 {Array.isArray(Icon) ? (
@@ -107,6 +147,7 @@ function HomePage() {
             );
           })}
         </div>
+
       </div>
 
       {/* Main workspace */}
@@ -178,6 +219,20 @@ function HomePage() {
           )}
         </div>
       </div>
+
+      <ModeChangeGuardDialog
+        open={guardDialogOpen}
+        onOpenChange={setGuardDialogOpen}
+        targetMode={pendingTargetMode || "speedcamera"}
+        isArmed={isArmed}
+        message={guardMessage}
+        onConfirm={handleConfirmDisarmAndSwitch}
+        onCancel={() => {
+          setGuardDialogOpen(false);
+          setPendingTargetMode(null);
+        }}
+      />
     </div>
   );
 }
+

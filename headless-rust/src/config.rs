@@ -8,10 +8,16 @@ pub struct AppConfig {
     pub images_dir: PathBuf,
     pub db_path: PathBuf,
     pub mock_mode: bool,
+    pub disabled_plugins: Vec<String>,
 }
 
 impl AppConfig {
-    pub fn new(mock: bool, port_override: Option<u16>, host_override: Option<String>) -> Self {
+    pub fn new(
+        mock: bool,
+        port_override: Option<u16>,
+        host_override: Option<String>,
+        disable_plugins_override: Option<String>,
+    ) -> Self {
         let host = host_override
             .or_else(|| std::env::var("HOST").ok())
             .unwrap_or_else(|| "0.0.0.0".to_string());
@@ -41,6 +47,16 @@ impl AppConfig {
             || std::env::var("MOCK_MODE").map(|v| v == "true" || v == "1").unwrap_or(false)
             || std::env::var("SPEEDCAMERA_MOCK").map(|v| v == "true" || v == "1").unwrap_or(false);
 
+        let disabled_plugins: Vec<String> = disable_plugins_override
+            .or_else(|| std::env::var("DISABLED_PLUGINS").ok())
+            .map(|s| {
+                s.split(',')
+                    .map(|p| p.trim().to_lowercase())
+                    .filter(|p| !p.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+
         Self {
             host,
             port,
@@ -48,6 +64,11 @@ impl AppConfig {
             images_dir,
             db_path,
             mock_mode,
+            disabled_plugins,
         }
+    }
+
+    pub fn is_plugin_disabled(&self, name: &str) -> bool {
+        self.disabled_plugins.iter().any(|p| p == name)
     }
 }

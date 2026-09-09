@@ -43,7 +43,9 @@ pub struct RpcContext {
     pub armed: Arc<std::sync::atomic::AtomicBool>,
     pub armed_tx: broadcast::Sender<bool>,
     pub plugins: Arc<crate::plugins::PluginRegistry>,
+    pub state_machine: Arc<crate::state_machine::SystemStateMachine>,
 }
+
 
 pub async fn handle_rpc(ctx: &RpcContext, req: RpcRequest) -> RpcResponse {
     let id = req.id;
@@ -279,11 +281,45 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             let is_armed = params["armed"]
                 .as_bool()
                 .ok_or("Missing armed parameter")?;
+            if is_armed && ctx.state_machine.current_mode() != crate::state_machine::OperatingMode::SpeedCamera {
+                let _ = ctx.state_machine.transition_to(crate::state_machine::OperatingMode::SpeedCamera, true);
+            }
             ctx.armed.store(is_armed, std::sync::atomic::Ordering::SeqCst);
             let _ = ctx.armed_tx.send(is_armed);
             tracing::info!("[system] Armed state updated: {}", is_armed);
             Ok(json!({ "armed": is_armed }))
         }
+
+        // ─── Operating Mode State Machine ──────────────────────────────────────
+        "getOperatingMode" => {
+            let status = ctx.state_machine.get_status();
+            Ok(serde_json::to_value(status).unwrap())
+        }
+
+        "setOperatingMode" => {
+            let mode_str = params["targetMode"]
+                .as_str()
+                .or_else(|| params["mode"].as_str())
+                .ok_or("Missing targetMode parameter")?;
+            let force = params["force"].as_bool().unwrap_or(false);
+
+            let target = crate::state_machine::OperatingMode::from_str(mode_str)
+                .ok_or_else(|| format!("Unknown operating mode '{}'", mode_str))?;
+
+            match ctx.state_machine.transition_to(target, force) {
+                Ok(status) => Ok(json!({
+                    "success": true,
+                    "status": status,
+                    "mode": status.current_mode
+                })),
+                Err(rejection) => Ok(json!({
+                    "success": false,
+                    "safeguard": rejection.safeguard,
+                    "message": rejection.message
+                })),
+            }
+        }
+
 
         // ─── Settings ─────────────────────────────────────────────────────────
         "getSettings" => {

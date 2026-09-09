@@ -6,8 +6,10 @@ mod models;
 mod network;
 mod plugins;
 mod serial;
+mod state_machine;
 mod storage;
 mod web;
+
 
 use camera::CameraService;
 use clap::Parser;
@@ -29,6 +31,9 @@ struct Args {
 
     #[arg(short = 'H', long, help = "HTTP server bind address (default: 0.0.0.0)")]
     host: Option<String>,
+
+    #[arg(long, help = "Comma-separated list of plugins to disable (e.g. laptimer,alignment)")]
+    disable_plugins: Option<String>,
 }
 
 #[tokio::main]
@@ -46,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let args = Args::parse();
-    let config = AppConfig::new(args.mock, args.port, args.host);
+    let config = AppConfig::new(args.mock, args.port, args.host, args.disable_plugins);
 
     tracing::info!("─────────────────────────────────────────────────────────────────");
     tracing::info!("  ⚡ Speedcamera Headless Daemon (Rust & Axum / Socket.io)");
@@ -101,10 +106,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // ─── Armed System State ──────────────────────────────────────────────────
+    // ─── Armed System State & State Machine Synchronization ──────────────────
     let armed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let (armed_tx, _) = tokio::sync::broadcast::channel::<bool>(32);
     let pipeline_armed = armed.clone();
+    let operating_mode = std::sync::Arc::new(std::sync::RwLock::new("speedcamera".to_string()));
+    let notify_display = std::sync::Arc::new(tokio::sync::Notify::new());
 
     // ─── Plugin System Initialization ────────────────────────────────────────
     let plugin_ctx = plugins::PluginContext {
@@ -115,17 +122,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         serial: serial.clone(),
         armed: armed.clone(),
         armed_tx: armed_tx.clone(),
+        operating_mode: operating_mode.clone(),
+        notify_display: notify_display.clone(),
     };
     let mut plugin_reg = plugins::PluginRegistry::new();
-    // ponytail: modular plugins isolated from core daemon
-    plugin_reg.register(Box::new(plugins::laptimer::LapTimerPlugin::new()));
-    plugin_reg.register(Box::new(plugins::alignment::AlignmentPlugin::new()));
-    plugin_reg.register(Box::new(plugins::display::DisplayPlugin::new()));
+    // ponytail: modular plugins isolated from core daemon, respects disabled_plugins config
+    if !config.is_plugin_disabled("laptimer") {
+        plugin_reg.register(Box::new(plugins::laptimer::LapTimerPlugin::new()));
+    } else {
+        tracing::info!("[plugins] LapTimerPlugin disabled by configuration");
+    }
+
+    if !config.is_plugin_disabled("alignment") {
+        plugin_reg.register(Box::new(plugins::alignment::AlignmentPlugin::new()));
+    } else {
+        tracing::info!("[plugins] AlignmentPlugin disabled by configuration");
+    }
+
+    if !config.is_plugin_disabled("display") {
+        plugin_reg.register(Box::new(plugins::display::DisplayPlugin::new()));
+    } else {
+        tracing::info!("[plugins] DisplayPlugin disabled by configuration");
+    }
+
     plugin_reg.init(plugin_ctx)?;
     let plugin_registry = std::sync::Arc::new(plugin_reg);
     let pipeline_plugins = plugin_registry.clone();
 
+    // ─── Central State Machine Initialization ────────────────────────────────
+    let state_machine = std::sync::Arc::new(state_machine::SystemStateMachine::new(
+        config.clone(),
+        db.clone(),
+        camera.clone(),
+        serial.clone(),
+        armed.clone(),
+        armed_tx.clone(),
+        plugin_registry.clone(),
+        operating_mode.clone(),
+        notify_display.clone(),
+    ));
+
     // ─── Instant Shutter Trigger Pipeline (<10ms latency) ─────────────────────
+
     let (violation_tx, _) = tokio::sync::broadcast::channel::<models::Violation>(32);
     let pipeline_violation_tx = violation_tx.clone();
     let pipeline_cam = camera.clone();
@@ -197,8 +235,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build and launch Axum web server
     let bind_addr = format!("{}:{}", config.host, config.port);
-    let app = web::build_app(config, db, store, camera, serial, violation_tx, armed, armed_tx, plugin_registry);
+    let app = web::build_app(
+        config,
+        db,
+        store,
+        camera,
+        serial,
+        violation_tx,
+        armed,
+        armed_tx,
+        plugin_registry,
+        state_machine,
+    );
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+
     tracing::info!("  🚀 Server listening on http://{}", bind_addr);
     axum::serve(listener, app).await?;
 

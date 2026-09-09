@@ -28,7 +28,10 @@ pub struct PluginContext {
     pub serial: Arc<SerialService>,
     pub armed: Arc<AtomicBool>,
     pub armed_tx: broadcast::Sender<bool>,
+    pub operating_mode: Arc<std::sync::RwLock<String>>,
+    pub notify_display: Arc<tokio::sync::Notify>,
 }
+
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub type RpcHandler = Box<dyn Fn(PluginContext, Value) -> BoxFuture<'static, Result<Value, String>> + Send + Sync>;
@@ -85,6 +88,18 @@ pub trait Plugin: Send + Sync + 'static {
         router
     }
     fn on_serial_event(&self, _msg: &SerialStatusPayload, _ctx: &PluginContext) {}
+    fn mode_id(&self) -> Option<&'static str> {
+        None
+    }
+    fn is_available(&self, _ctx: &PluginContext) -> Result<(), String> {
+        Ok(())
+    }
+    fn on_enter_mode(&self, _ctx: &PluginContext) -> Result<(), String> {
+        Ok(())
+    }
+    fn on_leave_mode(&self, _ctx: &PluginContext, _force: bool) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 pub struct PluginRegistry {
@@ -127,6 +142,35 @@ impl PluginRegistry {
         router
     }
 
+    #[allow(dead_code)]
+    pub fn has_plugin(&self, id: &str) -> bool {
+        self.plugins.iter().any(|p| p.id() == id)
+    }
+
+    pub fn check_mode_available(&self, mode: &str, ctx: &PluginContext) -> Result<(), String> {
+        if let Some(plugin) = self.plugins.iter().find(|p| p.mode_id() == Some(mode)) {
+            plugin.is_available(ctx)
+        } else {
+            Err(format!("Plugin for mode '{}' not registered", mode))
+        }
+    }
+
+    pub fn on_enter_mode(&self, mode: &str, ctx: &PluginContext) -> Result<(), String> {
+        if let Some(plugin) = self.plugins.iter().find(|p| p.mode_id() == Some(mode)) {
+            plugin.on_enter_mode(ctx)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn on_leave_mode(&self, mode: &str, ctx: &PluginContext, force: bool) -> Result<(), String> {
+        if let Some(plugin) = self.plugins.iter().find(|p| p.mode_id() == Some(mode)) {
+            plugin.on_leave_mode(ctx, force)
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn list_plugins(&self) -> Vec<serde_json::Value> {
         self.plugins
             .iter()
@@ -156,3 +200,4 @@ impl PluginRegistry {
         }
     }
 }
+

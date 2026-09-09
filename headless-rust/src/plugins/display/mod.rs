@@ -89,6 +89,7 @@ impl Plugin for DisplayPlugin {
         let serial_svc = ctx.serial.clone();
         let is_conn_thread = self.is_connected.clone();
         let last_err_thread = self.last_error.clone();
+        let op_mode_thread = ctx.operating_mode.clone();
 
         // Spawn dedicated background render thread (non-blocking for main server)
         std::thread::Builder::new()
@@ -151,14 +152,13 @@ impl Plugin for DisplayPlugin {
                             *shared_fb = local_fb.clone();
                         }
                     } else {
-                        // Determine active mode
+                        // Determine active mode: ponytail: mirror central state machine when in auto mode
                         let mode = if cfg.mode == "auto" {
-                            if telem.lap_state == "timing" || telem.lap_state == "waiting" {
-                                "laptimer"
-                            } else if telem.sensor1_interrupted || telem.sensor2_interrupted {
-                                "alignment"
-                            } else {
-                                "speedcamera"
+                            let sm = op_mode_thread.read().unwrap();
+                            match sm.as_str() {
+                                "alignment" | "setup" => "alignment",
+                                "laptimer" => "laptimer",
+                                _ => "speedcamera",
                             }
                         } else {
                             cfg.mode.as_str()

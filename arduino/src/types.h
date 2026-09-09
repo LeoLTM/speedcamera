@@ -7,6 +7,9 @@
 enum class MeasurementState : uint8_t { IDLE, WAITING_FOR_SECOND };
 enum class FirstSensor      : uint8_t { NONE, SENSOR_ONE, SENSOR_TWO };
 
+// ─── Operating Mode State Machine ─────────────────────────────────────────────
+enum class OperatingMode    : uint8_t { SPEEDCAMERA, LAPTIMER, ALIGNMENT };
+
 // ─── Measurement Event ────────────────────────────────────────────────────────
 // Emitted when a passing vehicle triggers both sensors within valid window.
 struct MeasurementEvent {
@@ -15,3 +18,4 @@ struct MeasurementEvent {
   const char *direction;     // "forward" | "reverse"
   unsigned long boundaryUs;  // µs timestamp of first beam break
 };
+

@@ -21,3 +21,9 @@ extern unsigned long    lastMeasurementEndMs;
 // ─── Speed Measurement Results ────────────────────────────────────────────────
 extern float speedInKmH;
 extern float speedTolerance;
+
+// ─── Operating Mode State ─────────────────────────────────────────────────────
+extern OperatingMode currentOpMode;
+void resetMeasurement();
+
+

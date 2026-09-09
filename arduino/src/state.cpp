@@ -18,3 +18,8 @@ unsigned long    lastMeasurementEndMs = 0;
 // ─── Speed Measurement Results ────────────────────────────────────────────────
 float speedInKmH    = 0.0f;
 float speedTolerance = 0.0f;
+
+// ─── Operating Mode State ─────────────────────────────────────────────────────
+// ponytail: default to SPEEDCAMERA, mutually exclusive with LAPTIMER and ALIGNMENT
+OperatingMode currentOpMode = OperatingMode::SPEEDCAMERA;
+

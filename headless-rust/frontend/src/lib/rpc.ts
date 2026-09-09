@@ -58,7 +58,9 @@ class SocketIoRpcClient {
       void store.refreshCameraStatus?.();
       void store.refreshSerialStatus?.();
       void store.refreshArmedStatus?.();
+      void store.refreshOperatingMode?.();
     });
+
 
     this.socket.on("disconnect", (reason) => {
       console.log(`[rpc-client] Socket.io disconnected (reason: ${reason})`);
@@ -100,7 +102,16 @@ class SocketIoRpcClient {
     this.socket.on("armedStatus", (payload: { armed: boolean }) => {
       this.handlePushEvent("armedStatus", payload);
     });
+
+    this.socket.on("operatingMode", (payload: any) => {
+      this.handlePushEvent("operatingMode", payload);
+    });
+
+    this.socket.on("operatingModeChanged", (payload: any) => {
+      this.handlePushEvent("operatingModeChanged", payload);
+    });
   }
+
 
   /**
    * Monitor browser lifecycle events (tab switching, screen sleep/wake, Wi-Fi reconnect)
@@ -284,7 +295,14 @@ class SocketIoRpcClient {
         store.handleArmedStatus(armedPayload.armed);
         break;
       }
+      case "operatingMode":
+      case "operatingModeChanged": {
+        const modePayload = payload as any;
+        store.handleOperatingModeStatus?.(modePayload);
+        break;
+      }
       case "updateAvailable":
+
         store.setUpdateVersion((payload as any).version);
         store.setUpdatePhase("ready");
         break;
@@ -296,7 +314,7 @@ class SocketIoRpcClient {
     }
 
     // 2. Dispatch to custom pub-sub event listeners
-    this.emit(event, payload);
+    this.emit(event as any, payload as any);
   }
 
   public async call(method: string, params: any): Promise<any> {

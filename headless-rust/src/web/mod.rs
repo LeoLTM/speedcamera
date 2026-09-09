@@ -31,6 +31,7 @@ pub fn build_app(
     armed: Arc<AtomicBool>,
     armed_tx: broadcast::Sender<bool>,
     plugins: Arc<crate::plugins::PluginRegistry>,
+    state_machine: Arc<crate::state_machine::SystemStateMachine>,
 ) -> Router {
     let (flash_tx, _) = broadcast::channel::<FlashProgressPayload>(32);
 
@@ -46,7 +47,9 @@ pub fn build_app(
         armed,
         armed_tx,
         plugins: plugins.clone(),
+        state_machine,
     });
+
 
     // 10 MB payload capacity, 5s keepalive ping interval to keep Wi-Fi sleep-disabled,
     // widened 20s ping timeout to tolerate Wi-Fi jitter, and large 4096 buffer size for live stream bursts.

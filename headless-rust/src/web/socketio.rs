@@ -14,6 +14,8 @@ pub async fn on_connect(s: SocketRef, ctx: Arc<RpcContext>) {
     let _ = s.emit("cameraStatus", &ctx.camera.get_status());
     let _ = s.emit("serialStatus", &ctx.serial.get_status_payload());
     let _ = s.emit("armedStatus", &json!({ "armed": ctx.armed.load(Ordering::SeqCst) }));
+    let _ = s.emit("operatingMode", &ctx.state_machine.get_status());
+
 
     // Register RPC handler with AckSender for request-response RPC over Socket.io
     let ctx_rpc = ctx.clone();
@@ -50,10 +52,29 @@ pub fn spawn_event_broadcaster(io: SocketIo, ctx: Arc<RpcContext>) {
         let mut flash_rx = ctx.flash_tx.subscribe();
         let mut violation_rx = ctx.violation_tx.subscribe();
         let mut armed_rx = ctx.armed_tx.subscribe();
+        let mut mode_rx = ctx.state_machine.subscribe();
 
         loop {
             tokio::select! {
+                res = mode_rx.recv() => {
+                    match res {
+                        Ok(mode_status) => {
+                            if let Err(e) = io.emit("operatingModeChanged", &mode_status).await {
+                                tracing::debug!("[socketio] Emit operatingModeChanged error: {:?}", e);
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::debug!("[socketio] Mode broadcast lagged by {} messages", n);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            tracing::warn!("[socketio] Mode broadcast channel closed");
+                            break;
+                        }
+                    }
+                }
+
                 res = serial_rx.recv() => {
+
                     match res {
                         Ok(payload) => {
                             if let Err(e) = io.emit("serialStatus", &payload).await {

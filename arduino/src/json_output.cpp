@@ -61,8 +61,11 @@ void sendJsonPong() {
   cfg["maxSpeed"]       = maxSpeedKmH;
   cfg["sensorDistance"] = sensorDistance;
   cfg["debugEnabled"]   = debugEnabled;
+  cfg["operatingMode"]  = (currentOpMode == OperatingMode::ALIGNMENT) ? "alignment"
+                        : (currentOpMode == OperatingMode::LAPTIMER) ? "laptimer" : "speedcamera";
   LapTimer::populatePongConfig(cfg);
   Alignment::populatePongConfig(cfg);
+
   String out;
   serializeJson(doc, out);
   out += '\n';

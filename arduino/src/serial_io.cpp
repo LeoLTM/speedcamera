@@ -73,14 +73,51 @@ void handleCommand(JsonDocument &doc) {
   } else if (strcmp(command, "getCapabilities") == 0) {
     sendJsonCapabilities();
 
-  // ponytail: route module-specific commands without bloated registry abstractions
-  } else if (LapTimer::handleCommand(command, doc)) {
-    return;
+  } else if (strcmp(command, "setMode") == 0) {
+    const char *modeStr = doc["mode"] | "speedcamera";
+    if (strcmp(modeStr, "alignment") == 0) {
+      LapTimer::reset();
+      currentOpMode = OperatingMode::ALIGNMENT;
+      resetMeasurement();
+      Alignment::handleCommand("startAlignment", doc);
+    } else if (strcmp(modeStr, "laptimer") == 0) {
+      Alignment::reset();
+      currentOpMode = OperatingMode::LAPTIMER;
+      resetMeasurement();
+      LapTimer::handleCommand("startLapSession", doc);
+    } else {
+      Alignment::reset();
+      LapTimer::reset();
+      currentOpMode = OperatingMode::SPEEDCAMERA;
+      resetMeasurement();
+      sendJsonStatus("modeSpeedcamera");
+    }
 
-  } else if (Alignment::handleCommand(command, doc)) {
-    return;
+  // ponytail: route module commands with strict operating mode mutual exclusion
+  } else if (strcmp(command, "startAlignment") == 0) {
+    LapTimer::reset();
+    currentOpMode = OperatingMode::ALIGNMENT;
+    resetMeasurement();
+    Alignment::handleCommand(command, doc);
+
+  } else if (strcmp(command, "stopAlignment") == 0) {
+    Alignment::handleCommand(command, doc);
+    currentOpMode = OperatingMode::SPEEDCAMERA;
+    resetMeasurement();
+
+  } else if (strcmp(command, "startLapSession") == 0) {
+    Alignment::reset();
+    currentOpMode = OperatingMode::LAPTIMER;
+    resetMeasurement();
+    LapTimer::handleCommand(command, doc);
+
+  } else if (strcmp(command, "stopLapSession") == 0) {
+    LapTimer::handleCommand(command, doc);
+    currentOpMode = OperatingMode::SPEEDCAMERA;
+    resetMeasurement();
 
   } else {
     sendJsonStatus("jsonError");
   }
 }
+

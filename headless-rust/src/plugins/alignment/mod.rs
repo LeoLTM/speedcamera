@@ -56,6 +56,29 @@ impl Plugin for AlignmentPlugin {
         tracing::info!("[plugin:alignment] Registered RPC methods");
     }
 
+    fn mode_id(&self) -> Option<&'static str> {
+        Some("alignment")
+    }
+
+    fn is_available(&self, ctx: &PluginContext) -> Result<(), String> {
+        if ctx.config.mock_mode || ctx.serial.get_status().connected {
+            Ok(())
+        } else {
+            Err("Serial radar connection required for sensor alignment".to_string())
+        }
+    }
+
+    fn on_leave_mode(&self, ctx: &PluginContext, _force: bool) -> Result<(), String> {
+        {
+            let mut s = self.state.lock().unwrap();
+            s.active = false;
+        }
+        ctx.serial.send_command(r#"{"command":"stopAlignment"}"#);
+        tracing::info!("[plugin:alignment] Sent stopAlignment on mode leave");
+        Ok(())
+    }
+
+
     fn on_serial_event(&self, msg: &SerialStatusPayload, _ctx: &PluginContext) {
         if let SerialStatusPayload::BarrierStatus {
             sensor1_interrupted,

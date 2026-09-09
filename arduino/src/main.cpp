@@ -26,13 +26,21 @@ void setup() {
 
 // ─── Main Loop ───────────────────────────────────────────────────────────────
 void loop() {
-  LapTimer::update();
-  Alignment::update();
-
-  // Process incoming serial commands every iteration
+  // Process incoming serial commands first every iteration
   handleSerial();
   if (stringComplete) {
     decodeJson(inputString);
+  }
+
+  // ponytail: mutually exclusive execution based on operating mode state machine
+  if (currentOpMode == OperatingMode::ALIGNMENT) {
+    Alignment::update();
+    yield();
+    return; // Do not process speed passes while actively aligning light barriers
+  }
+
+  if (currentOpMode == OperatingMode::LAPTIMER) {
+    LapTimer::update();
   }
 
   // ── IDLE: wait for either sensor to trigger ──────────────────────────────
@@ -43,6 +51,7 @@ void loop() {
     }
 
     if (digitalRead(sensor1) == HIGH) {
+
       firstTriggerUs     = micros();
       firstSensor        = FirstSensor::SENSOR_ONE;
       measurementStartMs = millis();
@@ -118,8 +127,11 @@ void loop() {
         sendJsonStatus("legal", speedInKmH, speedTolerance, direction);
       }
 
-      // ponytail: notify active modules with zero heap allocation or dynamic dispatch
-      LapTimer::onMeasurement(event);
+      // ponytail: notify lap timer ONLY if operating in LAPTIMER mode
+      if (currentOpMode == OperatingMode::LAPTIMER) {
+        LapTimer::onMeasurement(event);
+      }
+
 
     } else {
       sendJsonStatus("timeout"); // Speed out of valid range — discard

@@ -634,6 +634,17 @@ export type SpeedcameraRPC = {
       params: { token: string };
       response: { valid: boolean; login?: string; error?: string };
     };
+
+    // Operating mode state machine
+    getOperatingMode: {
+      params: Record<string, never>;
+      response: OperatingModeStatus;
+    };
+    setOperatingMode: {
+      params: { targetMode: string; force?: boolean };
+      response: SetOperatingModeResult;
+    };
+
   }, Record<string, never>>;
 
   webview: RPCDefinition<Record<string, never>, {
@@ -657,5 +668,30 @@ export type SpeedcameraRPC = {
     armedStatus: { armed: boolean };
     // Violation notification
     violation: Violation;
+    // Operating mode notifications
+    operatingMode: OperatingModeStatus;
+    operatingModeChanged: OperatingModeStatus;
   }>;
 };
+
+export interface ModeAvailability {
+  available: boolean;
+  reason?: string;
+}
+
+export interface OperatingModeStatus {
+  currentMode: string;
+  previousMode: string | null;
+  availableModes: Record<string, ModeAvailability>;
+  armed: boolean;
+  timestampMs: number;
+}
+
+export interface SetOperatingModeResult {
+  success: boolean;
+  mode?: string;
+  safeguard?: string;
+  message?: string;
+  status?: OperatingModeStatus;
+}
+

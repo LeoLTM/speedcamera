@@ -9,11 +9,8 @@ export const alignmentPlugin: UiPlugin = {
   id: "alignment",
   name: "Sensor Alignment",
 
-  navItems: [
-    { label: "Alignment", to: "/alignment" },
-  ],
-
   mode: {
+
     id: "alignment",
     label: "Alignment",
     icon: Crosshair,
@@ -36,4 +33,9 @@ export const alignmentPlugin: UiPlugin = {
     }
     return false;
   },
+
+  onModeChange: (mode: string) => {
+    useAlignmentStore.setState({ active: mode === "alignment" });
+  },
 };
+

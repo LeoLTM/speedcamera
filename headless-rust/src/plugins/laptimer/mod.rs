@@ -86,6 +86,40 @@ impl Plugin for LapTimerPlugin {
         tracing::info!("[plugin:laptimer] Registered RPC methods");
     }
 
+    fn mode_id(&self) -> Option<&'static str> {
+        Some("laptimer")
+    }
+
+    fn is_available(&self, ctx: &PluginContext) -> Result<(), String> {
+        if ctx.config.mock_mode || ctx.serial.get_status().connected {
+            Ok(())
+        } else {
+            Err("Serial radar connection required for lap timer".to_string())
+        }
+    }
+
+    fn on_leave_mode(&self, ctx: &PluginContext, _force: bool) -> Result<(), String> {
+        let active_id = {
+            let mut s = self.state.lock().unwrap();
+            let id = s.active_session.as_ref().map(|sess| sess.id);
+            s.active_session = None;
+            s.lap_state = "idle".to_string();
+            s.lap_timing_started_at = None;
+            s.start_image_path = None;
+            id
+        };
+
+        if let Some(id) = active_id {
+            let conn = ctx.db.lock();
+            let _ = db::close_lap_session(&conn, id);
+            tracing::info!("[plugin:laptimer] Closed active session #{} on mode leave", id);
+        }
+
+        ctx.serial.send_command(r#"{"command":"stopLapSession"}"#);
+        Ok(())
+    }
+
+
     // ponytail: instant sub-10ms hardware camera capture right from serial pipeline
     fn on_serial_event(&self, msg: &SerialStatusPayload, ctx: &PluginContext) {
         match msg {

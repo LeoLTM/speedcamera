@@ -47,6 +47,11 @@ pub enum EspMessage {
         s1: bool,
         s2: bool,
     },
+    #[serde(rename = "config")]
+    Config {
+        key: String,
+        value: f64,
+    },
     #[serde(rename = "configError")]
     ConfigError { message: String },
     #[serde(other)]
@@ -107,6 +112,10 @@ impl EspMessage {
                 sensor1_interrupted: *s1,
                 sensor2_interrupted: *s2,
                 timestamp,
+            }),
+            Self::Config { key, value } => Some(SerialStatusPayload::Config {
+                key: key.clone(),
+                value: *value,
             }),
             Self::ConfigError { .. } | Self::Unknown => None,
         }

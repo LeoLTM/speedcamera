@@ -36,17 +36,17 @@ export function DisplaySettingsTab() {
   return (
     <div className="max-w-3xl space-y-6">
       {/* Top Title & Quick Power Status */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold tracking-tight flex items-center gap-2">
-            <Monitor className="w-5 h-5 text-primary" />
-            OLED Monochrome Display (SSD1306)
+          <h2 className="text-base sm:text-lg font-bold tracking-tight flex items-center gap-2">
+            <Monitor className="w-5 h-5 text-primary shrink-0" />
+            <span>OLED Monochrome Display (SSD1306)</span>
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             Configure the Raspberry Pi 5 I²C OLED screen, live telemetry layouts, and power modes.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {status?.mockMode ? (
             <Badge variant="secondary" className="text-xs font-mono border-amber-500/30 text-amber-500 bg-amber-500/10">
               Mock Mode
@@ -68,16 +68,16 @@ export function DisplaySettingsTab() {
 
       {/* Hardware Disconnected / Error Diagnostic Banner */}
       {!status?.connected && !status?.mockMode && (
-        <div className="p-3 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs font-mono text-rose-400 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="p-3 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs font-mono text-rose-400 flex flex-col sm:flex-row sm:items-center justify-between gap-2 break-words">
           <div>
             <span className="font-semibold">OLED Hardware: Disconnected</span>
             {status?.error && (
-              <span className="block text-[11px] text-rose-300/80 mt-0.5">
+              <span className="block text-[11px] text-rose-300/80 mt-0.5 break-all">
                 Reason: {status.error}
               </span>
             )}
           </div>
-          <span className="text-[10px] text-rose-400/70">
+          <span className="text-[10px] text-rose-400/70 shrink-0">
             Auto-reconnecting every 2s...
           </span>
         </div>
@@ -96,14 +96,15 @@ export function DisplaySettingsTab() {
         </CardHeader>
         <CardContent className="space-y-5">
           {/* Master Power */}
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="space-y-0.5 flex-1 min-w-0 pr-2">
               <Label className="text-xs font-semibold">Display Power</Label>
               <p className="text-xs text-muted-foreground">
                 Turn the OLED panel on or sleep the controller hardware.
               </p>
             </div>
             <Switch
+              className="shrink-0"
               checked={config.enabled}
               onCheckedChange={() => void togglePower()}
               disabled={saving}
@@ -253,14 +254,15 @@ export function DisplaySettingsTab() {
             <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
               Lap Timer Mode
             </h3>
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-0.5 flex-1 min-w-0 pr-2">
                 <Label className="text-xs">Show Entry &amp; Exit Speeds</Label>
                 <p className="text-xs text-muted-foreground">
                   Display speed at start and finish line alongside lap time.
                 </p>
               </div>
               <Switch
+                className="shrink-0"
                 checked={config.laptimerUi?.showSpeed ?? true}
                 onCheckedChange={(checked) =>
                   void updateConfig({
@@ -277,14 +279,14 @@ export function DisplaySettingsTab() {
             <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
               Sensor Alignment Mode
             </h3>
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-0.5 flex-1 min-w-0 pr-2">
                 <Label className="text-xs">Visual Beam Graphic</Label>
                 <p className="text-xs text-muted-foreground">
                   Display dual live Sick sensor barrier status blocks and lock indicator.
                 </p>
               </div>
-              <Badge variant="outline" className="text-[10px] font-mono">
+              <Badge variant="outline" className="text-[10px] font-mono shrink-0">
                 Active
               </Badge>
             </div>
@@ -298,12 +300,12 @@ export function DisplaySettingsTab() {
           <span>Raspberry Pi 5 GPIO Pinout Reference</span>
           <span className="text-[10px] text-muted-foreground/50 group-hover:text-muted-foreground">Click to expand</span>
         </summary>
-        <div className="mt-2 p-2.5 rounded-lg bg-muted/20 border border-border/40 text-[11px] flex flex-wrap gap-x-5 gap-y-1.5 text-muted-foreground">
+        <div className="mt-2 p-2.5 rounded-lg bg-muted/20 border border-border/40 text-[11px] flex flex-wrap gap-x-4 gap-y-1.5 text-muted-foreground">
           <span><strong className="text-rose-400">VCC:</strong> Pin 1 (3.3V)</span>
           <span><strong className="text-neutral-400">GND:</strong> Pin 6</span>
           <span><strong className="text-cyan-400">SDA:</strong> Pin 3 (GPIO 2)</span>
           <span><strong className="text-amber-400">SCL:</strong> Pin 5 (GPIO 3)</span>
-          <span className="text-muted-foreground/60 ml-auto">Bus: {config.i2cBus} • Addr: 0x{config.i2cAddress.toString(16).toUpperCase()}</span>
+          <span className="text-muted-foreground/80 w-full sm:w-auto sm:ml-auto text-[10px]">Bus: {config.i2cBus} • Addr: 0x{config.i2cAddress.toString(16).toUpperCase()}</span>
         </div>
       </details>
     </div>

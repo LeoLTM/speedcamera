@@ -17,6 +17,7 @@ pub struct SerialService {
     session_id: Arc<AtomicU64>,
     is_running: Arc<AtomicBool>,
     status_sender: broadcast::Sender<SerialStatusPayload>,
+    last_max_speed: Arc<Mutex<f64>>,
 }
 
 impl SerialService {
@@ -37,6 +38,7 @@ impl SerialService {
             session_id: Arc::new(AtomicU64::new(0)),
             is_running: Arc::new(AtomicBool::new(true)),
             status_sender: status_tx,
+            last_max_speed: Arc::new(Mutex::new(30.0)),
         });
 
         if mock_mode {
@@ -76,6 +78,15 @@ impl SerialService {
         } else {
             SerialStatusPayload::Disconnected
         }
+    }
+
+    pub fn get_max_speed(&self) -> f64 {
+        *self.last_max_speed.lock().unwrap()
+    }
+
+    #[allow(dead_code)]
+    pub fn set_max_speed_internal(&self, speed: f64) {
+        *self.last_max_speed.lock().unwrap() = speed;
     }
 
     pub fn list_ports(&self) -> Vec<PortInfo> {
@@ -132,6 +143,7 @@ impl SerialService {
             let _ = self.status_sender.send(SerialStatusPayload::Connected {
                 port: Some(port_path.to_string()),
             });
+            self.send_command(r#"{"command":"ping"}"#);
             return;
         }
 
@@ -172,6 +184,9 @@ impl SerialService {
                     };
 
                     *this.active_port.lock().unwrap() = Some(port);
+
+                    // Automatically ping ESP so speed limit and settings sync immediately
+                    this.send_command(r#"{"command":"ping"}"#);
 
                     let mut reader = BufReader::new(reader_port);
                     let mut line_buf = String::new();
@@ -279,6 +294,17 @@ impl SerialService {
 
     fn handle_line(&self, line: &str) {
         if let Ok(msg) = serde_json::from_str::<EspMessage>(line) {
+            match &msg {
+                EspMessage::Pong { config } => {
+                    *self.last_max_speed.lock().unwrap() = config.max_speed;
+                }
+                EspMessage::Config { key, value } => {
+                    if key == "maxSpeed" {
+                        *self.last_max_speed.lock().unwrap() = *value;
+                    }
+                }
+                _ => {}
+            }
             let timestamp = chrono::Utc::now().timestamp_millis();
             if let Some(payload) = msg.to_serial_status(timestamp) {
                 let _ = self.status_sender.send(payload);

@@ -41,8 +41,10 @@ export function SpeedCameraTab() {
 
   const loadFromDb = useCallback(async () => {
     const settings = await getRpc().request.getSettings({});
-    setValues(settings);
-    setSaved(settings);
+    // maxSpeed is never stored or read from DB; ESP is the single source of truth
+    const { maxSpeed: _legacyDbSpeed, ...rest } = settings;
+    setValues((prev) => ({ ...prev, ...rest }));
+    setSaved((prev) => ({ ...prev, ...rest }));
     return settings;
   }, []);
 
@@ -82,12 +84,14 @@ export function SpeedCameraTab() {
   const handleSaveHw = async () => {
     setSavingHw(true);
     try {
+      // Save non-ESP settings to DB (do not save maxSpeed)
       await Promise.all(
-        SPEED_CAMERA_FIELDS.map(({ key }) =>
+        SPEED_CAMERA_FIELDS.filter(({ key }) => key !== "maxSpeed").map(({ key }) =>
           getRpc().request.saveSetting({ key, value: String(values[key]) })
         )
       );
 
+      // Send hardware settings to ESP (ESP is single source of truth for maxSpeed)
       await Promise.all(
         SPEED_CAMERA_FIELDS.filter(({ key }) => values[key] !== saved[key] && key in SERIAL_SYNC).map(
           ({ key }) =>

@@ -19,6 +19,7 @@ struct MockState {
     lap_start_time: Option<Instant>,
     lap_start_speed: f64,
     alignment_active: bool,
+    max_speed: f64,
 }
 
 pub struct MockSerial {
@@ -37,6 +38,7 @@ impl MockSerial {
             lap_start_time: None,
             lap_start_speed: 0.0,
             alignment_active: false,
+            max_speed: 30.0,
         }));
 
         let r = running.clone();
@@ -75,7 +77,7 @@ impl MockSerial {
                 let mut guard = s.lock().unwrap();
                 match guard.lap_state {
                     MockLapState::Idle => {
-                        let payload = if speed > 40.0 {
+                        let payload = if speed > guard.max_speed {
                             SerialStatusPayload::Speeding {
                                 value: speed,
                                 tolerance: 3.0,
@@ -190,11 +192,22 @@ impl MockSerial {
                     let mut guard = self.state.lock().unwrap();
                     guard.alignment_active = false;
                 }
+                "setMaxSpeed" => {
+                    let val = v["value"].as_f64().unwrap_or(30.0);
+                    {
+                        let mut guard = self.state.lock().unwrap();
+                        guard.max_speed = val;
+                    }
+                    let _ = tx.send(SerialStatusPayload::Config {
+                        key: "maxSpeed".to_string(),
+                        value: val,
+                    });
+                }
                 "ping" => {
                     let guard = self.state.lock().unwrap();
                     let _ = tx.send(SerialStatusPayload::Pong {
                         config: EspPongConfig {
-                            max_speed: 30.0,
+                            max_speed: guard.max_speed,
                             flash_delay: Some(0.0),
                             flash_duration: Some(5000.0),
                             sensor_distance: 1.0,

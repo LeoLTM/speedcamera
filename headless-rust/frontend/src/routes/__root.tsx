@@ -33,7 +33,6 @@ function Root() {
       .then((settings) => {
         loadCameraSettings(settings);
         if (settings.selectedPort) setSelectedPort(settings.selectedPort);
-        if (settings.maxSpeed) setMaxSpeed(settings.maxSpeed);
       })
       .catch((err) => console.warn("[root] Failed to load settings:", err));
 
@@ -42,6 +41,7 @@ function Root() {
     void refreshSerialStatus();
     void refreshArmedStatus();
     void loadTeableState();
+    void getRpc().request.sendCommand({ json: JSON.stringify({ command: "ping" }) }).catch(() => {});
 
     // 3. Hydrate latest violation for instant preview on home screen
     getRpc()
@@ -55,7 +55,6 @@ function Root() {
   }, [
     loadCameraSettings,
     setSelectedPort,
-    setMaxSpeed,
     refreshCameraStatus,
     refreshSerialStatus,
     refreshArmedStatus,

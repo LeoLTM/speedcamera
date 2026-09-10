@@ -344,6 +344,11 @@ pub enum SerialStatusPayload {
     },
     #[serde(rename = "DISCONNECTED")]
     Disconnected,
+    #[serde(rename = "CONFIG")]
+    Config {
+        key: String,
+        value: f64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

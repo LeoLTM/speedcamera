@@ -8,6 +8,7 @@ mod plugins;
 mod serial;
 mod state_machine;
 mod storage;
+mod system;
 mod web;
 
 
@@ -169,6 +170,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pipeline_cam = camera.clone();
     let pipeline_db = db.clone();
     let pipeline_store = store.clone();
+    let pipeline_serial = serial.clone();
     let mut serial_rx = serial.subscribe();
 
     tokio::spawn(async move {
@@ -188,16 +190,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let db_clone = pipeline_db.clone();
                         let store_clone = pipeline_store.clone();
                         let v_tx = pipeline_violation_tx.clone();
+                        let cur_limit = pipeline_serial.get_max_speed();
 
                         tokio::task::spawn_blocking(move || {
                             if let Some(jpg_bytes) = cam.capture_frame_jpeg(90) {
                                 if let Ok(img_path) = store_clone.save_image_bytes(&jpg_bytes, "jpg") {
                                     let conn = db_clone.lock();
-                                    let settings = db::settings::get_settings(&conn).unwrap_or_default();
                                     let input = SaveViolationInput {
                                         image_base64: None,
                                         measured_speed: value,
-                                        max_speed: settings.max_speed,
+                                        max_speed: cur_limit,
                                         direction,
                                     };
                                     if let Ok(v) = db::violations::insert_violation(&conn, &input, &img_path) {

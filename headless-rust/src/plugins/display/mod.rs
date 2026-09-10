@@ -60,10 +60,8 @@ impl Plugin for DisplayPlugin {
             *c = saved_cfg.clone();
         }
 
-        // Initialize speed limit from settings
-        let max_speed = crate::db::settings::get_settings(&conn)
-            .map(|s| s.max_speed)
-            .unwrap_or(30.0);
+        // Initialize speed limit from serial service (ESP is single source of truth)
+        let max_speed = ctx.serial.get_max_speed();
         {
             let mut t = self.telemetry.lock().unwrap();
             t.speed_limit = max_speed;
@@ -108,6 +106,7 @@ impl Plugin for DisplayPlugin {
                         t.armed = armed_arc.load(Ordering::Relaxed);
                         t.camera_connected = camera_svc.get_status().connected;
                         t.serial_connected = serial_svc.get_status().connected;
+                        t.speed_limit = serial_svc.get_max_speed();
                     }
 
                     let cfg = cfg_thread.lock().unwrap().clone();

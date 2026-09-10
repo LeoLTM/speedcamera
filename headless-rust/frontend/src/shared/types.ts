@@ -47,6 +47,24 @@ export interface SystemNetworkSummary {
   };
   wifiClient?: WifiClientInfo | null;
   interfaces: NetworkInterfaceDetail[];
+  networkState?: "ap_setup" | "connecting" | "connected" | "reconnecting" | "fallback_ap";
+  retryAttempt?: number;
+  maxAttempts?: number;
+  connectedStations?: number;
+  timeToNextAction?: number;
+}
+
+export interface NetworkStateSnapshot {
+  wifiState: any;
+  ethernetMode: "camera-lan" | "lan-dhcp" | "unmanaged";
+  activeSsid?: string | null;
+  clientIp?: string | null;
+  apIp: string;
+  retryAttempt: number;
+  maxAttempts: number;
+  connectedStations: number;
+  timeToNextAction: number;
+  timestampMs: number;
 }
 
 export interface WifiScanResult {
@@ -678,6 +696,9 @@ export type SpeedcameraRPC = {
     // Operating mode notifications
     operatingMode: OperatingModeStatus;
     operatingModeChanged: OperatingModeStatus;
+    // Network notifications
+    networkStatus: NetworkStateSnapshot;
+    networkStatusChanged: NetworkStateSnapshot;
   }>;
 };
 

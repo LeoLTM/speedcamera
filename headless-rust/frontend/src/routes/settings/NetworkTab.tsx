@@ -103,8 +103,14 @@ export function NetworkTab() {
       fetchNetworkSummary();
     }, 12000);
 
+    // Listen to real-time network state machine transitions
+    const unbind = (getRpc() as any).on?.("networkStatusChanged", () => {
+      fetchNetworkSummary();
+    });
+
     return () => {
       if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+      if (unbind) unbind();
     };
   }, [fetchNetworkSummary, scanWifi]);
 
@@ -187,6 +193,8 @@ export function NetworkTab() {
 
   const isApMode = network?.wifiMode === "ap" || network?.mode === "ap" || network?.mode === "field";
   const isClientMode = network?.wifiMode === "client" || network?.mode === "wifi-client" || network?.mode === "client";
+  const isConnecting = network?.networkState === "connecting" || network?.networkState === "reconnecting";
+  const isFallbackAp = network?.networkState === "fallback_ap";
   const isEthernetCameraLan = network?.ethernetMode === "camera-lan" || network?.cameraLan.status === "ok";
 
   const getSignalIcon = (signal: number) => {
@@ -235,7 +243,17 @@ export function NetworkTab() {
                 Wireless Interface
               </span>
             </div>
-            {isApMode ? (
+            {isConnecting ? (
+              <Badge variant="outline" className="text-amber-500 border-amber-500/30 text-[11px] gap-1 py-0.5">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                {network?.networkState === "reconnecting" ? "Reconnecting" : "Connecting"} ({network?.retryAttempt || 1}/{network?.maxAttempts || 6})
+              </Badge>
+            ) : isFallbackAp ? (
+              <Badge variant="outline" className="text-purple-500 border-purple-500/30 text-[11px] gap-1 py-0.5">
+                <Radio className="w-3 h-3 animate-pulse" />
+                Fallback AP Active
+              </Badge>
+            ) : isApMode ? (
               <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 text-[11px] gap-1 py-0.5">
                 <Radio className="w-3 h-3 animate-pulse" />
                 AP Setup Hotspot
@@ -253,7 +271,45 @@ export function NetworkTab() {
           </div>
 
           <div className="space-y-1.5 text-xs font-mono">
-            {isClientMode && network?.wifiClient ? (
+            {isConnecting ? (
+              <>
+                <div className="flex justify-between py-0.5 border-b border-border/50">
+                  <span className="text-muted-foreground font-sans">Target SSID:</span>
+                  <span className="font-semibold text-foreground">{network?.wifiClient?.ssid || "External Wi-Fi"}</span>
+                </div>
+                <div className="flex justify-between py-0.5 border-b border-border/50">
+                  <span className="text-muted-foreground font-sans">Attempt:</span>
+                  <span className="text-amber-500 font-semibold">{network?.retryAttempt || 1} of {network?.maxAttempts || 6}</span>
+                </div>
+                {network?.timeToNextAction != null && network.timeToNextAction > 0 && (
+                  <div className="flex justify-between py-0.5 border-b border-border/50">
+                    <span className="text-muted-foreground font-sans">Fallback AP in:</span>
+                    <span className="text-amber-500 font-semibold">{network.timeToNextAction}s</span>
+                  </div>
+                )}
+              </>
+            ) : isFallbackAp ? (
+              <>
+                <div className="flex justify-between py-0.5 border-b border-border/50">
+                  <span className="text-muted-foreground font-sans">Fallback SSID:</span>
+                  <span className="font-semibold text-foreground">speedcamera (Open)</span>
+                </div>
+                <div className="flex justify-between py-0.5 border-b border-border/50">
+                  <span className="text-muted-foreground font-sans">Static IP:</span>
+                  <span className="text-primary font-semibold">192.168.4.1</span>
+                </div>
+                <div className="flex justify-between py-0.5 border-b border-border/50">
+                  <span className="text-muted-foreground font-sans">Connected Devices:</span>
+                  <span className="font-semibold">{network?.connectedStations ?? 0} client(s)</span>
+                </div>
+                {network?.timeToNextAction != null && network.timeToNextAction > 0 && !network?.connectedStations && (
+                  <div className="flex justify-between py-0.5 border-b border-border/50">
+                    <span className="text-muted-foreground font-sans">Auto-Reconnect:</span>
+                    <span className="text-muted-foreground">Probe in {network.timeToNextAction}s</span>
+                  </div>
+                )}
+              </>
+            ) : isClientMode && network?.wifiClient ? (
               <>
                 <div className="flex justify-between py-0.5 border-b border-border/50">
                   <span className="text-muted-foreground font-sans">SSID:</span>

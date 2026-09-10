@@ -348,6 +348,19 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             Ok(Value::Null)
         }
 
+        "shutdownHost" => {
+            let password = params["password"].as_str().map(|s| s.to_string());
+            let mock_mode = ctx.config.mock_mode;
+            let res = tokio::task::spawn_blocking(move || {
+                crate::system::shutdown_host(password, mock_mode)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+
+            Ok(res)
+        }
+
         // ─── Serial ───────────────────────────────────────────────────────────
         "listPorts" => {
             let serial = ctx.serial.clone();

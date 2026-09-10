@@ -16,10 +16,11 @@ import {
   Settings,
   Sliders,
   Database,
-  Info,
   Layers,
   ChevronRight,
+  Power,
 } from "lucide-react";
+import { ShutdownDialog } from "./ShutdownDialog";
 import { cn } from "@/lib/utils";
 
 interface MobileMenuSheetProps {
@@ -33,7 +34,6 @@ const CORE_NAV_LINKS = [
   { label: "Camera Setup", to: "/setup", icon: Sliders },
   { label: "System Settings", to: "/settings", icon: Settings },
   { label: "Teable Sync", to: "/teable", icon: Database },
-  { label: "About & Updates", to: "/about", icon: Info },
 ] as const;
 
 const MODE_META: Record<string, { label: string; badgeClass: string }> = {
@@ -171,10 +171,23 @@ export function MobileMenuSheet({ open, onOpenChange }: MobileMenuSheetProps) {
           )}
         </div>
 
-        {/* Footer with Theme Toggle */}
-        <div className="p-3 border-t border-border bg-muted/20 flex items-center justify-between">
-          <span className="text-xs text-muted-foreground font-medium">Appearance</span>
-          <ThemeToggle />
+        {/* Footer with Host Shutdown and Theme Toggle */}
+        <div className="p-3 border-t border-border bg-muted/20 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground font-medium">Appearance</span>
+            <ThemeToggle />
+          </div>
+          <ShutdownDialog
+            trigger={
+              <button
+                type="button"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 rounded-lg transition-colors cursor-pointer"
+              >
+                <Power className="w-3.5 h-3.5 text-rose-500" />
+                <span>Shut Down Host (Pi)</span>
+              </button>
+            }
+          />
         </div>
       </SheetContent>
     </Sheet>

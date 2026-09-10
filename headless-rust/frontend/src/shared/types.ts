@@ -302,6 +302,7 @@ export type SerialStatusPayload =
   | { status: "LAPWAITING" }
   | { status: "LAPSTOPPED" }
   | { status: "BARRIER_STATUS"; sensor1Interrupted: boolean; sensor2Interrupted: boolean; timestamp: number }
+  | { status: "CONFIG"; key: string; value: number }
   | { status: "CONNECTED"; port?: string }
   | { status: "DISCONNECTED" };
 
@@ -415,6 +416,12 @@ export type SpeedcameraRPC = {
     setArmed: {
       params: { armed: boolean };
       response: { armed: boolean };
+    };
+
+    // System – host power control
+    shutdownHost: {
+      params: { password?: string };
+      response: { success: boolean; simulated?: boolean; message?: string };
     };
 
     // DB – settings

@@ -5,7 +5,6 @@ import { RootRoute } from "@/routes/__root";
 import { IndexRoute } from "@/routes/index";
 import { ViolationsRoute } from "@/routes/violations";
 import { SettingsRoute } from "@/routes/settings";
-import { AboutRoute } from "@/routes/about";
 import { TeableRoute } from "@/routes/teable";
 import { SetupRoute } from "@/routes/setup";
 import { pluginRegistry } from "@/plugins";
@@ -16,7 +15,6 @@ const routeTree = RootRoute.addChildren([
   IndexRoute,
   ViolationsRoute,
   SettingsRoute,
-  AboutRoute,
   TeableRoute,
   SetupRoute,
   ...pluginRegistry.getRoutes(RootRoute),

@@ -10,7 +10,6 @@ const CORE_NAV_ITEMS = [
   { label: "Settings", to: "/settings" },
   { label: "Setup", to: "/setup" },
   { label: "Teable", to: "/teable" },
-  { label: "About", to: "/about" },
 ] as const;
 
 const MODE_META: Record<string, { label: string; badgeClass: string }> = {

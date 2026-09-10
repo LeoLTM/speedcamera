@@ -3,6 +3,7 @@ import type { SerialStatusPayload, Violation, EspPongConfig } from "@/shared/typ
 import type { CameraSlice } from "./cameraSlice";
 import type { SystemSlice } from "./systemSlice";
 import { pluginRegistry } from "@/plugins";
+import { getRpc } from "@/lib/rpc";
 
 export interface MeasurementSlice {
   /** Last measured speed in km/h (null = no reading yet) */
@@ -40,12 +41,27 @@ export const createMeasurementSlice: StateCreator<
     // PONG is handled regardless of system state or app mode
     if (payload.status === "PONG") {
       set({ lastPongConfig: payload.config });
+      if (payload.config?.maxSpeed !== undefined) {
+        set({ maxSpeed: payload.config.maxSpeed });
+      }
+      return;
+    }
+
+    if (payload.status === "CONFIG" && payload.key === "maxSpeed") {
+      const speedVal = payload.value;
+      set({ maxSpeed: speedVal });
+      const current = get().lastPongConfig;
+      if (current) {
+        set({ lastPongConfig: { ...current, maxSpeed: speedVal } });
+      }
       return;
     }
 
     if (payload.status === "CONNECTED") {
       const port = (payload as any).port || (get() as any).selectedPort || "connected";
       (get() as any).setConnectedPort(port);
+      // Immediately query ESP config so UI is always synced with hardware
+      void getRpc().request.sendCommand({ json: JSON.stringify({ command: "ping" }) });
       return;
     }
 

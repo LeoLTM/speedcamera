@@ -19,6 +19,8 @@ import {
   FilterIcon,
 } from "@hugeicons/core-free-icons";
 import { FirmwareFlasher } from "@/components/FirmwareFlasher";
+import { ShutdownDialog } from "@/components/ShutdownDialog";
+import { Power } from "lucide-react";
 
 export function DeviceTab() {
   const connectedPort = useAppStore((s) => s.connectedPort);
@@ -210,6 +212,29 @@ export function DeviceTab() {
           )}
         </section>
       )}
+
+      {/* Host System Power / Shutdown */}
+      <section className="space-y-3 rounded-xl border border-rose-500/20 bg-rose-500/5 p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <Power className="w-4 h-4 text-rose-500" />
+              Raspberry Pi Host Power
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Safely shut down the operating system and power off the Raspberry Pi board.
+            </p>
+          </div>
+          <ShutdownDialog
+            trigger={
+              <Button variant="destructive" size="sm" className="shrink-0 gap-1.5 self-start sm:self-auto">
+                <Power className="w-3.5 h-3.5" />
+                Shut Down Host
+              </Button>
+            }
+          />
+        </div>
+      </section>
 
       <FirmwareFlasher />
     </div>

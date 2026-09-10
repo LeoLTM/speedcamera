@@ -18,7 +18,9 @@ pub fn get_config(conn: &Connection) -> Result<DisplayConfig> {
 
     if let Some(row) = rows.next()? {
         let json_str: String = row.get(0)?;
-        if let Ok(cfg) = serde_json::from_str::<DisplayConfig>(&json_str) {
+        if let Ok(mut cfg) = serde_json::from_str::<DisplayConfig>(&json_str) {
+            // Default should always be "auto" - do not restore locked display mode from DB
+            cfg.mode = "auto".to_string();
             return Ok(cfg);
         }
     }
@@ -28,7 +30,11 @@ pub fn get_config(conn: &Connection) -> Result<DisplayConfig> {
 }
 
 pub fn save_config(conn: &Connection, config: &DisplayConfig) -> Result<()> {
-    let json_str = serde_json::to_string(config).map_err(|e| {
+    let mut persistent_cfg = config.clone();
+    // Do not save locked mode into database - default remains "auto"
+    persistent_cfg.mode = "auto".to_string();
+
+    let json_str = serde_json::to_string(&persistent_cfg).map_err(|e| {
         rusqlite::Error::ToSqlConversionFailure(Box::new(e))
     })?;
 

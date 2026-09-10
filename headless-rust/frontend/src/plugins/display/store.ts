@@ -102,21 +102,12 @@ export const useDisplayStore = create<DisplayStore>()((set, get) => ({
     set({ autoRefresh: enabled });
   },
 
-  syncDashboardMode: async (dashboardMode: string) => {
+  syncDashboardMode: async (_dashboardMode: string) => {
     const { config } = get();
-    // Only auto-switch if mode is set to auto or explicitly matching
+    // In auto mode, backend OLED render loop automatically matches operating mode.
+    // Do NOT call setDisplayMode here to avoid overwriting auto mode with a locked screen.
     if (config?.mode === "auto") {
-      let targetMode = "speedcamera";
-      if (dashboardMode === "laptimer") targetMode = "laptimer";
-      else if (dashboardMode === "alignment") targetMode = "alignment";
-
-      // If active screen is different, set mode
-      try {
-        await (getRpc().request as any).setDisplayMode({ mode: targetMode });
-        void get().fetchPreview();
-      } catch (err) {
-        console.debug("[plugin:display] Mode sync error:", err);
-      }
+      void get().fetchPreview();
     }
   },
 }));

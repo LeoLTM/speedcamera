@@ -28,7 +28,6 @@ function HomePage() {
   const lastSpeed = useAppStore((s) => s.lastSpeed);
   const lastDirection = useAppStore((s) => s.lastDirection);
   const lastViolation = useAppStore((s) => s.lastViolation);
-  const setMaxSpeed = useAppStore((s) => s.setMaxSpeed);
   const appMode = useAppStore((s) => s.appMode);
   const isArmed = useAppStore((s) => s.isArmed);
   const availableModes = useAppStore((s) => s.availableModes);
@@ -69,17 +68,6 @@ function HomePage() {
     }
     setPendingTargetMode(null);
   };
-
-
-  // Load relevant settings into the store on mount
-  useEffect(() => {
-    getRpc()
-      .request.getSettings({})
-      .then((settings) => {
-        setMaxSpeed(settings.maxSpeed);
-      })
-      .catch(() => toast.error("Failed to load settings"));
-  }, [setMaxSpeed]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

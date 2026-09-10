@@ -1,3 +1,10 @@
+pub mod state;
+pub mod supervisor;
+
+#[allow(unused_imports)]
+pub use state::*;
+pub use supervisor::NetworkSupervisor;
+
 use crate::models::{
     ApplyNetworkModeInput, NetworkInterfaceDetail, NetworkOperationResult, SubnetInfo,
     SystemNetworkSummary, WifiClientInfo, WifiScanResult,
@@ -198,7 +205,22 @@ pub fn get_system_network_summary() -> SystemNetworkSummary {
         },
         wifi_client: wifi_client_info,
         interfaces,
+        network_state: None,
+        retry_attempt: None,
+        max_attempts: None,
+        connected_stations: None,
+        time_to_next_action: None,
     }
+}
+
+pub fn enrich_summary_with_snapshot(summary: &mut SystemNetworkSummary, snap: &NetworkStateSnapshot) {
+    summary.network_state = Some(snap.wifi_state.as_str().to_string());
+    summary.retry_attempt = Some(snap.retry_attempt);
+    summary.max_attempts = Some(snap.max_attempts);
+    summary.connected_stations = Some(snap.connected_stations);
+    summary.time_to_next_action = Some(snap.time_to_next_action);
+    summary.wifi_mode = snap.wifi_state.as_str().to_string();
+    summary.ethernet_mode = snap.ethernet_mode.as_str().to_string();
 }
 
 /// Queries Wi-Fi link information (SSID, signal, power_save, default gateway) via Linux utilities
@@ -343,6 +365,7 @@ pub fn scan_wifi_networks() -> Vec<WifiScanResult> {
 }
 
 /// Applies a network mode switch (AP, Wi-Fi Client, Forget Wi-Fi, Ethernet LAN, Ethernet DHCP, or standard DHCP)
+#[allow(dead_code)]
 pub fn apply_network_mode(input: &ApplyNetworkModeInput) -> NetworkOperationResult {
     let script_paths = [
         Path::new("./scripts/setup-network.sh"),

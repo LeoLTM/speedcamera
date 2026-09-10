@@ -110,6 +110,14 @@ class SocketIoRpcClient {
     this.socket.on("operatingModeChanged", (payload: any) => {
       this.handlePushEvent("operatingModeChanged", payload);
     });
+
+    this.socket.on("networkStatus", (payload: any) => {
+      this.handlePushEvent("networkStatus", payload);
+    });
+
+    this.socket.on("networkStatusChanged", (payload: any) => {
+      this.handlePushEvent("networkStatusChanged", payload);
+    });
   }
 
 

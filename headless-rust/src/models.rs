@@ -65,6 +65,16 @@ pub struct SystemNetworkSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wifi_client: Option<WifiClientInfo>,
     pub interfaces: Vec<NetworkInterfaceDetail>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_attempt: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_attempts: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connected_stations: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_to_next_action: Option<u64>,
 }
 
 fn default_network_mode() -> String {
@@ -344,6 +354,11 @@ pub enum SerialStatusPayload {
     },
     #[serde(rename = "DISCONNECTED")]
     Disconnected,
+    #[serde(rename = "CONFIG")]
+    Config {
+        key: String,
+        value: f64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

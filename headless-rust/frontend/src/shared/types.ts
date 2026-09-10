@@ -47,6 +47,24 @@ export interface SystemNetworkSummary {
   };
   wifiClient?: WifiClientInfo | null;
   interfaces: NetworkInterfaceDetail[];
+  networkState?: "ap_setup" | "connecting" | "connected" | "reconnecting" | "fallback_ap";
+  retryAttempt?: number;
+  maxAttempts?: number;
+  connectedStations?: number;
+  timeToNextAction?: number;
+}
+
+export interface NetworkStateSnapshot {
+  wifiState: any;
+  ethernetMode: "camera-lan" | "lan-dhcp" | "unmanaged";
+  activeSsid?: string | null;
+  clientIp?: string | null;
+  apIp: string;
+  retryAttempt: number;
+  maxAttempts: number;
+  connectedStations: number;
+  timeToNextAction: number;
+  timestampMs: number;
 }
 
 export interface WifiScanResult {
@@ -302,6 +320,7 @@ export type SerialStatusPayload =
   | { status: "LAPWAITING" }
   | { status: "LAPSTOPPED" }
   | { status: "BARRIER_STATUS"; sensor1Interrupted: boolean; sensor2Interrupted: boolean; timestamp: number }
+  | { status: "CONFIG"; key: string; value: number }
   | { status: "CONNECTED"; port?: string }
   | { status: "DISCONNECTED" };
 
@@ -415,6 +434,12 @@ export type SpeedcameraRPC = {
     setArmed: {
       params: { armed: boolean };
       response: { armed: boolean };
+    };
+
+    // System – host power control
+    shutdownHost: {
+      params: { password?: string };
+      response: { success: boolean; simulated?: boolean; message?: string };
     };
 
     // DB – settings
@@ -671,6 +696,9 @@ export type SpeedcameraRPC = {
     // Operating mode notifications
     operatingMode: OperatingModeStatus;
     operatingModeChanged: OperatingModeStatus;
+    // Network notifications
+    networkStatus: NetworkStateSnapshot;
+    networkStatusChanged: NetworkStateSnapshot;
   }>;
 };
 

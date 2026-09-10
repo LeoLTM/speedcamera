@@ -3,8 +3,10 @@ use rusqlite::{params, Connection, Result};
 use std::collections::HashMap;
 
 pub fn init_defaults(conn: &Connection) -> Result<()> {
+    // Purge legacy maxSpeed from database so ESP is the single source of truth
+    let _ = conn.execute("DELETE FROM settings WHERE key = 'maxSpeed'", []);
+
     let defaults = [
-        ("maxSpeed", "30"),
         ("selectedPort", ""),
         ("cameraExposure", "5000"),
         ("cameraGain", "0"),
@@ -65,7 +67,7 @@ pub fn get_settings(conn: &Connection) -> Result<AppSettings> {
     };
 
     Ok(AppSettings {
-        max_speed: get_f64("maxSpeed", 30.0),
+        max_speed: 30.0, // Default fallback; ESP is single source of truth and not stored in DB
         selected_port: get_str("selectedPort", ""),
         camera_exposure: get_f64("cameraExposure", 5000.0),
         camera_gain: get_f64("cameraGain", 0.0),
@@ -95,9 +97,40 @@ pub fn get_settings(conn: &Connection) -> Result<AppSettings> {
 }
 
 pub fn save_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
+    if key == "maxSpeed" {
+        // Speed limit is not stored in DB; ESP is single source of truth
+        return Ok(());
+    }
     conn.execute(
         "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         params![key, value],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_max_speed_not_stored_in_db() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+        ).unwrap();
+
+        // Simulate legacy maxSpeed existing
+        conn.execute("INSERT INTO settings (key, value) VALUES ('maxSpeed', '120')", []).unwrap();
+
+        init_defaults(&conn).unwrap();
+
+        // Legacy maxSpeed must be purged by init_defaults
+        let count: i64 = conn.query_row("SELECT count(*) FROM settings WHERE key = 'maxSpeed'", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 0);
+
+        // Attempting to save maxSpeed must be a no-op
+        save_setting(&conn, "maxSpeed", "80").unwrap();
+        let count_after: i64 = conn.query_row("SELECT count(*) FROM settings WHERE key = 'maxSpeed'", [], |r| r.get(0)).unwrap();
+        assert_eq!(count_after, 0);
+    }
 }

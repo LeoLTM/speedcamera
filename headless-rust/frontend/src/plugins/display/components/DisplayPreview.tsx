@@ -105,20 +105,20 @@ export function DisplayPreview() {
       </div>
 
       {/* Retro OLED Screen Bezel */}
-      <div className="flex flex-col items-center justify-center p-3 rounded-lg bg-black border-2 border-neutral-800 shadow-inner">
-        <div className="relative p-1.5 rounded bg-neutral-950 border border-neutral-800/80 shadow-[0_0_15px_rgba(56,189,248,0.15)]">
+      <div className="flex flex-col items-center justify-center p-2.5 sm:p-3 rounded-lg bg-black border-2 border-neutral-800 shadow-inner w-full">
+        <div className="relative p-1 sm:p-1.5 rounded bg-neutral-950 border border-neutral-800/80 shadow-[0_0_15px_rgba(56,189,248,0.15)] w-full max-w-[280px] sm:max-w-[320px] flex items-center justify-center">
           <canvas
             ref={canvasRef}
             width={128}
             height={64}
-            className="w-[256px] h-32 sm:w-[320px] sm:h-40 block"
+            className="w-full aspect-[2/1] h-auto block"
             style={{ imageRendering: "pixelated" }}
           />
         </div>
-        <div className="flex items-center justify-between w-full mt-2 px-2 text-[10px] font-mono text-neutral-500">
-          <span>SSD1306 • I²C</span>
-          <span className="text-cyan-400/80">Active Screen: {preview?.activeScreen || "SpeedCamera"}</span>
-          <span>128x64</span>
+        <div className="flex flex-wrap items-center justify-between gap-1 w-full mt-2 px-1 text-[10px] font-mono text-neutral-500">
+          <span className="shrink-0">SSD1306 • I²C</span>
+          <span className="text-cyan-400/80 font-medium truncate">Active: {preview?.activeScreen || "SpeedCamera"}</span>
+          <span className="shrink-0">128x64</span>
         </div>
       </div>
     </div>

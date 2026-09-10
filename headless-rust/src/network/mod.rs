@@ -1,7 +1,8 @@
 pub mod state;
 pub mod supervisor;
 
-pub use state::{EthernetMode, NetworkEvent, NetworkStateSnapshot, WifiState};
+#[allow(unused_imports)]
+pub use state::*;
 pub use supervisor::NetworkSupervisor;
 
 use crate::models::{
@@ -364,6 +365,7 @@ pub fn scan_wifi_networks() -> Vec<WifiScanResult> {
 }
 
 /// Applies a network mode switch (AP, Wi-Fi Client, Forget Wi-Fi, Ethernet LAN, Ethernet DHCP, or standard DHCP)
+#[allow(dead_code)]
 pub fn apply_network_mode(input: &ApplyNetworkModeInput) -> NetworkOperationResult {
     let script_paths = [
         Path::new("./scripts/setup-network.sh"),

@@ -1,6 +1,5 @@
 use super::state::{
     next_state, EthernetMode, NetworkEvent, NetworkStateSnapshot, TransitionEffect, WifiState,
-    MAX_RETRY_ATTEMPTS,
 };
 use crate::models::{ApplyNetworkModeInput, NetworkOperationResult};
 use std::path::{Path, PathBuf};
@@ -15,10 +14,12 @@ pub struct NetworkSupervisor {
     snapshot: Arc<RwLock<NetworkStateSnapshot>>,
     cmd_tx: mpsc::Sender<SupervisorCmd>,
     broadcast_tx: broadcast::Sender<NetworkStateSnapshot>,
+    #[allow(dead_code)]
     is_mock: Arc<AtomicBool>,
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 enum SupervisorCmd {
     Event(NetworkEvent),
     ApplyMode {
@@ -87,7 +88,7 @@ impl NetworkSupervisor {
                         if is_mock_now {
                             // In mock mode, advance retry counters if connecting
                             match &current_wifi {
-                                WifiState::StationConnecting { ssid, attempt, max_attempts } => {
+                                WifiState::StationConnecting { .. } => {
                                     mock_retry_counter += 1;
                                     if mock_retry_counter > 2 {
                                         // Simulate successful connect after 2 retries
@@ -145,7 +146,7 @@ impl NetworkSupervisor {
                                 }
                             }
 
-                            WifiState::StationConnecting { ssid, attempt, max_attempts } => {
+                            WifiState::StationConnecting { ssid, .. } => {
                                 let summary = super::get_system_network_summary();
                                 if let Some(ref client) = summary.wifi_client {
                                     if let Some(ref ip) = client.ip {
@@ -235,7 +236,7 @@ impl NetworkSupervisor {
                                 let mode = input.mode.to_lowercase();
                                 match mode.as_str() {
                                     "ap" | "hotspot" | "field" => {
-                                        let (next, effect) = next_state(&current_wifi, NetworkEvent::UserForget);
+                                        let (next, _effect) = next_state(&current_wifi, NetworkEvent::UserForget);
                                         current_wifi = next;
                                         let res = Self::execute_script(&["ap"]).await;
                                         Self::update_snapshot(&snapshot, &current_wifi, current_eth, &broadcast_tx);
@@ -348,6 +349,7 @@ impl NetworkSupervisor {
         reply_rx.await.map_err(|e| format!("Supervisor dropped reply: {}", e))
     }
 
+    #[allow(dead_code)]
     pub async fn send_event(&self, event: NetworkEvent) {
         let _ = self.cmd_tx.send(SupervisorCmd::Event(event)).await;
     }
@@ -390,7 +392,7 @@ impl NetworkSupervisor {
                 s.max_attempts = *max_attempts;
                 s.time_to_next_action = (max_attempts - attempt + 1) as u64 * 10;
             }
-            WifiState::FallbackAp { target_ssid, stations_connected, probe_countdown_secs } => {
+            WifiState::FallbackAp { stations_connected, probe_countdown_secs, .. } => {
                 s.active_ssid = Some("speedcamera".to_string());
                 s.client_ip = None;
                 s.connected_stations = *stations_connected;
@@ -413,7 +415,7 @@ impl NetworkSupervisor {
             TransitionEffect::ApplyClientMode { ssid, password } => {
                 tracing::info!("[network-supervisor] Connecting to Wi-Fi client: {}", ssid);
                 let mut args = vec!["client", ssid.as_str()];
-                if let Some(ref p) = password {
+                if let Some(p) = password {
                     if !p.is_empty() {
                         args.push(p.as_str());
                     }

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 // ponytail: pure state machine without external IO for deterministic transitions and zero-mock testing
 pub const MAX_RETRY_ATTEMPTS: u32 = 6;
+#[allow(dead_code)]
 pub const RETRY_INTERVAL_SECS: u64 = 10;
 pub const IDLE_PROBE_COOLDOWN_SECS: u64 = 60;
 
@@ -95,6 +96,7 @@ impl Default for NetworkStateSnapshot {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum NetworkEvent {
     UserConnect { ssid: String, password: Option<String> },
     UserForget,
@@ -107,6 +109,7 @@ pub enum NetworkEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum TransitionEffect {
     None,
     ApplyApMode,

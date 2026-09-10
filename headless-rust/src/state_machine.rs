@@ -77,6 +77,7 @@ pub struct SystemStateMachine {
     plugins: Arc<PluginRegistry>,
     operating_mode: Arc<RwLock<String>>,
     notify_display: Arc<tokio::sync::Notify>,
+    network: Arc<crate::network::NetworkSupervisor>,
 }
 
 impl SystemStateMachine {
@@ -90,6 +91,7 @@ impl SystemStateMachine {
         plugins: Arc<PluginRegistry>,
         operating_mode: Arc<RwLock<String>>,
         notify_display: Arc<tokio::sync::Notify>,
+        network: Arc<crate::network::NetworkSupervisor>,
     ) -> Self {
         let (tx, _) = broadcast::channel(32);
         Self {
@@ -105,6 +107,7 @@ impl SystemStateMachine {
             plugins,
             operating_mode,
             notify_display,
+            network,
         }
     }
 
@@ -128,6 +131,7 @@ impl SystemStateMachine {
             armed_tx: self.armed_tx.clone(),
             operating_mode: self.operating_mode.clone(),
             notify_display: self.notify_display.clone(),
+            network: self.network.clone(),
         }
     }
 

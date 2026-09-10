@@ -30,6 +30,7 @@ pub struct PluginContext {
     pub armed_tx: broadcast::Sender<bool>,
     pub operating_mode: Arc<std::sync::RwLock<String>>,
     pub notify_display: Arc<tokio::sync::Notify>,
+    pub network: Arc<crate::network::NetworkSupervisor>,
 }
 
 

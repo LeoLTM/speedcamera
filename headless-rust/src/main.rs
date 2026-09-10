@@ -114,6 +114,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let operating_mode = std::sync::Arc::new(std::sync::RwLock::new("speedcamera".to_string()));
     let notify_display = std::sync::Arc::new(tokio::sync::Notify::new());
 
+    // ─── Network Supervisor Initialization ────────────────────────────────────
+    let network_supervisor = network::NetworkSupervisor::new(config.mock_mode);
+
     // ─── Plugin System Initialization ────────────────────────────────────────
     let plugin_ctx = plugins::PluginContext {
         config: config.clone(),
@@ -125,6 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         armed_tx: armed_tx.clone(),
         operating_mode: operating_mode.clone(),
         notify_display: notify_display.clone(),
+        network: network_supervisor.clone(),
     };
     let mut plugin_reg = plugins::PluginRegistry::new();
     // ponytail: modular plugins isolated from core daemon, respects disabled_plugins config
@@ -161,6 +165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         plugin_registry.clone(),
         operating_mode.clone(),
         notify_display.clone(),
+        network_supervisor.clone(),
     ));
 
     // ─── Instant Shutter Trigger Pipeline (<10ms latency) ─────────────────────
@@ -248,6 +253,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         armed_tx,
         plugin_registry,
         state_machine,
+        network_supervisor,
     );
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
 

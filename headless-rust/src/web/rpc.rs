@@ -44,6 +44,7 @@ pub struct RpcContext {
     pub armed_tx: broadcast::Sender<bool>,
     pub plugins: Arc<crate::plugins::PluginRegistry>,
     pub state_machine: Arc<crate::state_machine::SystemStateMachine>,
+    pub network: Arc<crate::network::NetworkSupervisor>,
 }
 
 
@@ -546,8 +547,15 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         "getPlatform" => Ok(Value::String(std::env::consts::OS.to_string())),
 
         "getNetworkInfo" => {
-            let summary = get_system_network_summary();
+            let mut summary = get_system_network_summary();
+            let snap = ctx.network.snapshot();
+            crate::network::enrich_summary_with_snapshot(&mut summary, &snap);
             Ok(serde_json::to_value(summary).unwrap())
+        }
+
+        "getNetworkSnapshot" => {
+            let snap = ctx.network.snapshot();
+            Ok(serde_json::to_value(snap).unwrap())
         }
 
         "scanWifiNetworks" => {
@@ -560,9 +568,7 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         "applyNetworkMode" => {
             let input: ApplyNetworkModeInput =
                 serde_json::from_value(params).map_err(|e| e.to_string())?;
-            let res = tokio::task::spawn_blocking(move || crate::network::apply_network_mode(&input))
-                .await
-                .map_err(|e| e.to_string())?;
+            let res = ctx.network.apply_mode(input).await?;
             Ok(serde_json::to_value(res).unwrap())
         }
 
@@ -572,9 +578,7 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
                 ssid: None,
                 password: None,
             };
-            let res = tokio::task::spawn_blocking(move || crate::network::apply_network_mode(&input))
-                .await
-                .map_err(|e| e.to_string())?;
+            let res = ctx.network.apply_mode(input).await?;
             Ok(serde_json::to_value(res).unwrap())
         }
 
@@ -585,9 +589,7 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
                 ssid: None,
                 password: None,
             };
-            let res = tokio::task::spawn_blocking(move || crate::network::apply_network_mode(&input))
-                .await
-                .map_err(|e| e.to_string())?;
+            let res = ctx.network.apply_mode(input).await?;
             Ok(serde_json::to_value(res).unwrap())
         }
 

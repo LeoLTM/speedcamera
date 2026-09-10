@@ -32,6 +32,7 @@ pub fn build_app(
     armed_tx: broadcast::Sender<bool>,
     plugins: Arc<crate::plugins::PluginRegistry>,
     state_machine: Arc<crate::state_machine::SystemStateMachine>,
+    network: Arc<crate::network::NetworkSupervisor>,
 ) -> Router {
     let (flash_tx, _) = broadcast::channel::<FlashProgressPayload>(32);
 
@@ -48,6 +49,7 @@ pub fn build_app(
         armed_tx,
         plugins: plugins.clone(),
         state_machine,
+        network,
     });
 
 

@@ -15,6 +15,7 @@ pub async fn on_connect(s: SocketRef, ctx: Arc<RpcContext>) {
     let _ = s.emit("serialStatus", &ctx.serial.get_status_payload());
     let _ = s.emit("armedStatus", &json!({ "armed": ctx.armed.load(Ordering::SeqCst) }));
     let _ = s.emit("operatingMode", &ctx.state_machine.get_status());
+    let _ = s.emit("networkStatus", &ctx.network.snapshot());
 
 
     // Register RPC handler with AckSender for request-response RPC over Socket.io
@@ -53,6 +54,7 @@ pub fn spawn_event_broadcaster(io: SocketIo, ctx: Arc<RpcContext>) {
         let mut violation_rx = ctx.violation_tx.subscribe();
         let mut armed_rx = ctx.armed_tx.subscribe();
         let mut mode_rx = ctx.state_machine.subscribe();
+        let mut network_rx = ctx.network.subscribe();
 
         loop {
             tokio::select! {
@@ -68,6 +70,23 @@ pub fn spawn_event_broadcaster(io: SocketIo, ctx: Arc<RpcContext>) {
                         }
                         Err(broadcast::error::RecvError::Closed) => {
                             tracing::warn!("[socketio] Mode broadcast channel closed");
+                            break;
+                        }
+                    }
+                }
+
+                res = network_rx.recv() => {
+                    match res {
+                        Ok(snap) => {
+                            if let Err(e) = io.emit("networkStatusChanged", &snap).await {
+                                tracing::debug!("[socketio] Emit networkStatusChanged error: {:?}", e);
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::debug!("[socketio] Network broadcast lagged by {} messages", n);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            tracing::warn!("[socketio] Network broadcast channel closed");
                             break;
                         }
                     }

@@ -7,8 +7,8 @@ on:
         description: 'Release version tag (e.g. v1.2.0 or v1.2.0-canary). Empty string for non-release builds.'
         type: string
         default: ''
-      build-app:
-        description: 'Build electronbun app'
+      build-headless:
+        description: 'Build headless-rust daemon'
         type: boolean
         default: true
       build-firmware:
@@ -16,69 +16,39 @@ on:
         type: boolean
         default: true
 
-defaults:
-  run:
-    working-directory: electronbun
-
 jobs:
-  build:
-    name: Build (${{ matrix.platform }})
-    if: inputs.build-app
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux-x64
-          # Does not work yet due to electronbun cli installation errors
-          # on Windows runners. Windows is no prio atm anyway.
-          # - os: windows-latest
-          #   platform: win-x64
+  headless-build:
+    name: Headless-Rust — Build
+    if: inputs.build-headless
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: headless-rust
 
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libaravis-dev libudev-dev pkg-config
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         run: bun install
 
-      - name: Download esptool binary (Linux amd64)
-        shell: bash
-        run: |
-          curl -fsSL https://github.com/espressif/esptool/releases/download/v5.2.0/esptool-v5.2.0-linux-amd64.tar.gz \
-            | tar -xz --wildcards '*/esptool' --strip-components=1
-          mkdir -p resources
-          mv esptool resources/esptool
-          chmod +x resources/esptool
+      # compile embedded web assets into dist/ for rust-embed
+      - name: Build frontend
+        run: bun run build
 
-      - name: Inject release version
-        if: inputs.version != ''
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        shell: bash
-        run: bun scripts/inject-version.ts
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - name: Build
-        env:
-          GENERATE_PATCH: "true"
-        shell: bash
-        run: |
-          if [[ "${{ inputs.version }}" == *"-canary"* ]]; then
-            bun run build:canary
-          else
-            bun run build:stable
-          fi
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: electronbun-artifacts-${{ matrix.platform }}
-          path: electronbun/artifacts/**
-          if-no-files-found: error
-          retention-days: 1
+      # verify release binary compiles cleanly; no artifact upload needed (deploy not required)
+      - name: Build release binary
+        run: cargo build --release
 
   arduino-build:
     name: Arduino — Build Firmware

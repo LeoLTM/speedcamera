@@ -19,7 +19,7 @@ echo "    Wireless (Hotspot/Wi-Fi): ${WIFI_IFACE}"
 echo ""
 
 # For modifying operations, request sudo privileges
-if [ "$MODE" != "status" ] && [ "$MODE" != "scan" ]; then
+if [ "$MODE" != "status" ] && [ "$MODE" != "scan" ] && [ "$MODE" != "station-count" ]; then
   sudo -v || { echo "Error: Sudo privileges required to change network configuration." >&2; exit 1; }
 fi
 
@@ -399,7 +399,19 @@ show_status() {
   fi
 }
 
+count_ap_stations() {
+  if command -v iw &>/dev/null; then
+    iw dev "${WIFI_IFACE}" station dump 2>/dev/null | grep -c "Station " || echo 0
+  else
+    echo 0
+  fi
+}
+
 case "$MODE" in
+  station-count)
+    count_ap_stations
+    ;;
+
   ap|field|hotspot)
     apply_ap_mode
     ;;

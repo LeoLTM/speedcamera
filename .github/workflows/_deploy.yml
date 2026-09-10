@@ -15,13 +15,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v8
-        with:
-          pattern: electronbun-artifacts-*
-          merge-multiple: true
-          path: artifacts
-
+      # only publish arduino firmware binary to release - headless-rust binaries not deployed
       - name: Download firmware artifact
         uses: actions/download-artifact@v8
         with:

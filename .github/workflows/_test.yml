@@ -5,23 +5,35 @@ on:
 
 defaults:
   run:
-    working-directory: electronbun
+    working-directory: headless-rust
 
 jobs:
   test:
-    name: Type-check & Lint
+    name: Headless-Rust — Type-check & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libaravis-dev libudev-dev pkg-config
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         run: bun install
 
       - name: TypeScript type-check
         run: bun tsc --noEmit
 
-      - name: Lint
-        run: bun run lint:ci
+      # build frontend dist so rust-embed compiles cleanly in cargo test
+      - name: Build frontend
+        run: bun run build
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Run cargo tests
+        run: cargo test

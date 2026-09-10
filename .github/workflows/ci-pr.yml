@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
-      - 'electronbun/**'
+      - 'headless-rust/**'
       - 'arduino/**'
       - '.github/workflows/**'
 
@@ -13,7 +13,7 @@ jobs:
     name: Detect Changed Paths
     runs-on: ubuntu-latest
     outputs:
-      electronbun: ${{ steps.filter.outputs.electronbun }}
+      headless_rust: ${{ steps.filter.outputs.headless_rust }}
       arduino: ${{ steps.filter.outputs.arduino }}
     steps:
       - uses: actions/checkout@v6
@@ -22,8 +22,8 @@ jobs:
         id: filter
         with:
           filters: |
-            electronbun:
-              - 'electronbun/**'
+            headless_rust:
+              - 'headless-rust/**'
               - '.github/workflows/**'
             arduino:
               - 'arduino/**'
@@ -31,16 +31,16 @@ jobs:
 
   test:
     needs: changes
-    if: needs.changes.outputs.electronbun == 'true'
+    if: needs.changes.outputs.headless_rust == 'true'
     uses: ./.github/workflows/_test.yml
     secrets: inherit
 
   build:
     needs: [changes, test]
-    if: ${{ !cancelled() && !failure() && (needs.changes.outputs.electronbun == 'true' || needs.changes.outputs.arduino == 'true') }}
+    if: ${{ !cancelled() && !failure() && (needs.changes.outputs.headless_rust == 'true' || needs.changes.outputs.arduino == 'true') }}
     uses: ./.github/workflows/_build.yml
     with:
       version: ''
-      build-app: ${{ needs.changes.outputs.electronbun == 'true' }}
+      build-headless: ${{ needs.changes.outputs.headless_rust == 'true' }}
       build-firmware: ${{ needs.changes.outputs.arduino == 'true' }}
     secrets: inherit

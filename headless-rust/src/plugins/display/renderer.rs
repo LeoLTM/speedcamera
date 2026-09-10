@@ -107,6 +107,13 @@ pub struct RenderTelemetry {
     // System data
     pub camera_ip: String,
     pub wifi_ip: String,
+    // Network state machine telemetry (OLED user guidance)
+    pub network_state: String, // "ap_setup" | "connecting" | "connected" | "reconnecting" | "fallback_ap"
+    pub network_ssid: String,
+    pub network_retry_attempt: u32,
+    pub network_max_attempts: u32,
+    pub network_stations: usize,
+    pub network_time_to_action: u64,
 }
 
 // ─── Screen Renderers ────────────────────────────────────────────────
@@ -277,6 +284,76 @@ pub fn render_alignment_screen(fb: &mut FrameBuffer, _cfg: &DisplayConfig, telem
     }
 }
 
+pub fn render_network_connecting_screen(fb: &mut FrameBuffer, telem: &RenderTelemetry) {
+    fb.clear();
+    let is_reconnecting = telem.network_state == "reconnecting";
+    draw_status_bar(fb, telem, if is_reconnecting { "RETRY" } else { "WIFI" });
+
+    let font_small = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    let font_tiny = MonoTextStyle::new(&FONT_4X6, BinaryColor::On);
+
+    let title = if is_reconnecting { "RECONNECTING WI-FI" } else { "CONNECTING WI-FI" };
+    let _ = Text::new(title, Point::new(4, 20), font_small).draw(fb);
+
+    let ssid = if telem.network_ssid.is_empty() { "Unknown" } else { &telem.network_ssid };
+    let ssid_str = format!("SSID: {}", ssid);
+    let _ = Text::new(&ssid_str, Point::new(4, 32), font_tiny).draw(fb);
+
+    let max_att = if telem.network_max_attempts == 0 { 6 } else { telem.network_max_attempts };
+    let att = telem.network_retry_attempt.clamp(1, max_att);
+    let att_str = format!("Attempt: {} of {}", att, max_att);
+    let _ = Text::new(&att_str, Point::new(4, 42), font_tiny).draw(fb);
+
+    // Graphical progress bar: 110px width
+    let bar_rect = Rectangle::new(Point::new(4, 46), Size::new(110, 6));
+    let stroke = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
+    let _ = bar_rect.into_styled(stroke).draw(fb);
+
+    let progress_width = ((110 * att) / max_att).max(1);
+    let fill_rect = Rectangle::new(Point::new(4, 46), Size::new(progress_width, 6));
+    let fill = PrimitiveStyle::with_fill(BinaryColor::On);
+    let _ = fill_rect.into_styled(fill).draw(fb);
+
+    let cd_str = format!("Fallback AP in: {}s", telem.network_time_to_action);
+    let _ = Text::new(&cd_str, Point::new(4, 60), font_tiny).draw(fb);
+}
+
+pub fn render_network_fallback_ap_screen(fb: &mut FrameBuffer, telem: &RenderTelemetry) {
+    fb.clear();
+    draw_status_bar(fb, telem, "AP-SETUP");
+
+    let font_small = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    let font_tiny = MonoTextStyle::new(&FONT_4X6, BinaryColor::On);
+
+    if telem.network_stations > 0 {
+        // User actively connected to AP
+        let badge_rect = Rectangle::new(Point::new(4, 13), Size::new(120, 11));
+        let fill = PrimitiveStyle::with_fill(BinaryColor::On);
+        let _ = badge_rect.into_styled(fill).draw(fb);
+        let inv_font = MonoTextStyle::new(&FONT_6X10, BinaryColor::Off);
+        let _ = Text::new("* USER CONNECTED *", Point::new(6, 21), inv_font).draw(fb);
+
+        let _ = Text::new("Web Setup Active", Point::new(4, 34), font_small).draw(fb);
+        let _ = Text::new("http://192.168.4.1:3000", Point::new(4, 46), font_tiny).draw(fb);
+
+        let clients_str = format!("Connected Devices: {}", telem.network_stations);
+        let _ = Text::new(&clients_str, Point::new(4, 57), font_tiny).draw(fb);
+    } else {
+        // Awaiting connection from user
+        let _ = Text::new("SETUP / FALLBACK AP", Point::new(4, 20), font_small).draw(fb);
+        let _ = Text::new("SSID : speedcamera (Open)", Point::new(4, 31), font_tiny).draw(fb);
+        let _ = Text::new("IP   : 192.168.4.1:3000", Point::new(4, 41), font_tiny).draw(fb);
+        let _ = Text::new("Open browser to configure", Point::new(4, 51), font_tiny).draw(fb);
+
+        let probe_str = if telem.network_time_to_action > 0 {
+            format!("Auto-reconnect in: {}s", telem.network_time_to_action)
+        } else {
+            "Awaiting connection...".to_string()
+        };
+        let _ = Text::new(&probe_str, Point::new(4, 61), font_tiny).draw(fb);
+    }
+}
+
 pub fn render_system_screen(fb: &mut FrameBuffer, telem: &RenderTelemetry) {
     fb.clear();
     draw_status_bar(fb, telem, "SYS");
@@ -340,5 +417,20 @@ mod tests {
         render_alignment_screen(&mut fb, &cfg, &telem);
 
         render_system_screen(&mut fb, &telem);
+
+        // Test network assistance screens
+        telem.network_state = "connecting".to_string();
+        telem.network_ssid = "RaceTrackWiFi".to_string();
+        telem.network_retry_attempt = 3;
+        telem.network_max_attempts = 6;
+        telem.network_time_to_action = 30;
+        render_network_connecting_screen(&mut fb, &telem);
+
+        telem.network_state = "fallback_ap".to_string();
+        telem.network_stations = 0;
+        render_network_fallback_ap_screen(&mut fb, &telem);
+
+        telem.network_stations = 2;
+        render_network_fallback_ap_screen(&mut fb, &telem);
     }
 }

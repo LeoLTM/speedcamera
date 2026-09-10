@@ -88,6 +88,7 @@ impl Plugin for DisplayPlugin {
         let is_conn_thread = self.is_connected.clone();
         let last_err_thread = self.last_error.clone();
         let op_mode_thread = ctx.operating_mode.clone();
+        let network_svc = ctx.network.clone();
 
         // Spawn dedicated background render thread (non-blocking for main server)
         std::thread::Builder::new()
@@ -100,6 +101,8 @@ impl Plugin for DisplayPlugin {
                 let mut reconnect_timer = Instant::now();
 
                 loop {
+                    let net_snap = network_svc.snapshot();
+
                     // Update live system state
                     {
                         let mut t = telem_thread.lock().unwrap();
@@ -107,6 +110,19 @@ impl Plugin for DisplayPlugin {
                         t.camera_connected = camera_svc.get_status().connected;
                         t.serial_connected = serial_svc.get_status().connected;
                         t.speed_limit = serial_svc.get_max_speed();
+
+                        // Network state machine telemetry
+                        t.network_state = net_snap.wifi_state.as_str().to_string();
+                        t.network_ssid = net_snap.active_ssid.clone().unwrap_or_default();
+                        t.network_retry_attempt = net_snap.retry_attempt;
+                        t.network_max_attempts = net_snap.max_attempts;
+                        t.network_stations = net_snap.connected_stations;
+                        t.network_time_to_action = net_snap.time_to_next_action;
+                        if let Some(ref ip) = net_snap.client_ip {
+                            t.wifi_ip = ip.clone();
+                        } else {
+                            t.wifi_ip = net_snap.ap_ip.clone();
+                        }
                     }
 
                     let cfg = cfg_thread.lock().unwrap().clone();
@@ -151,13 +167,29 @@ impl Plugin for DisplayPlugin {
                             *shared_fb = local_fb.clone();
                         }
                     } else {
-                        // Determine active mode: ponytail: mirror central state machine when in auto mode
+                        // Determine active mode: ponytail: prioritize active measurement when armed; assist with network when idle
                         let mode = if cfg.mode == "auto" {
                             let sm = op_mode_thread.read().unwrap();
-                            match sm.as_str() {
-                                "alignment" | "setup" => "alignment",
-                                "laptimer" => "laptimer",
-                                _ => "speedcamera",
+                            let is_op_busy = telem.armed
+                                || sm.as_str() == "alignment"
+                                || sm.as_str() == "setup"
+                                || sm.as_str() == "laptimer";
+
+                            if is_op_busy {
+                                match sm.as_str() {
+                                    "alignment" | "setup" => "alignment",
+                                    "laptimer" => "laptimer",
+                                    _ => "speedcamera",
+                                }
+                            } else {
+                                // System is disarmed / idle: display network setup/retry guidance if not connected
+                                match net_snap.wifi_state {
+                                    crate::network::WifiState::StationConnecting { .. }
+                                    | crate::network::WifiState::StationReconnecting { .. } => "network_connecting",
+                                    crate::network::WifiState::FallbackAp { .. }
+                                    | crate::network::WifiState::ApSetup => "network_ap",
+                                    crate::network::WifiState::StationConnected { .. } => "speedcamera",
+                                }
                             }
                         } else {
                             cfg.mode.as_str()
@@ -174,6 +206,8 @@ impl Plugin for DisplayPlugin {
                             "laptimer" => renderer::render_laptimer_screen(&mut local_fb, &cfg, &telem),
                             "alignment" => renderer::render_alignment_screen(&mut local_fb, &cfg, &telem),
                             "system" => renderer::render_system_screen(&mut local_fb, &telem),
+                            "network_connecting" => renderer::render_network_connecting_screen(&mut local_fb, &telem),
+                            "network_ap" => renderer::render_network_fallback_ap_screen(&mut local_fb, &telem),
                             "off" => local_fb.clear(),
                             _ => renderer::render_speed_screen(&mut local_fb, &cfg, &telem),
                         }

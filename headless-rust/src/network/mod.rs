@@ -21,6 +21,27 @@ fn get_interface_mac(iface: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Fast in-memory check for active Wi-Fi station IP via getifaddrs (sub-millisecond, zero subprocesses)
+pub fn get_wifi_client_ip() -> Option<String> {
+    if let Ok(ifaddrs) = nix::ifaddrs::getifaddrs() {
+        for ifaddr in ifaddrs {
+            let name = &ifaddr.interface_name;
+            let is_wifi = name.starts_with("wlan") || name.starts_with("wifi") || name.starts_with("wlp");
+            if is_wifi {
+                if let Some(addr) = ifaddr.address {
+                    if let Some(sock_addr) = addr.as_sockaddr_in() {
+                        let ip = std::net::Ipv4Addr::from(sock_addr.ip()).to_string();
+                        if ip != "192.168.4.1" && !ip.starts_with("127.") {
+                            return Some(ip);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 pub fn get_system_network_summary() -> SystemNetworkSummary {
     let mut interfaces = Vec::new();
     let mut camera_lan_iface: Option<NetworkInterfaceDetail> = None;

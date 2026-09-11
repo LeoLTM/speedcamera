@@ -117,7 +117,16 @@ impl Plugin for DisplayPlugin {
                         t.network_retry_attempt = net_snap.retry_attempt;
                         t.network_max_attempts = net_snap.max_attempts;
                         t.network_stations = net_snap.connected_stations;
-                        t.network_time_to_action = net_snap.time_to_next_action;
+
+                        // Real-time wall-clock countdown interpolation
+                        let now_ms = chrono::Utc::now().timestamp_millis();
+                        let elapsed_secs = ((now_ms - net_snap.timestamp_ms).max(0) / 1000) as u64;
+                        let live_countdown = if net_snap.connected_stations > 0 && net_snap.wifi_state.as_str() == "fallback_ap" {
+                            net_snap.time_to_next_action
+                        } else {
+                            net_snap.time_to_next_action.saturating_sub(elapsed_secs)
+                        };
+                        t.network_time_to_action = live_countdown;
                         if let Some(ref ip) = net_snap.client_ip {
                             t.wifi_ip = ip.clone();
                         } else {

@@ -101,6 +101,9 @@ pub trait Plugin: Send + Sync + 'static {
     fn on_leave_mode(&self, _ctx: &PluginContext, _force: bool) -> Result<(), String> {
         Ok(())
     }
+    fn show_shutdown_screen_and_wipe(&self) -> Option<BoxFuture<'static, ()>> {
+        None
+    }
 }
 
 pub struct PluginRegistry {
@@ -197,6 +200,14 @@ impl PluginRegistry {
         if let Some(ref ctx) = self.ctx {
             for plugin in &self.plugins {
                 plugin.on_serial_event(msg, ctx);
+            }
+        }
+    }
+
+    pub async fn show_shutdown_screen_and_wipe(&self) {
+        for plugin in &self.plugins {
+            if let Some(fut) = plugin.show_shutdown_screen_and_wipe() {
+                fut.await;
             }
         }
     }

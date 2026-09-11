@@ -6,7 +6,7 @@ use embedded_graphics::{
         MonoTextStyle,
     },
     pixelcolor::BinaryColor,
-    primitives::{Line, Primitive, PrimitiveStyle, Rectangle},
+    primitives::{Circle, Line, Primitive, PrimitiveStyle, Rectangle},
     text::Text,
     Drawable,
 };
@@ -373,9 +373,49 @@ pub fn render_system_screen(fb: &mut FrameBuffer, telem: &RenderTelemetry) {
     let _ = Text::new(arm_str, Point::new(4, 55), font_tiny).draw(fb);
 }
 
+pub fn render_power_off_screen(fb: &mut FrameBuffer) {
+    fb.clear();
+
+    // Draw IEC 60417-5009 Power symbol (⏻) centered at (64, 20)
+    // Outer circle: diameter 26, stroke 2
+    let circle_style = PrimitiveStyle::with_stroke(BinaryColor::On, 2);
+    let _ = Circle::new(Point::new(51, 7), 26).into_styled(circle_style).draw(fb);
+
+    // Cutout top gap in circle
+    let gap_style = PrimitiveStyle::with_fill(BinaryColor::Off);
+    let _ = Rectangle::new(Point::new(59, 5), Size::new(11, 8)).into_styled(gap_style).draw(fb);
+
+    // Vertical power indicator line through the top gap
+    let line_style = PrimitiveStyle::with_stroke(BinaryColor::On, 2);
+    let _ = Line::new(Point::new(64, 4), Point::new(64, 19)).into_styled(line_style).draw(fb);
+
+    // Labels
+    let font_small = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    let font_tiny = MonoTextStyle::new(&FONT_4X6, BinaryColor::On);
+
+    // "POWER OFF" (9 chars * 6px = 54px wide, center at (128-54)/2 = 37)
+    let _ = Text::new("POWER OFF", Point::new(37, 46), font_small).draw(fb);
+
+    // "SHUTTING DOWN..." (17 chars * 4px = 68px wide, center at (128-68)/2 = 30)
+    let _ = Text::new("SHUTTING DOWN...", Point::new(30, 58), font_tiny).draw(fb);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_power_off_screen_renders_and_wipes() {
+        let mut fb = FrameBuffer::new();
+        render_power_off_screen(&mut fb);
+        assert!(!fb.to_base64().is_empty());
+        // Ensure pixels were drawn
+        assert!(fb.data.iter().any(|&byte| byte != 0));
+
+        // Wiping clears all pixels to 0
+        fb.clear();
+        assert!(fb.data.iter().all(|&byte| byte == 0));
+    }
 
     #[test]
     fn test_framebuffer_pixel_drawing() {

@@ -352,14 +352,37 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         "shutdownHost" => {
             let password = params["password"].as_str().map(|s| s.to_string());
             let mock_mode = ctx.config.mock_mode;
-            let res = tokio::task::spawn_blocking(move || {
-                crate::system::shutdown_host(password, mock_mode)
+
+            // 1. Verify authorization first (synchronous check in spawn_blocking)
+            let pass_verify = password.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::system::verify_shutdown_authorization(pass_verify.as_deref(), mock_mode)
             })
             .await
             .map_err(|e| e.to_string())?
             .map_err(|e| e.to_string())?;
 
-            Ok(res)
+            // 2. Authorization succeeded!
+            // Spawn task to show power-off symbol on OLED for 3 seconds, wipe display, and power down host
+            let plugins = ctx.plugins.clone();
+            let pass_exec = password.clone();
+            tokio::spawn(async move {
+                plugins.show_shutdown_screen_and_wipe().await;
+                let _ = tokio::task::spawn_blocking(move || {
+                    crate::system::perform_os_shutdown(pass_exec.as_deref(), mock_mode)
+                })
+                .await;
+            });
+
+            Ok(json!({
+                "success": true,
+                "simulated": mock_mode,
+                "message": if mock_mode {
+                    "Host shutdown simulated successfully (mock mode)"
+                } else {
+                    "Host shutdown initiated successfully"
+                }
+            }))
         }
 
         // ─── Serial ───────────────────────────────────────────────────────────

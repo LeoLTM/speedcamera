@@ -131,6 +131,14 @@ impl DisplayDriver {
         }
     }
 
+    /// Clears the display buffer, flushes all zeros to physical SSD1306 GDRAM,
+    /// and powers down the OLED panel (sleep command 0xAE) so it will not remain lit after host poweroff.
+    pub fn wipe(&mut self) {
+        let blank_fb = FrameBuffer::new();
+        self.flush_frame(&blank_fb);
+        self.set_power(false);
+    }
+
     pub fn set_power(&mut self, on: bool) {
         if let Some(ref mut display) = self.physical {
             let _ = display.set_display_on(on);

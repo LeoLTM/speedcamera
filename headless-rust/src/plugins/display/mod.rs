@@ -5,12 +5,12 @@ pub mod renderer;
 pub mod rpc;
 
 use crate::models::SerialStatusPayload;
-use crate::plugins::{Plugin, PluginContext, RpcRegistry};
+use crate::plugins::{BoxFuture, Plugin, PluginContext, RpcRegistry};
 use driver::DisplayDriver;
 use models::DisplayConfig;
 use renderer::{FrameBuffer, RenderTelemetry};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Notify;
 
@@ -24,6 +24,8 @@ pub struct DisplayPlugin {
     is_connected: Arc<AtomicBool>,
     is_mock_mode: Arc<AtomicBool>,
     last_error: Arc<Mutex<Option<String>>>,
+    shutdown_state: Arc<(Mutex<bool>, Condvar)>,
+    shutdown_complete: Arc<Notify>,
 }
 
 impl DisplayPlugin {
@@ -37,6 +39,8 @@ impl DisplayPlugin {
             is_connected: Arc::new(AtomicBool::new(false)),
             is_mock_mode: Arc::new(AtomicBool::new(false)),
             last_error: Arc::new(Mutex::new(None)),
+            shutdown_state: Arc::new((Mutex::new(false), Condvar::new())),
+            shutdown_complete: Arc::new(Notify::new()),
         }
     }
 }
@@ -89,6 +93,8 @@ impl Plugin for DisplayPlugin {
         let last_err_thread = self.last_error.clone();
         let op_mode_thread = ctx.operating_mode.clone();
         let network_svc = ctx.network.clone();
+        let shutdown_state_thread = self.shutdown_state.clone();
+        let shutdown_complete_thread = self.shutdown_complete.clone();
 
         // Spawn dedicated background render thread (non-blocking for main server)
         std::thread::Builder::new()
@@ -101,6 +107,38 @@ impl Plugin for DisplayPlugin {
                 let mut reconnect_timer = Instant::now();
 
                 loop {
+                    // Check if shutdown was requested
+                    {
+                        let (lock, _) = &*shutdown_state_thread;
+                        if *lock.lock().unwrap() {
+                            tracing::info!("[plugin:display] Shutdown triggered: displaying power off symbol for 3 seconds");
+                            local_fb.clear();
+                            renderer::render_power_off_screen(&mut local_fb);
+                            driver.flush_frame(&local_fb);
+                            {
+                                let mut shared_fb = fb_thread.lock().unwrap();
+                                *shared_fb = local_fb.clone();
+                                let mut act = active_mode_thread.lock().unwrap();
+                                *act = "power_off".to_string();
+                            }
+
+                            std::thread::sleep(Duration::from_secs(3));
+
+                            tracing::info!("[plugin:display] Shutdown sequence: wiping OLED display and powering down panel");
+                            driver.wipe();
+                            {
+                                let mut shared_fb = fb_thread.lock().unwrap();
+                                shared_fb.clear();
+                                let mut act = active_mode_thread.lock().unwrap();
+                                *act = "off".to_string();
+                            }
+
+                            shutdown_complete_thread.notify_waiters();
+                            tracing::info!("[plugin:display] OLED shutdown wipe sequence complete");
+                            break;
+                        }
+                    }
+
                     let net_snap = network_svc.snapshot();
 
                     // Update live system state
@@ -241,7 +279,12 @@ impl Plugin for DisplayPlugin {
                         Duration::from_millis(250)
                     };
 
-                    std::thread::sleep(sleep_dur);
+                    let (lock, cvar) = &*shutdown_state_thread;
+                    let guard = lock.lock().unwrap();
+                    if *guard {
+                        continue;
+                    }
+                    let _ = cvar.wait_timeout(guard, sleep_dur).unwrap();
                 }
             })
             .expect("Failed to spawn OLED display worker thread");
@@ -350,5 +393,23 @@ impl Plugin for DisplayPlugin {
         if changed {
             self.notify_render.notify_one();
         }
+    }
+
+    fn show_shutdown_screen_and_wipe(&self) -> Option<BoxFuture<'static, ()>> {
+        let shutdown_state = self.shutdown_state.clone();
+        let shutdown_complete = self.shutdown_complete.clone();
+
+        Some(Box::pin(async move {
+            {
+                let (lock, cvar) = &*shutdown_state;
+                let mut guard = lock.lock().unwrap();
+                *guard = true;
+                cvar.notify_all();
+            }
+
+            // Await worker thread completing the 3-second display & wipe sequence
+            // Guard with a 5s timeout just in case the worker thread was not running
+            let _ = tokio::time::timeout(Duration::from_secs(5), shutdown_complete.notified()).await;
+        }))
     }
 }

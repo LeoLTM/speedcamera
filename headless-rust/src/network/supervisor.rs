@@ -65,8 +65,19 @@ impl NetworkSupervisor {
                             signal: client.signal_dbm,
                         };
                     }
+                } else if let Some(saved_ssid) = super::get_saved_client_ssid() {
+                    tracing::info!("[network-supervisor] Found saved client Wi-Fi profile for '{}' — attempting connect on boot", saved_ssid);
+                    current_wifi = WifiState::StationConnecting {
+                        ssid: saved_ssid.clone(),
+                        attempt: 1,
+                        max_attempts: super::state::MAX_RETRY_ATTEMPTS,
+                    };
+                    Self::apply_effect_background(&TransitionEffect::ProbeConnect { ssid: saved_ssid }, false);
                 } else if initial_summary.wifi_mode == "ap" || initial_summary.hotspot_ap.status == "ok" {
                     current_wifi = WifiState::ApSetup;
+                } else {
+                    current_wifi = WifiState::ApSetup;
+                    Self::apply_effect_background(&TransitionEffect::ApplyApMode, false);
                 }
 
                 if initial_summary.ethernet_mode == "dhcp" {
@@ -488,7 +499,7 @@ impl NetworkSupervisor {
             TransitionEffect::ProbeConnect { ssid } => {
                 tracing::info!("[network-supervisor] Background probe connect to: {}", ssid);
                 tokio::spawn(async move {
-                    Self::execute_script_guarded(&["auto"], false).await;
+                    Self::execute_script_guarded(&["probe"], false).await;
                 });
             }
             TransitionEffect::ApplyCameraLan => {
@@ -525,8 +536,12 @@ impl NetworkSupervisor {
     }
 
     fn query_ap_stations_count() -> usize {
-        // Query station dump via iw
-        if let Ok(output) = Command::new("iw").args(["dev", "wlan0", "station", "dump"]).output() {
+        let cmd = Command::new("sudo")
+            .args(["/usr/sbin/iw", "dev", "wlan0", "station", "dump"])
+            .output()
+            .or_else(|_| Command::new("iw").args(["dev", "wlan0", "station", "dump"]).output());
+
+        if let Ok(output) = cmd {
             if output.status.success() {
                 let text = String::from_utf8_lossy(&output.stdout);
                 return text.lines().filter(|l| l.starts_with("Station ")).count();

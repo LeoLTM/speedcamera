@@ -109,6 +109,7 @@ sudo apt-get install -y \
   network-manager \
   dnsmasq \
   iptables \
+  iw \
   curl \
   unzip \
   git \
@@ -241,6 +242,19 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 EOF"
+
+# Configure passwordless sudo for speedcamera background network management
+echo "${TARGET_USER} ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/010_pi-nopasswd >/dev/null
+
+# Configure polkit permissions for NetworkManager
+sudo mkdir -p /etc/polkit-1/rules.d
+cat <<'EOF' | sudo tee /etc/polkit-1/rules.d/50-speedcamera-network.rules >/dev/null
+polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0) {
+        return polkit.Result.YES;
+    }
+});
+EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable speedcamera.service

@@ -120,14 +120,14 @@ apply_ap_mode() {
   sudo ip link set dev "${WIFI_IFACE}" up 2>/dev/null || true
 
   sudo nmcli connection delete "Speedcamera-Hotspot" 2>/dev/null || true
-  sudo nmcli connection delete "Speedcamera-ClientWiFi" 2>/dev/null || true
 
   # Try 5GHz Band A (Channel 36) first, fallback to 2.4GHz Band BG if 5GHz AP is restricted
   local AP_SUCCESS=0
   if sudo nmcli connection add type wifi \
     ifname "${WIFI_IFACE}" \
     con-name "Speedcamera-Hotspot" \
-    autoconnect yes \
+    connection.autoconnect no \
+    connection.autoconnect-priority -100 \
     ssid "${SSID}" \
     mode ap \
     802-11-wireless.band a \
@@ -145,7 +145,8 @@ apply_ap_mode() {
       if sudo nmcli connection add type wifi \
         ifname "${WIFI_IFACE}" \
         con-name "Speedcamera-Hotspot" \
-        autoconnect yes \
+        connection.autoconnect no \
+        connection.autoconnect-priority -100 \
         ssid "${SSID}" \
         mode ap \
         802-11-wireless.band bg \
@@ -228,42 +229,45 @@ apply_client_mode() {
   sudo rm -f /etc/NetworkManager/dnsmasq-shared.d/fake-internet.conf /etc/dnsmasq.d/fake-internet.conf 2>/dev/null || true
   sudo iptables -t nat -D PREROUTING -i "${WIFI_IFACE}" -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null || true
 
-  # Tear down Hotspot AP profile
-  echo "[*] Stopping Wi-Fi Hotspot AP and connecting as Client Station..."
-  sudo nmcli connection delete "Speedcamera-Hotspot" 2>/dev/null || true
+  # Properly bring down Hotspot AP before configuring station
+  echo "[*] Deactivating Hotspot AP..."
+  sudo nmcli connection down "Speedcamera-Hotspot" 2>/dev/null || true
+  sudo nmcli dev disconnect "${WIFI_IFACE}" 2>/dev/null || true
+
+  # Ensure Wi-Fi radio is unblocked and link is up
+  sudo rfkill unblock wifi 2>/dev/null || true
+  sudo ip link set dev "${WIFI_IFACE}" up 2>/dev/null || true
+
+  # Create or replace client connection profile with autoconnect priority
   sudo nmcli connection delete "Speedcamera-ClientWiFi" 2>/dev/null || true
-
-  # Scan and connect to external Wi-Fi network
-  sudo nmcli dev wifi rescan 2>/dev/null || true
-  sleep 1
-
-  local CONNECT_SUCCESS=0
+  echo "[*] Creating client connection profile for '${WIFI_SSID}'..."
   if [ -n "$WIFI_PASS" ]; then
-    if sudo nmcli dev wifi connect "${WIFI_SSID}" password "${WIFI_PASS}" ifname "${WIFI_IFACE}" name "Speedcamera-ClientWiFi"; then
-      CONNECT_SUCCESS=1
-    fi
+    sudo nmcli connection add type wifi ifname "${WIFI_IFACE}" con-name "Speedcamera-ClientWiFi" \
+      ssid "${WIFI_SSID}" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "${WIFI_PASS}" \
+      connection.autoconnect yes connection.autoconnect-priority 100 \
+      802-11-wireless.powersave 2 802-11-wireless.mac-address-randomization 1 2>/dev/null || true
   else
-    if sudo nmcli dev wifi connect "${WIFI_SSID}" ifname "${WIFI_IFACE}" name "Speedcamera-ClientWiFi"; then
-      CONNECT_SUCCESS=1
-    fi
+    sudo nmcli connection add type wifi ifname "${WIFI_IFACE}" con-name "Speedcamera-ClientWiFi" \
+      ssid "${WIFI_SSID}" \
+      connection.autoconnect yes connection.autoconnect-priority 100 \
+      802-11-wireless.powersave 2 802-11-wireless.mac-address-randomization 1 2>/dev/null || true
+  fi
+
+  echo "[*] Connecting to '${WIFI_SSID}'..."
+  local CONNECT_SUCCESS=0
+  if sudo nmcli connection up "Speedcamera-ClientWiFi" --timeout 20 2>/dev/null; then
+    CONNECT_SUCCESS=1
   fi
 
   if [ "$CONNECT_SUCCESS" -ne 1 ]; then
     echo "" >&2
     echo "[-] Error: Failed to connect to Wi-Fi network '${WIFI_SSID}'." >&2
-    echo "[*] Falling back to AP Mode..." >&2
-    apply_ap_mode
     exit 1
   fi
 
-  # Optimize client connection: powersave off, no MAC randomization, autoconnect on boot
-  sudo nmcli connection modify "Speedcamera-ClientWiFi" 802-11-wireless.powersave 2 2>/dev/null || true
-  sudo nmcli connection modify "Speedcamera-ClientWiFi" 802-11-wireless.mac-address-randomization 1 2>/dev/null || true
-  sudo nmcli connection modify "Speedcamera-ClientWiFi" connection.autoconnect yes 2>/dev/null || true
-
   echo ""
   echo "[*] Connected to '${WIFI_SSID}'. Waiting for DHCP lease..."
-  sleep 3
+  sleep 2
 
   local WIFI_IP
   WIFI_IP=$(ip -4 -o addr show dev "${WIFI_IFACE}" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n 1 || echo "")
@@ -284,7 +288,7 @@ apply_client_mode() {
 }
 
 apply_auto_mode() {
-  echo ">>> Boot Auto Network Check..."
+  echo ">>> Connecting to saved Wi-Fi..."
   
   # Check if saved client profile exists
   if nmcli connection show "Speedcamera-ClientWiFi" &>/dev/null; then
@@ -293,6 +297,9 @@ apply_auto_mode() {
     sudo rm -f /etc/NetworkManager/dnsmasq-shared.d/fake-internet.conf /etc/dnsmasq.d/fake-internet.conf 2>/dev/null || true
     sudo iptables -t nat -D PREROUTING -i "${WIFI_IFACE}" -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null || true
 
+    # Make sure Hotspot AP is down before attempting station connection
+    sudo nmcli connection down "Speedcamera-Hotspot" 2>/dev/null || true
+
     if sudo nmcli connection up "Speedcamera-ClientWiFi" --timeout 15 2>/dev/null; then
       echo "[*] Successfully connected to saved Wi-Fi network!"
       if ! nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx "Speedcamera-Ethernet-DHCP"; then
@@ -300,13 +307,13 @@ apply_auto_mode() {
       fi
       return 0
     else
-      echo "[-] Failed to connect to saved Wi-Fi. Falling back to Open AP mode..."
+      echo "[-] Failed to connect to saved Wi-Fi."
+      return 1
     fi
   else
-    echo "[*] No saved Wi-Fi profile found. Starting Open AP Setup mode..."
+    echo "[*] No saved Wi-Fi profile found."
+    return 1
   fi
-
-  apply_ap_mode
 }
 
 forget_wifi() {
@@ -400,8 +407,10 @@ show_status() {
 }
 
 count_ap_stations() {
-  if command -v iw &>/dev/null; then
-    iw dev "${WIFI_IFACE}" station dump 2>/dev/null | grep -c "Station " || echo 0
+  local IW_CMD
+  IW_CMD=$(which iw 2>/dev/null || ls /usr/sbin/iw /sbin/iw 2>/dev/null | head -n 1 || echo "")
+  if [ -n "$IW_CMD" ] && [ -x "$IW_CMD" ]; then
+    sudo "$IW_CMD" dev "${WIFI_IFACE}" station dump 2>/dev/null | grep -c "Station " || echo 0
   else
     echo 0
   fi
@@ -420,8 +429,15 @@ case "$MODE" in
     apply_client_mode "$2" "$3"
     ;;
 
-  auto)
+  probe)
     apply_auto_mode
+    ;;
+
+  auto)
+    if ! apply_auto_mode; then
+      echo "[-] Failed to connect to saved Wi-Fi. Falling back to Open AP mode..."
+      apply_ap_mode
+    fi
     ;;
 
   forget|reset-wifi)

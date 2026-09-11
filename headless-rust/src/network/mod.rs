@@ -310,14 +310,61 @@ fn query_wifi_runtime_info(wifi_iface: &str) -> (Option<String>, Option<i32>, Op
     (ssid, signal_dbm, power_save, gateway)
 }
 
+/// Checks if a saved Wi-Fi client profile ("Speedcamera-ClientWiFi") exists in NetworkManager
+pub fn get_saved_client_ssid() -> Option<String> {
+    let output = Command::new("sudo")
+        .args(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"])
+        .output()
+        .or_else(|_| Command::new("nmcli").args(["-t", "-f", "NAME,TYPE", "connection", "show"]).output());
+
+    if let Ok(output) = output {
+        if output.status.success() {
+            let text = String::from_utf8_lossy(&output.stdout);
+            for line in text.lines() {
+                let parts: Vec<&str> = line.split(':').collect();
+                if parts.len() >= 2 && parts[0] == "Speedcamera-ClientWiFi" && parts[1] == "802-11-wireless" {
+                    // Extract SSID of this connection
+                    let ssid_out = Command::new("sudo")
+                        .args(["nmcli", "-t", "-g", "802-11-wireless.ssid", "connection", "show", "Speedcamera-ClientWiFi"])
+                        .output()
+                        .or_else(|_| Command::new("nmcli").args(["-t", "-g", "802-11-wireless.ssid", "connection", "show", "Speedcamera-ClientWiFi"]).output());
+
+                    if let Ok(out) = ssid_out {
+                        if out.status.success() {
+                            let ssid = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                            if !ssid.is_empty() {
+                                return Some(ssid);
+                            }
+                        }
+                    }
+                    return Some("SavedWiFi".to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Scans for visible 2.4GHz & 5GHz Wi-Fi networks
 pub fn scan_wifi_networks() -> Vec<WifiScanResult> {
     let mut seen_ssids: HashMap<String, WifiScanResult> = HashMap::new();
 
-    if let Ok(output) = Command::new("nmcli")
-        .args(["-t", "-f", "SSID,BSSID,CHAN,SIGNAL,SECURITY,IN-USE", "dev", "wifi", "list", "--rescan", "auto"])
+    // Trigger explicit rescan first so fresh results are available even in AP mode
+    let _ = Command::new("sudo")
+        .args(["nmcli", "dev", "wifi", "rescan"])
         .output()
-    {
+        .or_else(|_| Command::new("nmcli").args(["dev", "wifi", "rescan"]).output());
+
+    let list_output = Command::new("sudo")
+        .args(["nmcli", "-t", "-f", "SSID,BSSID,CHAN,SIGNAL,SECURITY,IN-USE", "dev", "wifi", "list"])
+        .output()
+        .or_else(|_| {
+            Command::new("nmcli")
+                .args(["-t", "-f", "SSID,BSSID,CHAN,SIGNAL,SECURITY,IN-USE", "dev", "wifi", "list"])
+                .output()
+        });
+
+    if let Ok(output) = list_output {
         if output.status.success() {
             let text = String::from_utf8_lossy(&output.stdout);
             for line in text.lines() {

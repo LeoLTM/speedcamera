@@ -127,6 +127,7 @@ pub fn perform_os_shutdown(password: Option<&str>, mock_mode: bool) -> Result<()
 
 /// Cleanly powers off the host machine (Raspberry Pi).
 /// Supports passwordless sudo, direct systemctl/shutdown, and password-authenticated sudo.
+#[allow(dead_code)]
 pub fn shutdown_host(password: Option<String>, mock_mode: bool) -> Result<serde_json::Value, String> {
     if mock_mode {
         tracing::info!("[system] Host shutdown simulated (mock mode active)");

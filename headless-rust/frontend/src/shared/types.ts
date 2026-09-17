@@ -491,6 +491,14 @@ export type SpeedcameraRPC = {
       params: Record<string, never>;
       response: string | null; // base64
     };
+    testTrigger: {
+      params: Record<string, never>;
+      response: {
+        success: boolean;
+        violation: Violation;
+        imagePath: string;
+      };
+    };
     setCameraExposure: {
       params: { value: number };
       response: void;

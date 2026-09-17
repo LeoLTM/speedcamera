@@ -468,6 +468,68 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             }
         }
 
+        "testTrigger" => {
+            let cam_status = ctx.camera.get_status();
+            if !cam_status.connected {
+                return Err("Camera is not connected".to_string());
+            }
+            let serial_status = ctx.serial.get_status();
+            if !serial_status.connected {
+                return Err("Serial port is not connected".to_string());
+            }
+
+            let cam = ctx.camera.clone();
+            let store = ctx.store.clone();
+            let db = ctx.db.clone();
+            let v_tx = ctx.violation_tx.clone();
+            let cur_limit = ctx.serial.get_max_speed();
+
+            // ponytail: test trigger leverages core instant capture and rayon pre-cache pipeline
+            let res = tokio::task::spawn_blocking(move || -> Result<Value, String> {
+                let jpg_bytes = cam
+                    .capture_frame_jpeg(90)
+                    .ok_or_else(|| "Failed to capture frame from camera".to_string())?;
+
+                let img_path = store
+                    .save_image_bytes(&jpg_bytes, "jpg")
+                    .map_err(|e| format!("Failed to save image: {}", e))?;
+
+                let conn = db.lock();
+                let input = SaveViolationInput {
+                    image_base64: None,
+                    measured_speed: -1.0,
+                    max_speed: cur_limit,
+                    direction: "test".to_string(),
+                };
+
+                let v = crate::db::violations::insert_violation(&conn, &input, &img_path)
+                    .map_err(|e| format!("Failed to insert test violation: {}", e))?;
+
+                tracing::info!("[test-trigger] Recorded test violation #{} (speed: {})", v.id, v.measured_speed);
+                let _ = v_tx.send(v.clone());
+
+                let store_pre = store.clone();
+                let pre_bytes = jpg_bytes.clone();
+                let pre_path = img_path.clone();
+                rayon::spawn(move || {
+                    let p_grid = crate::storage::compress::CompressParams { width: Some(400), quality: Some(80), ..Default::default() };
+                    let p_row = crate::storage::compress::CompressParams { width: Some(160), quality: Some(75), ..Default::default() };
+                    let _ = store_pre.compressor.process_image(&pre_bytes, &pre_path, &p_grid);
+                    let _ = store_pre.compressor.process_image(&pre_bytes, &pre_path, &p_row);
+                });
+
+                Ok(serde_json::json!({
+                    "success": true,
+                    "violation": v,
+                    "imagePath": img_path
+                }))
+            })
+            .await
+            .map_err(|e| e.to_string())??;
+
+            Ok(res)
+        }
+
         "setCameraExposure" => {
             let val = params["value"].as_f64().ok_or("Missing exposure value")?;
             let cam = ctx.camera.clone();

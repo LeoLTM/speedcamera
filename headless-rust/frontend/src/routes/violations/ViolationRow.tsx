@@ -31,7 +31,8 @@ export function ViolationRow({
   const { imageData, imageLoading } = useViolationImage(violation, skinEnabled, { width: 160, quality: 75 });
   const [deleting, setDeleting] = useState(false);
 
-  const over = (violation.measuredSpeed - violation.maxSpeed).toFixed(1);
+  const isTest = violation.measuredSpeed < 0;
+  const over = isTest ? "—" : `+${(violation.measuredSpeed - violation.maxSpeed).toFixed(1)}`;
   const formattedTime = new Date(violation.timestamp).toLocaleString(undefined, {
     year: "numeric",
     month: "short",
@@ -94,11 +95,17 @@ export function ViolationRow({
           />
         </span>
       </td>
-      <td className="px-3 py-2 text-right font-semibold text-destructive">
-        {violation.measuredSpeed}
+      <td className="px-3 py-2 text-right font-semibold">
+        {isTest ? (
+          <span className="text-amber-500 font-medium text-xs">Test</span>
+        ) : (
+          <span className="text-destructive">{violation.measuredSpeed}</span>
+        )}
       </td>
       <td className="px-3 py-2 text-right text-muted-foreground">{violation.maxSpeed}</td>
-      <td className="px-3 py-2 text-right text-destructive/70 font-medium">+{over}</td>
+      <td className="px-3 py-2 text-right text-destructive/70 font-medium">
+        {isTest ? <span className="text-muted-foreground font-normal">—</span> : over}
+      </td>
       <td className="px-3 py-2">
         <Button
           variant="ghost"

@@ -277,7 +277,7 @@ export function ArmingButton() {
         {isArmed
           ? "Violations are being recorded"
           : isDisarmed
-            ? "Monitoring only — no violations recorded"
+            ? "Monitoring only - no violations recorded"
             : [missingCamera && "camera", missingSerial && "serial connection"]
                 .filter(Boolean)
                 .join(" & ") + " required"}

@@ -55,12 +55,18 @@ export function LastCapturedImage() {
           <span className="font-mono text-sm text-muted-foreground">
             {new Date(lastViolation.timestamp).toLocaleTimeString()}
           </span>
-          <div className="flex items-baseline gap-1">
-            <span className="font-mono text-lg font-bold text-destructive">
-              {lastViolation.measuredSpeed}
+          {lastViolation.measuredSpeed < 0 ? (
+            <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              TEST TRIGGER
             </span>
-            <span className="font-mono text-xs text-muted-foreground">km/h</span>
-          </div>
+          ) : (
+            <div className="flex items-baseline gap-1">
+              <span className="font-mono text-lg font-bold text-destructive">
+                {lastViolation.measuredSpeed}
+              </span>
+              <span className="font-mono text-xs text-muted-foreground">km/h</span>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -83,12 +89,18 @@ export function LastCapturedImage() {
                 <span className="font-mono text-xs text-muted-foreground">
                   {new Date(lastViolation.timestamp).toLocaleTimeString()}
                 </span>
-                <div className="flex items-baseline gap-1">
-                  <span className="font-mono text-base font-bold text-destructive">
-                    {lastViolation.measuredSpeed}
+                {lastViolation.measuredSpeed < 0 ? (
+                  <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    TEST TRIGGER
                   </span>
-                  <span className="font-mono text-[10px] text-muted-foreground">km/h</span>
-                </div>
+                ) : (
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-mono text-base font-bold text-destructive">
+                      {lastViolation.measuredSpeed}
+                    </span>
+                    <span className="font-mono text-[10px] text-muted-foreground">km/h</span>
+                  </div>
+                )}
               </div>
             )}
           </div>

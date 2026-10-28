@@ -166,6 +166,45 @@ Every push to `main` also uploads the package as a CI artifact, for trying out u
 
 ---
 
+## Lap Timer and Kart Link
+
+The ESP reports every barrier crossing in lap mode as a `lapCrossing` line: the first beam break
+on its 64-bit µs clock (`t`), how long ago that was when the line was written (`age`) and a random
+`boot` id. The host backdates its receive time by `age` and the UART transfer time to place the
+crossing on the wall clock, and chains crossings into laps (`src/plugins/laptimer/engine.rs`). A
+lap's duration is the difference of two ESP boundaries, so it keeps the barrier's µs precision.
+
+Because the host chains the laps, a crossing can be dropped without ending the running lap. Each
+crossing gets a verdict, stored in `lap_crossings` and shown under the lap list:
+
+| Verdict | When |
+|---|---|
+| Counted | passed every check |
+| Counted (position not checked) | kart link on, but no GPS fix, a clock not synced, or no barrier position |
+| Too slow | below *Min speed* (default 8 km/h): someone walking through |
+| Double trigger | within *Min lap* (default 10 s) of the last counted crossing |
+| Wrong direction | excluded by the direction filter |
+| Kart not at the barrier | kart link: the kart's GPS was farther than *Radius* (default 20 m) away |
+| Kart offline | kart link: the kart's retained status says offline |
+
+A gap longer than *Max lap* (default 5 min), an ESP reboot or a new kart session starts a fresh
+lap instead of recording one.
+
+**Kart link** (`src/plugins/kartlink/`) connects the lap timer to the
+[asl-gokart](https://github.com/Aerospace-Lab-e-V/asl-gokart) telemetry stack:
+
+1. Join the driver's phone hotspot in Wi-Fi client mode (internet for the broker and NTP; the
+   package depends on `systemd-timesyncd` or `chrony`).
+2. Settings → Lap Timer → Kart Link: broker URL (`mqtt://host:1883`), credentials, kart ID,
+   device ID, then switch it on. The status line shows broker, kart and GPS state.
+3. Park the kart at the barrier and press *Use kart's current position*.
+
+The link follows `kart/{id}/status` and `kart/{id}/live`, waits up to 3 s after a crossing for the
+kart's GPS fixes around it, and publishes every crossing as `kart.timing.v1.LapCrossing` on
+`kart/{id}/laps` (QoS 1). Crossings stay in the outbox (`lap_crossings.publishedAt IS NULL`) until
+the broker acknowledged them, so a hotspot dropout loses nothing. `proto/` holds copies of the
+asl-gokart schema; change them there and copy them over.
+
 ## Network Script Reference (`setup-network.sh`)
 
 You can inspect or change network modes at any time via the Web UI Settings (**Network** tab) or via CLI:
@@ -254,7 +293,7 @@ Options:
   -m, --mock                       Run in mock hardware mode (no physical camera/serial required)
   -p, --port <PORT>                HTTP server port (default: 3000)
   -H, --host <HOST>                HTTP server bind address (default: 0.0.0.0)
-      --disable-plugins <PLUGINS>  Comma-separated list of plugins to disable (e.g. laptimer,alignment)
+      --disable-plugins <PLUGINS>  Comma-separated list of plugins to disable (e.g. laptimer,kartlink,alignment)
   -h, --help                       Print help
 ```
 

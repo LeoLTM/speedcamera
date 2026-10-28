@@ -1,7 +1,7 @@
 {
   "name": "speedcamera-rust-ui",
+  "private": true,
   "type": "module",
-  "version": "0.5.0",
   "description": "Speedcamera Web UI for Raspberry Pi and remote browser control",
   "scripts": {
     "dev": "vite",
@@ -10,10 +10,10 @@
     "build": "vite build",
     "build:all": "vite build && cargo build --release",
     "serve": "cargo run --release",
-    "install:pi": "./scripts/install-remote.sh",
-    "deploy:pi": "./scripts/deploy-to-pi.sh",
-    "cleanup:pi": "./scripts/cleanup-remote.sh",
-    "test:server": "bun ./scripts/test-server.ts"
+    "test:server": "bun ./scripts/test-server.ts",
+    "package": "./packaging/build-deb.sh",
+    "deploy": "./scripts/pi.sh deploy",
+    "pi": "./scripts/pi.sh"
   },
   "dependencies": {
     "@fontsource-variable/figtree": "^5.2.10",

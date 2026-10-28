@@ -4,16 +4,13 @@
 #include "../types.h"
 
 // ponytail: static modular LapTimer. Zero dynamic memory allocation, zero vtables.
+// The ESP only reports crossings with a µs-precise 64-bit boundary; the host chains them into
+// laps, so it can drop false triggers (e.g. someone walking through) without breaking a lap.
 namespace LapTimer {
-
-enum class LapMode            : uint8_t { SINGLE, MULTI };
-enum class LapSessionState    : uint8_t { IDLE, WAITING, TIMING };
-enum class LapDirectionFilter : uint8_t { BOTH, FORWARD_ONLY, REVERSE_ONLY };
 
 void init();
 void reset();
 bool isActive();
-void update();
 
 // Query helpers for pong response
 void populatePongConfig(JsonObject &cfg);

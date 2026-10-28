@@ -42,7 +42,7 @@ arduino/src/
 └── modules/
     ├── README.md        # This guide
     ├── laptimer.h       # LapTimer module header
-    ├── laptimer.cpp     # LapTimer state machine & serial output
+    ├── laptimer.cpp     # LapTimer crossing reports (lapCrossing); the host chains laps
     ├── example.h        # Future module header
     └── example.cpp      # Future module implementation
 ```

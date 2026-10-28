@@ -45,6 +45,11 @@ if [ "${SKIP_IMAGE_BUILD:-0}" != 1 ]; then
   "$ENGINE" build -q --platform "$PLATFORM" -t "$IMAGE" -f packaging/Containerfile packaging >&2
 fi
 
+# A broken sudoers.d file disables sudo on the Pi, so refuse to package one. Runs as the image's
+# root user: visudo rejects users missing from the container's passwd (e.g. CI's runner uid).
+"$ENGINE" run --rm --platform "$PLATFORM" -v "$PROJECT_DIR/packaging/files:/files:ro,z" \
+  "$IMAGE" visudo -cqf /files/sudoers >&2
+
 # Rootful docker would leave root-owned files in target/; run as the calling user instead.
 RUN_AS=()
 if [ "$(basename "$ENGINE")" = docker ]; then
@@ -57,10 +62,7 @@ echo "[*] Compiling and packaging speedcamera ${DEB_VERSION} for arm64..." >&2
   -v "$PROJECT_DIR:/src:z" \
   -v "$PROJECT_DIR/target/cross-cache/registry:/opt/cargo/registry:z" \
   -e SPEEDCAMERA_GIT_SHA="$GIT_SHA" \
-  "$IMAGE" bash -euo pipefail -c "
-    visudo -cqf packaging/files/sudoers
-    cargo deb --locked --target $TARGET --deb-version '$DEB_VERSION' --output target/debian/
-  " >&2
+  "$IMAGE" cargo deb --locked --target "$TARGET" --deb-version "$DEB_VERSION" --output target/debian/ >&2
 
 DEB="target/debian/speedcamera_${DEB_VERSION}_arm64.deb"
 if [ ! -f "$DEB" ]; then

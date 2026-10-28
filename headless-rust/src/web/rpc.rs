@@ -904,27 +904,13 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
             Ok(Value::Null)
         }
 
-        // ─── Stubs for Window & Updater ───────────────────────────────────────
-        "minimizeWindow" | "maximizeWindow" | "closeWindow" | "cancelFlash" | "applyUpdate" => {
-            Ok(Value::Null)
-        }
+        // TODO: esptool runs to completion; the UI's cancel button is a no-op until flashing can be aborted
+        "cancelFlash" => Ok(Value::Null),
 
         "getLocalVersion" => Ok(json!({
             "version": "0.5.0-rust",
             "channel": "rust",
             "hash": "rpi5-native"
-        })),
-
-        "checkForUpdate" => Ok(json!({
-            "version": "0.5.0-rust",
-            "hash": "rpi5-native",
-            "updateAvailable": false,
-            "updateReady": false,
-            "error": "Native binary managed by system"
-        })),
-
-        "downloadUpdate" => Ok(json!({
-            "ok": true
         })),
 
         _ => {

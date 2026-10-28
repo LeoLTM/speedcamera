@@ -10,7 +10,7 @@
     "build": "vite build",
     "build:all": "vite build && cargo build --release",
     "serve": "cargo run --release",
-    "test:server": "bun ./scripts/test-server.ts",
+    "test:integration": "cargo build && bun test --timeout 30000 tests",
     "package": "./packaging/build-deb.sh",
     "deploy": "./scripts/pi.sh deploy",
     "pi": "./scripts/pi.sh"

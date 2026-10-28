@@ -43,7 +43,8 @@ export const lapTimerPlugin: UiPlugin = {
       payload.status === "LAPSTART" ||
       payload.status === "LAPEND" ||
       payload.status === "LAPWAITING" ||
-      payload.status === "LAPSTOPPED"
+      payload.status === "LAPSTOPPED" ||
+      payload.status === "LAPVERDICT"
     ) {
       useLapStore.getState().handleSerialStatusForLap(payload);
       return true;

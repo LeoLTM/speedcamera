@@ -99,10 +99,39 @@ fn default_save_images() -> bool {
     true
 }
 
+/// One barrier crossing as stored and published; see `lap_crossings` in `db.rs`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LapCrossingRecord {
+    /// UUIDv7; the analytics ingest is idempotent on it.
+    pub id: String,
+    pub session_id: i64,
+    pub wall_us: i64,
+    pub boundary_us: u64,
+    pub esp_boot: u32,
+    pub speed: f64,
+    pub direction: String,
+    pub verdict: super::engine::Verdict,
+    pub distance_m: Option<f64>,
+    pub kart_session_id: Option<String>,
+    /// Lap started by this crossing, 0 if none.
+    pub lap_number: i64,
+    /// Duration of the lap this crossing ended.
+    pub lap_us: Option<u64>,
+    pub image_path: Option<String>,
+    pub clock_synced: bool,
+    pub barrier_lat: Option<f64>,
+    pub barrier_lon: Option<f64>,
+    /// Unix ms when the broker acknowledged it; `db::NOT_PUBLISHED` when the link was off.
+    pub published_at: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActiveLapSessionResponse {
     pub session: Option<LapSessionWithLaps>,
+    #[serde(default)]
+    pub crossings: Vec<LapCrossingRecord>,
     pub lap_state: String, // "idle" | "waiting" | "timing"
     pub lap_number: i64,
     pub lap_timing_started_at: Option<i64>,

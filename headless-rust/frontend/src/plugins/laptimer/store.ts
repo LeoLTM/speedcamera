@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Lap, LapSession, LapSessionWithLaps, SerialStatusPayload, AppSettings } from "@/shared/types";
+import type { Lap, LapCrossing, LapSession, LapSessionWithLaps, SerialStatusPayload, AppSettings } from "@/shared/types";
 import { getRpc } from "@/lib/rpc";
 
 export type LapState = "idle" | "waiting" | "timing";
@@ -14,6 +14,8 @@ export interface LapStore {
   lapState: LapState;
   currentSession: LapSession | null;
   currentLaps: Lap[];
+  /** Every crossing of the running session with the host's verdict, oldest first. */
+  currentCrossings: LapCrossing[];
   lapNumber: number;
   lapTimingStartedAt: number | null;
   lapSettings: LapSettings;
@@ -36,6 +38,7 @@ export const useLapStore = create<LapStore>()((set, get) => ({
   lapState: "idle",
   currentSession: null,
   currentLaps: [],
+  currentCrossings: [],
   lapNumber: 0,
   lapTimingStartedAt: null,
   lapHistory: { sessions: [], total: 0 },
@@ -56,6 +59,7 @@ export const useLapStore = create<LapStore>()((set, get) => ({
     set({
       currentSession: session,
       currentLaps: [],
+      currentCrossings: [],
       lapNumber: 0,
       lapState: "waiting",
       lapTimingStartedAt: null,
@@ -78,6 +82,7 @@ export const useLapStore = create<LapStore>()((set, get) => ({
         set({
           currentSession: resp.session,
           currentLaps: resp.session.laps,
+          currentCrossings: resp.crossings ?? [],
           lapState: resp.lapState as LapState,
           lapNumber: resp.lapNumber,
           lapTimingStartedAt: resp.lapTimingStartedAt,
@@ -96,6 +101,12 @@ export const useLapStore = create<LapStore>()((set, get) => ({
   },
 
   handleSerialStatusForLap: (payload) => {
+    if (payload.status === "LAPVERDICT") {
+      // The crossing is stored by now; re-sync to pick it up with its verdict and photo
+      void get().syncActiveSession();
+      return;
+    }
+
     if (payload.status === "LAPWAITING") {
       set({ lapState: "waiting" });
       return;

@@ -1,4 +1,4 @@
-use super::models::{Lap, LapSession, LapSessionWithLaps, SaveLapInput};
+use super::models::{Lap, LapCrossingRecord, LapSession, LapSessionWithLaps, SaveLapInput};
 use chrono::Utc;
 use rusqlite::{params, Connection, Result};
 
@@ -26,7 +26,31 @@ pub fn init_tables(conn: &Connection) -> Result<()> {
             startImagePath   TEXT,
             endImagePath     TEXT
         );
-        CREATE INDEX IF NOT EXISTS idx_laps_session ON laps(sessionId);",
+        CREATE INDEX IF NOT EXISTS idx_laps_session ON laps(sessionId);
+
+        -- Every barrier crossing in a session, counted or not. publishedAt is the kart link's
+        -- outbox marker: NULL until the broker acknowledged it, 0 when the link was off.
+        CREATE TABLE IF NOT EXISTS lap_crossings (
+            id             TEXT    PRIMARY KEY,
+            sessionId      INTEGER NOT NULL REFERENCES lap_sessions(id) ON DELETE CASCADE,
+            wallUs         INTEGER NOT NULL,
+            boundaryUs     INTEGER NOT NULL,
+            espBoot        INTEGER NOT NULL,
+            speed          REAL    NOT NULL,
+            direction      TEXT    NOT NULL,
+            verdict        TEXT    NOT NULL,
+            distanceM      REAL,
+            kartSessionId  TEXT,
+            lapNumber      INTEGER NOT NULL DEFAULT 0,
+            lapUs          INTEGER,
+            imagePath      TEXT,
+            clockSynced    INTEGER NOT NULL DEFAULT 0,
+            barrierLat     REAL,
+            barrierLon     REAL,
+            publishedAt    INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_lap_crossings_session ON lap_crossings(sessionId);
+        CREATE INDEX IF NOT EXISTS idx_lap_crossings_unpublished ON lap_crossings(wallUs) WHERE publishedAt IS NULL;",
     )?;
     // Safe auto-migration for existing databases
     let _ = conn.execute("ALTER TABLE laps ADD COLUMN durationUs INTEGER", []);
@@ -270,25 +294,83 @@ pub fn get_laps_for_session(conn: &Connection, session_id: i64) -> Result<Vec<La
     Ok(laps)
 }
 
-pub fn get_lap_image_paths_for_session(conn: &Connection, session_id: i64) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare("SELECT startImagePath, endImagePath FROM laps WHERE sessionId = ?")?;
-    let rows = stmt.query_map(params![session_id], |row| {
-        let start: Option<String> = row.get(0)?;
-        let end: Option<String> = row.get(1)?;
-        Ok((start, end))
-    })?;
+/// `publishedAt` of a crossing recorded while the kart link was off: never published.
+pub const NOT_PUBLISHED: i64 = 0;
 
-    let mut paths = Vec::new();
-    for r in rows {
-        let (start, end) = r?;
-        if let Some(s) = start {
-            paths.push(s);
-        }
-        if let Some(e) = end {
-            paths.push(e);
-        }
-    }
-    Ok(paths)
+pub fn insert_crossing(conn: &Connection, c: &LapCrossingRecord) -> Result<()> {
+    conn.execute(
+        "INSERT INTO lap_crossings (
+            id, sessionId, wallUs, boundaryUs, espBoot, speed, direction, verdict, distanceM,
+            kartSessionId, lapNumber, lapUs, imagePath, clockSynced, barrierLat, barrierLon,
+            publishedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![
+            c.id,
+            c.session_id,
+            c.wall_us,
+            c.boundary_us as i64,
+            c.esp_boot,
+            c.speed,
+            c.direction,
+            c.verdict.as_str(),
+            c.distance_m,
+            c.kart_session_id,
+            c.lap_number,
+            c.lap_us.map(|u| u as i64),
+            c.image_path,
+            c.clock_synced,
+            c.barrier_lat,
+            c.barrier_lon,
+            c.published_at,
+        ],
+    )?;
+    Ok(())
+}
+
+const CROSSING_COLUMNS: &str = "id, sessionId, wallUs, boundaryUs, espBoot, speed, direction, verdict,
+    distanceM, kartSessionId, lapNumber, lapUs, imagePath, clockSynced, barrierLat, barrierLon,
+    publishedAt";
+
+fn crossing_from_row(row: &rusqlite::Row) -> Result<LapCrossingRecord> {
+    let verdict: String = row.get(7)?;
+    Ok(LapCrossingRecord {
+        id: row.get(0)?,
+        session_id: row.get(1)?,
+        wall_us: row.get(2)?,
+        boundary_us: row.get::<_, i64>(3)? as u64,
+        esp_boot: row.get(4)?,
+        speed: row.get(5)?,
+        direction: row.get(6)?,
+        verdict: super::engine::Verdict::parse(&verdict).unwrap_or(super::engine::Verdict::RejectedFar),
+        distance_m: row.get(8)?,
+        kart_session_id: row.get(9)?,
+        lap_number: row.get(10)?,
+        lap_us: row.get::<_, Option<i64>>(11)?.map(|u| u as u64),
+        image_path: row.get(12)?,
+        clock_synced: row.get(13)?,
+        barrier_lat: row.get(14)?,
+        barrier_lon: row.get(15)?,
+        published_at: row.get(16)?,
+    })
+}
+
+pub fn get_crossings_for_session(conn: &Connection, session_id: i64) -> Result<Vec<LapCrossingRecord>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {CROSSING_COLUMNS} FROM lap_crossings WHERE sessionId = ? ORDER BY wallUs ASC"
+    ))?;
+    let rows = stmt.query_map(params![session_id], crossing_from_row)?;
+    rows.collect()
+}
+
+pub fn get_lap_image_paths_for_session(conn: &Connection, session_id: i64) -> Result<Vec<String>> {
+    // Crossing photos include every lap's start and end photo; UNION drops the duplicates.
+    let mut stmt = conn.prepare(
+        "SELECT imagePath FROM lap_crossings WHERE sessionId = ?1 AND imagePath IS NOT NULL
+         UNION SELECT startImagePath FROM laps WHERE sessionId = ?1 AND startImagePath IS NOT NULL
+         UNION SELECT endImagePath FROM laps WHERE sessionId = ?1 AND endImagePath IS NOT NULL",
+    )?;
+    let rows = stmt.query_map(params![session_id], |row| row.get::<_, String>(0))?;
+    rows.collect()
 }
 
 pub fn get_lap_image_paths_for_lap(conn: &Connection, lap_id: i64) -> Result<Vec<String>> {

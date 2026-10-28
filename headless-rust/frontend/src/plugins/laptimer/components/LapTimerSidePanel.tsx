@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { LapTimerDisplay } from "./LapTimerDisplay";
+import { RecentCrossings } from "./RecentCrossings";
 import { useLapStore, type LapState } from "../store";
 import { useAppStore } from "@/stores/useAppStore";
 import { LapRow } from "../routes/LapRow";
@@ -174,6 +175,8 @@ export function LapTimerSidePanel() {
           </div>
         )}
       </div>
+
+      <RecentCrossings />
     </div>
   );
 }

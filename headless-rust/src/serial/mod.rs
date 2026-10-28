@@ -18,6 +18,8 @@ pub struct SerialService {
     is_running: Arc<AtomicBool>,
     status_sender: broadcast::Sender<SerialStatusPayload>,
     last_max_speed: Arc<Mutex<f64>>,
+    /// Set from the last pong: the firmware reports `lapCrossing` (host-side lap chaining).
+    lap_crossing: Arc<AtomicBool>,
 }
 
 impl SerialService {
@@ -39,6 +41,7 @@ impl SerialService {
             is_running: Arc::new(AtomicBool::new(true)),
             status_sender: status_tx,
             last_max_speed: Arc::new(Mutex::new(30.0)),
+            lap_crossing: Arc::new(AtomicBool::new(mock_mode)),
         });
 
         if mock_mode {
@@ -78,6 +81,16 @@ impl SerialService {
         } else {
             SerialStatusPayload::Disconnected
         }
+    }
+
+    /// Publishes a host-generated event (e.g. a lap the host chained) to every serial subscriber,
+    /// so the web UI and display see it exactly like an ESP message.
+    pub fn emit(&self, payload: SerialStatusPayload) {
+        let _ = self.status_sender.send(payload);
+    }
+
+    pub fn supports_lap_crossing(&self) -> bool {
+        self.lap_crossing.load(Ordering::SeqCst)
     }
 
     pub fn get_max_speed(&self) -> f64 {
@@ -293,10 +306,13 @@ impl SerialService {
     }
 
     fn handle_line(&self, line: &str) {
+        // Stamp before parsing: lap crossings are backdated from this instant
+        let rx_us = chrono::Utc::now().timestamp_micros();
         if let Ok(msg) = serde_json::from_str::<EspMessage>(line) {
             match &msg {
                 EspMessage::Pong { config } => {
                     *self.last_max_speed.lock().unwrap() = config.max_speed;
+                    self.lap_crossing.store(config.lap_crossing, Ordering::SeqCst);
                 }
                 EspMessage::Config { key, value } => {
                     if key == "maxSpeed" {
@@ -305,8 +321,7 @@ impl SerialService {
                 }
                 _ => {}
             }
-            let timestamp = chrono::Utc::now().timestamp_millis();
-            if let Some(payload) = msg.to_serial_status(timestamp) {
+            if let Some(payload) = msg.to_serial_status(rx_us, line.len()) {
                 let _ = self.status_sender.send(payload);
             }
         } else {

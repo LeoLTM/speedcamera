@@ -124,6 +124,9 @@ export interface AppSettings {
   lapMode: string;          // "single" | "multi", default "single"
   lapSaveImages: string;    // "true" | "false", default "true"
   lapDirFilter: string;     // "both" | "forward" | "reverse", default "both"
+  lapMinSpeedKmh: number;   // slower crossings are not a kart (someone walking through)
+  lapMinLapMs: number;      // closer crossings are duplicates of the last counted one
+  lapMaxLapMs: number;      // a longer gap starts a fresh lap instead of recording one
   // Teable integration
   teableUrl: string;
   teableToken: string;
@@ -233,8 +236,37 @@ export interface SaveLapInput {
   endImageBase64: string | null;   // raw base64, no data-URL prefix
 }
 
+/** Why a crossing does or does not count (host lap engine). */
+export type LapVerdict =
+  | "ACCEPTED"
+  | "ACCEPTED_UNVERIFIED"
+  | "REJECTED_FAR"
+  | "REJECTED_SLOW"
+  | "REJECTED_DUPLICATE"
+  | "REJECTED_KART_OFFLINE"
+  | "REJECTED_DIRECTION";
+
+/** One barrier crossing in a lap session, counted or not. */
+export interface LapCrossing {
+  id: string;
+  sessionId: number;
+  wallUs: number;
+  boundaryUs: number;
+  espBoot: number;
+  speed: number;
+  direction: "forward" | "reverse";
+  verdict: LapVerdict;
+  distanceM: number | null;
+  kartSessionId: string | null;
+  lapNumber: number;        // lap started here, 0 if none
+  lapUs: number | null;     // lap ended here
+  imagePath: string | null;
+  publishedAt: number | null;
+}
+
 export interface ActiveLapSessionResponse {
   session: LapSessionWithLaps | null;
+  crossings: LapCrossing[];
   lapState: "idle" | "waiting" | "timing";
   lapNumber: number;
   lapTimingStartedAt: number | null;
@@ -286,10 +318,11 @@ export interface EspPongConfig {
   flashDuration?: number;
   sensorDistance: number;
   debugEnabled: boolean;
-  lapMode: "single" | "multi";
+  lapMode: "single" | "multi" | "host";
   lapActive: boolean;
   lapAutoFlash?: boolean;
   lapDirFilter: "both" | "forward" | "reverse";
+  lapCrossing?: boolean;    // firmware reports lapCrossing; the host chains laps
 }
 
 // ─── Firmware Flasher Types ───────────────────────────────────────────────────
@@ -317,6 +350,8 @@ export type SerialStatusPayload =
   | { status: "PONG"; config: EspPongConfig }
   | { status: "LAPSTART"; lapNumber: number; speedAtStart: number; timestamp: number }
   | { status: "LAPEND";   lapNumber: number; durationMs: number; durationUs?: number; speedAtStart: number; speedAtEnd: number; timestamp: number }
+  | { status: "LAPCROSSING"; boundaryUs: number; wallUs: number; espBoot: number; speed: number; direction: "forward" | "reverse"; timestamp: number }
+  | { status: "LAPVERDICT"; crossingId: string; verdict: LapVerdict; distanceM?: number; lapNumber: number; speed: number; timestamp: number }
   | { status: "LAPWAITING" }
   | { status: "LAPSTOPPED" }
   | { status: "BARRIER_STATUS"; sensor1Interrupted: boolean; sensor2Interrupted: boolean; timestamp: number }
@@ -611,6 +646,7 @@ export type SpeedcameraRPC = {
       params: SyncLapInput;
       response: void;
     };
+
 
     // Version
     getLocalVersion: {

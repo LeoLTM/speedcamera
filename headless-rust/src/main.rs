@@ -133,7 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut plugin_reg = plugins::PluginRegistry::new();
     // ponytail: modular plugins isolated from core daemon, respects disabled_plugins config
     if !config.is_plugin_disabled("laptimer") {
-        plugin_reg.register(Box::new(plugins::laptimer::LapTimerPlugin::new()));
+        plugin_reg.register(Box::new(plugins::laptimer::LapTimerPlugin::new(None)));
     } else {
         tracing::info!("[plugins] LapTimerPlugin disabled by configuration");
     }

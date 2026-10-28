@@ -2,22 +2,12 @@ use crate::models::{EspPongConfig, SerialStatusPayload};
 use serde_json::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum MockLapState {
-    Idle,
-    Waiting,
-    Timing,
-}
-
 struct MockState {
-    lap_state: MockLapState,
-    lap_mode: String,
-    lap_number: i64,
-    lap_start_time: Option<Instant>,
-    lap_start_speed: f64,
+    /// Lap crossing reports on (`startLapSession` / `setMode laptimer`), like the firmware.
+    lap_active: bool,
     alignment_active: bool,
     max_speed: f64,
 }
@@ -32,14 +22,13 @@ impl MockSerial {
     pub fn new(tx: broadcast::Sender<SerialStatusPayload>) -> Self {
         let running = Arc::new(AtomicBool::new(true));
         let state = Arc::new(Mutex::new(MockState {
-            lap_state: MockLapState::Idle,
-            lap_mode: "single".to_string(),
-            lap_number: 1,
-            lap_start_time: None,
-            lap_start_speed: 0.0,
+            lap_active: false,
             alignment_active: false,
             max_speed: 30.0,
         }));
+        // Like the firmware: µs since "boot" and a per-boot id
+        let booted = Instant::now();
+        let boot_id = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(1);
 
         let r = running.clone();
         let s = state.clone();
@@ -74,83 +63,40 @@ impl MockSerial {
                 let now = chrono::Utc::now().timestamp_millis();
                 let speed = 35.0 + (counter % 15) as f64;
 
-                let mut guard = s.lock().unwrap();
-                match guard.lap_state {
-                    MockLapState::Idle => {
-                        let payload = if speed > guard.max_speed {
-                            SerialStatusPayload::Speeding {
-                                value: speed,
-                                tolerance: 3.0,
-                                direction: "forward".to_string(),
-                                timestamp: now,
-                            }
-                        } else {
-                            SerialStatusPayload::Ok {
-                                value: speed,
-                                tolerance: 3.0,
-                                direction: "forward".to_string(),
-                                timestamp: now,
-                            }
-                        };
-                        let _ = tx.send(payload);
-                    }
-                    MockLapState::Waiting => {
-                        // First car pass starts the lap
-                        let _ = tx.send(SerialStatusPayload::Ok {
-                            value: speed,
-                            tolerance: 0.5,
-                            direction: "forward".to_string(),
-                            timestamp: now,
-                        });
-                        guard.lap_state = MockLapState::Timing;
-                        guard.lap_start_time = Some(Instant::now());
-                        guard.lap_start_speed = speed;
-                        let _ = tx.send(SerialStatusPayload::LapStart {
-                            lap_number: guard.lap_number,
-                            speed_at_start: speed,
-                            timestamp: now,
-                        });
-                    }
-                    MockLapState::Timing => {
-                        // Second car pass finishes the lap
-                        let start_time = guard.lap_start_time.unwrap_or_else(Instant::now);
-                        let duration_ms = start_time.elapsed().as_secs_f64() * 1000.0;
-                        let start_speed = guard.lap_start_speed;
-                        let end_speed = speed;
-                        let lap_num = guard.lap_number;
+                // Every 7th pass is someone walking through the barrier
+                let speed = if counter % 7 == 0 { 4.5 } else { speed };
+                let (lap_active, max_speed) = {
+                    let guard = s.lock().unwrap();
+                    (guard.lap_active, guard.max_speed)
+                };
 
-                        let _ = tx.send(SerialStatusPayload::Ok {
-                            value: end_speed,
-                            tolerance: 0.5,
-                            direction: "forward".to_string(),
-                            timestamp: now,
-                        });
-
-                        let _ = tx.send(SerialStatusPayload::LapEnd {
-                            lap_number: lap_num,
-                            duration_ms,
-                            duration_us: Some(start_time.elapsed().as_micros() as u64),
-                            speed_at_start: start_speed,
-                            speed_at_end: end_speed,
-                            timestamp: now,
-                        });
-
-                        if guard.lap_mode == "multi" {
-                            guard.lap_number += 1;
-                            guard.lap_start_time = Some(Instant::now());
-                            guard.lap_start_speed = end_speed;
-                            let _ = tx.send(SerialStatusPayload::LapStart {
-                                lap_number: guard.lap_number,
-                                speed_at_start: end_speed,
-                                timestamp: now,
-                            });
-                        } else {
-                            guard.lap_state = MockLapState::Waiting;
-                            guard.lap_number = 1;
-                            guard.lap_start_time = None;
-                            guard.lap_start_speed = 0.0;
-                        }
+                let payload = if speed > max_speed {
+                    SerialStatusPayload::Speeding {
+                        value: speed,
+                        tolerance: 0.5,
+                        direction: "forward".to_string(),
+                        timestamp: now,
                     }
+                } else {
+                    SerialStatusPayload::Ok {
+                        value: speed,
+                        tolerance: 0.5,
+                        direction: "forward".to_string(),
+                        timestamp: now,
+                    }
+                };
+                let _ = tx.send(payload);
+
+                if lap_active {
+                    let wall_us = chrono::Utc::now().timestamp_micros();
+                    let _ = tx.send(SerialStatusPayload::LapCrossing {
+                        boundary_us: booted.elapsed().as_micros() as u64,
+                        wall_us,
+                        esp_boot: boot_id,
+                        speed,
+                        direction: "forward".to_string(),
+                        timestamp: wall_us / 1000,
+                    });
                 }
             }
         });
@@ -163,21 +109,22 @@ impl MockSerial {
             let cmd = v["command"].as_str().unwrap_or("");
             match cmd {
                 "startLapSession" => {
-                    let mode = v["mode"].as_str().unwrap_or("single").to_string();
-                    let mut guard = self.state.lock().unwrap();
-                    guard.lap_state = MockLapState::Waiting;
-                    guard.lap_mode = mode;
-                    guard.lap_number = 1;
-                    guard.lap_start_time = None;
-                    guard.lap_start_speed = 0.0;
+                    self.state.lock().unwrap().lap_active = true;
                     let _ = tx.send(SerialStatusPayload::LapWaiting);
                 }
                 "stopLapSession" => {
-                    let mut guard = self.state.lock().unwrap();
-                    guard.lap_state = MockLapState::Idle;
-                    guard.lap_start_time = None;
-                    guard.lap_start_speed = 0.0;
+                    self.state.lock().unwrap().lap_active = false;
                     let _ = tx.send(SerialStatusPayload::LapStopped);
+                }
+                "setMode" => {
+                    let laps = v["mode"].as_str() == Some("laptimer");
+                    let mut guard = self.state.lock().unwrap();
+                    guard.lap_active = laps;
+                    if laps {
+                        let _ = tx.send(SerialStatusPayload::LapWaiting);
+                    } else {
+                        guard.alignment_active = v["mode"].as_str() == Some("alignment");
+                    }
                 }
                 "startAlignment" => {
                     let mut guard = self.state.lock().unwrap();
@@ -212,10 +159,11 @@ impl MockSerial {
                             flash_duration: Some(5000.0),
                             sensor_distance: 1.0,
                             debug_enabled: false,
-                            lap_mode: guard.lap_mode.clone(),
-                            lap_active: guard.lap_state != MockLapState::Idle,
-                            lap_auto_flash: Some(true),
+                            lap_mode: "host".to_string(),
+                            lap_active: guard.lap_active,
+                            lap_auto_flash: None,
                             lap_dir_filter: "both".to_string(),
+                            lap_crossing: true,
                         },
                     });
                 }

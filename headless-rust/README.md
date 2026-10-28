@@ -24,7 +24,7 @@ Engineered specifically for **Raspberry Pi 5 with Raspberry Pi OS Lite** (zero d
 │     ├── Native Aravis C FFI (Direct libaravis-0.8 on eth0)             │
 │     ├── Serial Port Reader (serialport @ 115200 baud)                  │
 │     ├── Instant Trigger Pipeline (Serial Event -> Camera Shutter <10ms)│
-│     ├── SQLite Database (rusqlite WAL mode @ ~/.speedcamera)           │
+│     ├── SQLite Database (rusqlite WAL mode @ /var/lib/speedcamera)     │
 │     └── Pure Rust Poliscan Overlay Renderer (image + imageproc)        │
 └───────────────────────┬─────────────────────────────▲──────────────────┘
                         │ Wi-Fi (AP or Client)        │ Ethernet Cable
@@ -93,128 +93,76 @@ flowchart TD
 
 ---
 
-## Migration Guide (From Old System)
+## Deployment
 
-If you are running an existing version of Speedcamera on your Raspberry Pi, follow one of these migration methods:
+The Pi never compiles anything. CI (or your laptop) cross-compiles an arm64 `.deb`,
+and `apt` installs it. The package contains the daemon (`/usr/bin/speedcamera`), its
+systemd unit, the network script and a sudoers rule limited to the commands the daemon needs.
+Because nothing is downloaded on the Pi during an update, deploying also works while
+the Pi is offline in hotspot mode.
 
-### Method 1: Remote Automated Update (Recommended)
+All commands below run from `headless-rust/` on your laptop. They need `ssh` and `curl`.
+Building the package yourself also needs `podman` or `docker` (the first build takes a
+few minutes to prepare the toolchain image; later builds are incremental).
 
-From your development laptop:
+### Fresh Raspberry Pi
 
-```bash
-cd headless-rust
+1. Flash **Raspberry Pi OS Lite (64-bit)**, Bookworm or newer, with Raspberry Pi Imager.
+   In its settings, set the hostname and user, enable SSH and add your home Wi-Fi.
+2. Install:
+   ```bash
+   bun run deploy pi@raspberrypi.local             # build the .deb from this checkout
+   bun run deploy pi@raspberrypi.local --release   # or use the latest GitHub release
+   ```
+   Without the laptop tooling, run this on the Pi instead:
+   `curl -fsSL https://raw.githubusercontent.com/LeoLTM/speedcamera/main/headless-rust/packaging/install.sh | sudo bash`
+3. The first install needs internet on the Pi once, to fetch `libaravis` and the other
+   dependencies. Afterwards, open the Web UI on port 3000 and switch to the setup hotspot
+   from **Settings > Network** (or `sudo /usr/lib/speedcamera/setup-network.sh ap`).
+   If the Pi has no Wi-Fi connection at boot, the daemon starts the hotspot by itself.
 
-# 1. If Pi is connected to Home LAN / Wi-Fi via DHCP:
-bun run deploy:pi pi@raspberrypi.local --build
-
-# 2. Or if currently connected to the Pi's old hotspot (192.168.4.1):
-ssh pi@192.168.4.1 '~/speedcamera/headless-rust/scripts/setup-network.sh client "MyHomeWiFi" "MyPassword"'
-# Then run deploy:
-bun run deploy:pi pi@raspberrypi.local --build
-```
-
-### Method 2: Clean Re-Installation (Full Wipe & Fresh Setup)
-
-To remove all legacy services, network profiles, and start completely fresh:
-
-```bash
-cd headless-rust
-
-# 1. Clean up old installation and restore DHCP network:
-bun run cleanup:pi pi@raspberrypi.local --yes
-
-# 2. Run fresh installation:
-bun run install:pi pi@raspberrypi.local
-```
-
-### Method 3: Direct on Raspberry Pi (via SSH / Console)
-
-If executing directly on the Raspberry Pi:
+### Updating and rolling back
 
 ```bash
-# 1. Pull latest code
-cd ~/speedcamera
-git pull origin main
-
-# 2. Install new frontend dependency & build
-cd ~/speedcamera/headless-rust
-bun install
-bun run build
-
-# 3. Compile release binary
-cargo build --release
-
-# 4. Restart systemd service
-sudo systemctl restart speedcamera
-
-# 5. Switch to new Open AP Setup Mode
-sudo ./scripts/setup-network.sh ap
+bun run deploy pi@raspberrypi.local                   # current working tree
+bun run deploy pi@192.168.4.1 --release               # in the field, via the Pi hotspot
+bun run deploy pi@raspberrypi.local --release v0.4.0  # roll back to any release
+bun run deploy pi@raspberrypi.local --deb ./speedcamera_arm64.deb
 ```
 
----
+Set `SPEEDCAMERA_PI=pi@192.168.4.1` (for example) to make that the default target.
+Add `--password` if the Pi only accepts password logins.
 
-## Fresh Pi OS Requirements & Dependencies
+**Pis set up with the old `install:pi` / `deploy:pi` scripts** need no special steps.
+The first `deploy` stops the old git-checkout service and moves `~/.speedcamera`
+(database and images) to `/var/lib/speedcamera`. The `~/speedcamera` checkout is
+no longer used afterwards and can be deleted.
 
-To set up a fresh Raspberry Pi OS image (recommended: **Raspberry Pi OS Lite 64-bit**), the automated installer handles all steps:
+### Day to day
 
 ```bash
-cd headless-rust
-bun run install:pi pi@raspberrypi.local
+bun run pi status pi@raspberrypi.local      # installed version, service state, health
+bun run pi logs pi@raspberrypi.local        # follow the daemon log
+bun run pi uninstall pi@raspberrypi.local   # keeps data; add --purge to delete it,
+                                            # --reset-network to return to plain DHCP
 ```
 
-### Manual Dependency Reference
+| On the Pi | |
+| :--- | :--- |
+| `/var/lib/speedcamera` | Database and captured images (owned by the `speedcamera` service user) |
+| `/etc/default/speedcamera` | Port, bind address, log level, disabled plugins |
+| `/usr/lib/speedcamera/setup-network.sh` | Network mode switching (also used by the Web UI) |
+| `journalctl -u speedcamera` | Daemon log |
 
-#### 1. System Packages (APT)
-```bash
-sudo apt-get update
-sudo apt-get install -y \
-  libaravis-0.8-0 \
-  libaravis-dev \
-  libglib2.0-dev \
-  libgobject-2.0-0 \
-  libudev-dev \
-  pkg-config \
-  build-essential \
-  esptool \
-  network-manager \
-  dnsmasq \
-  iptables \
-  curl \
-  unzip \
-  git \
-  rsync \
-  sqlite3 \
-  libsqlite3-dev
-```
+### Releasing
 
-#### 2. Rust Toolchain (`rustup`)
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-source "$HOME/.cargo/env"
-```
+1. Bump `version` in `Cargo.toml`. It is the single version source: the daemon reports it
+   in `/api/health` and CI rejects a tag that doesn't match it.
+2. Push a tag `vX.Y.Z` (or `vX.Y.Z-canary` for a prerelease). CI attaches the firmware,
+   `speedcamera_arm64.deb` and `SHA256SUMS` to a GitHub release.
 
-#### 3. Bun Runtime (`bun.sh`)
-```bash
-curl -fsSL https://bun.sh/install | bash
-source "$HOME/.bashrc"
-```
-
-#### 4. GigE Vision Network Socket Buffer & FQ-CoDel Tuning
-```bash
-sudo bash -c 'cat > /etc/sysctl.d/60-gige-camera.conf <<EOF
-net.core.rmem_max = 134217728
-net.core.wmem_max = 134217728
-net.core.rmem_default = 262144
-net.core.wmem_default = 262144
-net.ipv4.tcp_rmem = 4096 131072 67108864
-net.ipv4.tcp_wmem = 4096 65536 67108864
-net.core.netdev_max_backlog = 30000
-net.core.default_qdisc = fq_codel
-vm.dirty_background_ratio = 5
-vm.dirty_ratio = 10
-EOF'
-sudo sysctl -p /etc/sysctl.d/60-gige-camera.conf
-```
+Every push to `main` also uploads the package as a CI artifact, for trying out unreleased builds:
+`gh run download -n speedcamera-deb` and then `bun run deploy <target> --deb speedcamera_arm64.deb`.
 
 ---
 
@@ -224,31 +172,31 @@ You can inspect or change network modes at any time via the Web UI Settings (**N
 
 ```bash
 # 1. Start Open AP Setup Hotspot (192.168.4.1, no password, captive portal active)
-sudo ~/speedcamera/headless-rust/scripts/setup-network.sh ap
+sudo /usr/lib/speedcamera/setup-network.sh ap
 
 # 2. Connect to Wi-Fi network in Client Mode (normal operation)
-sudo ~/speedcamera/headless-rust/scripts/setup-network.sh client "MyHomeWiFi" "SecretPassword123"
+sudo /usr/lib/speedcamera/setup-network.sh client "MyHomeWiFi" "SecretPassword123"
 
 # 3. Boot auto-mode (reconnects saved client Wi-Fi, falls back to AP if unreachable)
-sudo ~/speedcamera/headless-rust/scripts/setup-network.sh auto
+sudo /usr/lib/speedcamera/setup-network.sh auto
 
 # 4. Forget saved Wi-Fi credentials and return to Open AP Setup mode
-sudo ~/speedcamera/headless-rust/scripts/setup-network.sh forget
+sudo /usr/lib/speedcamera/setup-network.sh forget
 
 # 5. Set Ethernet interface to dedicated Camera LAN (Static 192.168.1.100, MTU 9000)
-sudo ~/speedcamera/headless-rust/scripts/setup-network.sh lan-camera
+sudo /usr/lib/speedcamera/setup-network.sh lan-camera
 
 # 6. Set Ethernet interface to standard DHCP (for wired internet/updates)
-sudo ~/speedcamera/headless-rust/scripts/setup-network.sh lan-dhcp
+sudo /usr/lib/speedcamera/setup-network.sh lan-dhcp
 
 # 7. Scan nearby visible Wi-Fi networks (SSID, BSSID, channel, signal, security)
-~/speedcamera/headless-rust/scripts/setup-network.sh scan
+/usr/lib/speedcamera/setup-network.sh scan
 
 # 8. Revert both Ethernet and Wi-Fi to standard DHCP
-sudo ~/speedcamera/headless-rust/scripts/setup-network.sh dhcp
+sudo /usr/lib/speedcamera/setup-network.sh dhcp
 
 # 9. Check active network status, IP addresses, power management, and internet reachability
-~/speedcamera/headless-rust/scripts/setup-network.sh status
+/usr/lib/speedcamera/setup-network.sh status
 ```
 
 ---
@@ -280,22 +228,18 @@ sudo systemctl start speedcamera
 
 ```bash
 cd headless-rust
-
-# 1. Install frontend dependencies
 bun install
+bun run build          # web UI into dist/ (embedded into the binary)
+cargo run -- --mock    # daemon with simulated camera + serial on :3000
+bun run dev            # optional: Vite dev server with hot reload
 
-# 2. Build frontend assets
-bun run build
-
-# 3. Run mock backend (on :3000)
-cargo run -- --mock
-
-# 4. Run automated server & WebSocket RPC integration tests
-bun run test:server
+cargo test             # Rust unit tests
+bun run test:integration   # boots the mock daemon; HTTP, Socket.io RPC and live events
+bun run package        # build the arm64 .deb into target/debian/
 ```
 
 - **Web UI:** `http://localhost:3000`
-- **Health Endpoint:** `http://localhost:3000/api/health`
+- **Health Endpoint:** `http://localhost:3000/api/health` (includes the running version and commit)
 - **Network Endpoint:** `http://localhost:3000/api/network`
 - **Socket.io RPC & Events:** `http://localhost:3000/socket.io/`
 
@@ -304,11 +248,15 @@ bun run test:server
 ## CLI Options
 
 ```
-Usage: headless-rust [OPTIONS]
+Usage: speedcamera [OPTIONS]
 
 Options:
-  -m, --mock         Run in mock hardware mode (no physical camera/serial required)
-  -p, --port <PORT>  HTTP server port (default: 3000)
-  -H, --host <HOST>  HTTP server bind address (default: 0.0.0.0)
-  -h, --help         Print help
+  -m, --mock                       Run in mock hardware mode (no physical camera/serial required)
+  -p, --port <PORT>                HTTP server port (default: 3000)
+  -H, --host <HOST>                HTTP server bind address (default: 0.0.0.0)
+      --disable-plugins <PLUGINS>  Comma-separated list of plugins to disable (e.g. laptimer,alignment)
+  -h, --help                       Print help
 ```
+
+The same settings can be given as environment variables (`PORT`, `HOST`, `DISABLED_PLUGINS`,
+`MOCK_MODE`, `DATA_DIR`, `RUST_LOG`). On the Pi, put them in `/etc/default/speedcamera`.

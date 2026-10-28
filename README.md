@@ -17,21 +17,19 @@ The earlier desktop apps (`electron/`, `electronbun/`) were retired in favour of
 
 ## Quick Deployment Commands (Raspberry Pi 5)
 
-All deployment and maintenance commands are executed from your development laptop over SSH. The scripts pull the repository and perform all frontend asset builds and native Rust compilation directly on the Raspberry Pi.
+Run from your laptop. The Pi installs a prebuilt `.deb` and never compiles anything, so updates also work over its offline hotspot.
 
 ```bash
 cd headless-rust
 
-# 1. Fresh Pi Setup (Pi connected to Home LAN/Wi-Fi with DHCP)
-bun run install:pi pi@raspberrypi.local
+# Install or update (fresh Pi, old git-checkout install, or already packaged)
+bun run deploy pi@raspberrypi.local             # build the package from this checkout
+bun run deploy pi@192.168.4.1 --release         # latest GitHub release, via the Pi hotspot
 
-# 2. Upgrade Existing Pi (in Client Wi-Fi Mode or Home LAN)
-bun run deploy:pi pi@raspberrypi.local
-# or when connected to Pi Wi-Fi hotspot during setup:
-bun run deploy:pi pi@192.168.4.1
-
-# 3. Complete Cleanup & Reset Network to DHCP
-bun run cleanup:pi pi@raspberrypi.local
+# Inspect, follow logs, remove
+bun run pi status pi@raspberrypi.local
+bun run pi logs pi@raspberrypi.local
+bun run pi uninstall pi@raspberrypi.local       # --purge also deletes data
 ```
 
 For full documentation on architecture, network onboarding flow, offline/client operation, dependencies, migration guide, and local mock testing, see the [**Headless Rust Documentation**](./headless-rust/README.md).

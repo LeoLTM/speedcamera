@@ -9,7 +9,15 @@ pub fn verify_shutdown_authorization(password: Option<&str>, mock_mode: bool) ->
         return Ok(());
     }
 
-    // 1. If password was provided, validate via `sudo -S -k -v`
+    // 1. Passwordless sudo first: the packaged service user has no password, so a typed one can only fail
+    if let Ok(output) = Command::new("sudo").args(["-n", "-v"]).output() {
+        if output.status.success() {
+            tracing::info!("[system] Passwordless sudo authorization confirmed");
+            return Ok(());
+        }
+    }
+
+    // 2. If password was provided, validate via `sudo -S -k -v`
     if let Some(pass) = password {
         let trimmed = pass.trim();
         if !trimmed.is_empty() {
@@ -40,14 +48,6 @@ pub fn verify_shutdown_authorization(password: Option<&str>, mock_mode: bool) ->
         }
     }
 
-    // 2. Check if passwordless sudo is permitted
-    if let Ok(output) = Command::new("sudo").args(["-n", "-v"]).output() {
-        if output.status.success() {
-            tracing::info!("[system] Passwordless sudo authorization confirmed");
-            return Ok(());
-        }
-    }
-
     // 3. Check if running as root (UID 0)
     if let Ok(output) = Command::new("id").arg("-u").output() {
         if output.status.success() {
@@ -71,7 +71,14 @@ pub fn perform_os_shutdown(password: Option<&str>, mock_mode: bool) -> Result<()
 
     tracing::warn!("[system] Host shutdown command received, powering down...");
 
-    // 1. If password was provided, execute sudo shutdown with password
+    // 1. Try passwordless sudo: sudo -n shutdown -h now (allowed by the packaged sudoers file)
+    if let Ok(output) = Command::new("sudo").args(["-n", "shutdown", "-h", "now"]).output() {
+        if output.status.success() {
+            return Ok(());
+        }
+    }
+
+    // 2. If password was provided, execute sudo shutdown with password
     if let Some(pass) = password {
         let trimmed = pass.trim();
         if !trimmed.is_empty() {
@@ -98,13 +105,6 @@ pub fn perform_os_shutdown(password: Option<&str>, mock_mode: bool) -> Result<()
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(format!("Sudo shutdown failed: {}", stderr.trim()));
             }
-        }
-    }
-
-    // 2. Try passwordless sudo: sudo -n shutdown -h now
-    if let Ok(output) = Command::new("sudo").args(["-n", "shutdown", "-h", "now"]).output() {
-        if output.status.success() {
-            return Ok(());
         }
     }
 

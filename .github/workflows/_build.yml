@@ -17,8 +17,8 @@ on:
         default: true
 
 jobs:
-  headless-build:
-    name: Headless-Rust — Build
+  headless-package:
+    name: Headless-Rust — Package arm64 .deb
     if: inputs.build-headless
     runs-on: ubuntu-latest
     defaults:
@@ -28,27 +28,59 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libaravis-dev libudev-dev pkg-config
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install frontend dependencies
-        run: bun install
+      - uses: docker/setup-buildx-action@v4
 
-      # compile embedded web assets into dist/ for rust-embed
-      - name: Build frontend
-        run: bun run build
+      # Debian Bookworm cross toolchain (same image as local `bun run package`), layer-cached
+      - name: Build cross-compilation image
+        uses: docker/build-push-action@v7
+        with:
+          context: headless-rust/packaging
+          file: headless-rust/packaging/Containerfile
+          tags: speedcamera-cross:bookworm
+          load: true
+          cache-from: type=gha,scope=speedcamera-cross
+          cache-to: type=gha,mode=max,scope=speedcamera-cross
 
-      - name: Setup Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Cache cargo registry and arm64 build
+        uses: actions/cache@v5
+        with:
+          path: |
+            headless-rust/target/cross-cache
+            headless-rust/target/aarch64-unknown-linux-gnu
+          key: cross-arm64-${{ hashFiles('headless-rust/Cargo.lock', 'headless-rust/packaging/Containerfile') }}
+          restore-keys: cross-arm64-
 
-      # verify release binary compiles cleanly; no artifact upload needed (deploy not required)
-      - name: Build release binary
-        run: cargo build --release
+      - name: Build .deb
+        env:
+          VERSION: ${{ inputs.version }}
+          CONTAINER_ENGINE: docker
+          SKIP_IMAGE_BUILD: '1'
+        run: |
+          if [ -n "$VERSION" ]; then
+            cargo_version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
+            tag_version="${VERSION#v}"
+            if [ "${tag_version%%-*}" != "$cargo_version" ]; then
+              echo "::error::Tag $VERSION does not match Cargo.toml version $cargo_version. Bump Cargo.toml first."
+              exit 1
+            fi
+            # v1.2.0-canary -> 1.2.0~canary, which dpkg orders before the final 1.2.0
+            export SPEEDCAMERA_DEB_VERSION="$(printf %s "$tag_version" | tr - '~')"
+          fi
+          deb=$(./packaging/build-deb.sh)
+          mkdir -p ../dist-deb
+          # stable asset name so releases/latest/download/speedcamera_arm64.deb always resolves
+          cp "$deb" ../dist-deb/speedcamera_arm64.deb
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: speedcamera-deb
+          path: dist-deb/speedcamera_arm64.deb
+          if-no-files-found: error
+          retention-days: 7
 
   arduino-build:
     name: Arduino — Build Firmware

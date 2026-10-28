@@ -1,7 +1,8 @@
 [package]
 name = "headless-rust"
-version = "0.1.0"
+version = "0.5.0"
 edition = "2024"
+description = "Speedcamera daemon for Raspberry Pi 5: serial trigger pipeline, GigE camera capture and web UI"
 
 [dependencies]
 axum = "0.8"
@@ -37,3 +38,26 @@ linux-embedded-hal = "0.5"
 
 [build-dependencies]
 pkg-config = "0.3"
+
+# Raspberry Pi package, built by packaging/build-deb.sh (see README "Deployment").
+[package.metadata.deb]
+name = "speedcamera"
+maintainer = "LeoLTM <44781682+LeoLTM@users.noreply.github.com>"
+extended-description = """\
+Reads the light-barrier speed sensor over serial, triggers the GigE camera, \
+stores violations under /var/lib/speedcamera and serves the web UI on port 3000. \
+Network modes (setup hotspot, Wi-Fi client, camera LAN) are switched through \
+/usr/lib/speedcamera/setup-network.sh."""
+section = "misc"
+priority = "optional"
+revision = ""
+depends = "$auto, adduser, sudo, network-manager, dnsmasq-base, iw, iptables, rfkill"
+recommends = "esptool"
+maintainer-scripts = "packaging/debian/"
+systemd-units = { enable = true }
+assets = [
+  ["target/release/headless-rust", "usr/bin/speedcamera", "755"],
+  ["scripts/setup-network.sh", "usr/lib/speedcamera/setup-network.sh", "755"],
+  ["packaging/files/sudoers", "etc/sudoers.d/speedcamera", "440"],
+  ["packaging/files/default", "etc/default/speedcamera", "644"],
+]

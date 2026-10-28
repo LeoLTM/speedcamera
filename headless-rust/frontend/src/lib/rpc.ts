@@ -316,14 +316,6 @@ class SocketIoRpcClient {
         store.handleOperatingModeStatus?.(modePayload);
         break;
       }
-      case "updateAvailable":
-
-        store.setUpdateVersion((payload as any).version);
-        store.setUpdatePhase("ready");
-        break;
-      case "updateProgress":
-        store.handleUpdateProgress(payload as any);
-        break;
       default:
         break;
     }

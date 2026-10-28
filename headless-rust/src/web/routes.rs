@@ -16,6 +16,8 @@ use std::sync::Arc;
 pub async fn health(State(ctx): State<Arc<RpcContext>>) -> impl IntoResponse {
     Json(json!({
         "status": "ok",
+        "version": crate::config::VERSION,
+        "gitSha": crate::config::GIT_SHA,
         "platform": std::env::consts::OS,
         "camera": ctx.camera.get_status(),
         "network": get_system_network_summary(),

@@ -1,0 +1,29 @@
+# Cross-compilation toolchain for the Raspberry Pi package (arm64).
+# Built on Bookworm, the oldest Pi OS release we support, so the binary's glibc
+# and libaravis requirements are also met on Trixie.
+FROM docker.io/library/debian:bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive
+# libusb-1.0-0-dev: aravis-0.8.pc lists it in Requires.private, so pkg-config fails without it.
+# sudo: provides visudo, used to validate the packaged sudoers file.
+RUN dpkg --add-architecture arm64 \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+      build-essential ca-certificates curl pkg-config sudo \
+      gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
+      libaravis-dev:arm64 libglib2.0-dev:arm64 libudev-dev:arm64 libusb-1.0-0-dev:arm64 \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+      | sh -s -- -y --profile minimal --default-toolchain stable --target aarch64-unknown-linux-gnu \
+ && cargo install cargo-deb --version 3.8.0 --locked \
+ && rm -rf /opt/cargo/registry \
+ && chmod -R a+rwX /opt/cargo /opt/rustup
+
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+    CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
+    PKG_CONFIG_ALLOW_CROSS=1 \
+    PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+
+WORKDIR /src

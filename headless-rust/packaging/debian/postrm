@@ -1,0 +1,22 @@
+#!/bin/sh
+set -e
+
+LEGACY_UNIT=/etc/systemd/system/speedcamera.service
+LEGACY_HANDOFF=/var/backups/speedcamera-legacy.service
+
+case "$1" in
+  # `apt remove` keeps the database and images; `apt purge` deletes them.
+  purge)
+    rm -rf /var/lib/speedcamera
+    ;;
+  # A first install failed after preinst stopped the git-checkout service: bring it back.
+  abort-install|abort-upgrade)
+    if [ -f "$LEGACY_HANDOFF" ] && [ ! -e "$LEGACY_UNIT" ]; then
+      mv "$LEGACY_HANDOFF" "$LEGACY_UNIT"
+      systemctl daemon-reload 2>/dev/null || true
+      systemctl enable --now speedcamera.service 2>/dev/null || true
+    fi
+    ;;
+esac
+
+#DEBHELPER#

@@ -1,0 +1,55 @@
+#!/bin/sh
+set -e
+
+STATE_DIR=/var/lib/speedcamera
+SUDOERS=/etc/sudoers.d/speedcamera
+LEGACY_HANDOFF=/var/backups/speedcamera-legacy.service
+
+# Move the database and images of a git-checkout install (written by preinst)
+# into the package's state directory, then drop config only the old installer used.
+migrate_legacy_install() {
+  legacy_data=$(sed -n 's/^Environment=DATA_DIR=//p' "$LEGACY_HANDOFF" | tail -n 1)
+  if [ -z "$legacy_data" ]; then
+    legacy_user=$(sed -n 's/^User=//p' "$LEGACY_HANDOFF" | tail -n 1)
+    legacy_data="$(getent passwd "${legacy_user:-pi}" | cut -d: -f6)/.speedcamera"
+  fi
+
+  if [ -d "$legacy_data" ] && [ ! -e "$STATE_DIR/speedcamera.db" ]; then
+    echo "speedcamera: moving data from $legacy_data to $STATE_DIR"
+    find "$legacy_data" -mindepth 1 -maxdepth 1 -exec mv -t "$STATE_DIR" {} +
+    rmdir "$legacy_data" 2>/dev/null || true
+    chown -R speedcamera:speedcamera "$STATE_DIR"
+  fi
+
+  # Granted every local user full NetworkManager control; the daemon now uses sudo rules instead.
+  rm -f /etc/polkit-1/rules.d/50-speedcamera-network.rules
+  rm -f "$LEGACY_HANDOFF"
+  echo "speedcamera: migrated from the git-checkout install; the old checkout (e.g. ~/speedcamera) can be deleted"
+}
+
+case "$1" in
+  configure)
+    if ! getent passwd speedcamera >/dev/null; then
+      adduser --system --group --home "$STATE_DIR" --no-create-home --quiet speedcamera
+    fi
+    # dialout: serial sensor + esptool, i2c: OLED display. Groups absent on this system are skipped.
+    for group in dialout i2c gpio video plugdev; do
+      if getent group "$group" >/dev/null; then
+        adduser --quiet speedcamera "$group"
+      fi
+    done
+    install -d -o speedcamera -g speedcamera -m 0750 "$STATE_DIR"
+
+    if [ -f "$LEGACY_HANDOFF" ]; then
+      migrate_legacy_install
+    fi
+
+    # A broken sudoers.d file disables sudo for every user, so never leave one behind.
+    if ! visudo -cqf "$SUDOERS"; then
+      echo "speedcamera: $SUDOERS failed validation and was removed; network control will not work" >&2
+      rm -f "$SUDOERS"
+    fi
+    ;;
+esac
+
+#DEBHELPER#

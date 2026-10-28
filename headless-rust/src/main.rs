@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = AppConfig::new(args.mock, args.port, args.host, args.disable_plugins);
 
     tracing::info!("─────────────────────────────────────────────────────────────────");
-    tracing::info!("  ⚡ Speedcamera Headless Daemon (Rust & Axum / Socket.io)");
+    tracing::info!("  ⚡ Speedcamera Headless Daemon v{} ({})", config::VERSION, config::GIT_SHA);
     tracing::info!("  • Port:       http://{}:{}", config.host, config.port);
     tracing::info!("  • Data Dir:   {}", config.data_dir.display());
     tracing::info!("  • Mock Mode:  {}", config.mock_mode);

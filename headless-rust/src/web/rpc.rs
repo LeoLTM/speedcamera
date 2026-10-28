@@ -908,9 +908,9 @@ async fn dispatch_method(ctx: &RpcContext, method: &str, params: Value) -> Resul
         "cancelFlash" => Ok(Value::Null),
 
         "getLocalVersion" => Ok(json!({
-            "version": "0.5.0-rust",
-            "channel": "rust",
-            "hash": "rpi5-native"
+            "version": crate::config::VERSION,
+            "channel": "deb",
+            "hash": crate::config::GIT_SHA
         })),
 
         _ => {

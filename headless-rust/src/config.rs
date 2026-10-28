@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const GIT_SHA: &str = env!("SPEEDCAMERA_GIT_SHA");
+
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     pub host: String,

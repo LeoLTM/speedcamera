@@ -1,6 +1,13 @@
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
+    // Kart link wire types, vendored from asl-gokart (protox is pure Rust: no protoc needed)
+    println!("cargo:rerun-if-changed=proto");
+    for file in ["proto/telemetry.proto", "proto/timing.proto"] {
+        let fds = protox::compile([file], ["proto"]).expect("compiling vendored protos");
+        prost_build::Config::new().compile_fds(fds).expect("generating proto types");
+    }
+
     // Commit reported by /api/health; packaging/build-deb.sh and CI set it, local builds show "dev"
     println!("cargo:rerun-if-env-changed=SPEEDCAMERA_GIT_SHA");
     let git_sha = std::env::var("SPEEDCAMERA_GIT_SHA").unwrap_or_else(|_| "dev".to_string());

@@ -175,6 +175,20 @@ pub struct AppSettings {
     pub lap_min_lap_ms: i64,
     /// A longer gap starts a fresh lap instead of recording one.
     pub lap_max_lap_ms: i64,
+    // Kart link: lap crossings to the asl-gokart telemetry stack
+    pub kart_link_enabled: String,
+    pub kart_link_broker_url: String,
+    pub kart_link_username: String,
+    pub kart_link_password: String,
+    pub kart_link_kart_id: String,
+    pub kart_link_device_id: String,
+    /// Barrier position, empty until set; WGS84 degrees.
+    pub barrier_lat: String,
+    pub barrier_lon: String,
+    /// A crossing counts when the kart's GPS was within this distance of the barrier.
+    pub gate_radius_m: f64,
+    /// Off: count crossings without checking the kart's position.
+    pub require_kart_nearby: String,
     // Teable integration
     pub teable_url: String,
     pub teable_token: String,
@@ -212,6 +226,16 @@ impl Default for AppSettings {
             lap_min_speed_kmh: 8.0,
             lap_min_lap_ms: 10_000,
             lap_max_lap_ms: 300_000,
+            kart_link_enabled: "false".to_string(),
+            kart_link_broker_url: String::new(),
+            kart_link_username: String::new(),
+            kart_link_password: String::new(),
+            kart_link_kart_id: "kart-01".to_string(),
+            kart_link_device_id: "speedcamera".to_string(),
+            barrier_lat: String::new(),
+            barrier_lon: String::new(),
+            gate_radius_m: 20.0,
+            require_kart_nearby: "true".to_string(),
             teable_url: String::new(),
             teable_token: String::new(),
             teable_user_name: String::new(),

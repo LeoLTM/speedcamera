@@ -362,6 +362,23 @@ pub fn get_crossings_for_session(conn: &Connection, session_id: i64) -> Result<V
     rows.collect()
 }
 
+/// Oldest crossings the broker has not acknowledged yet.
+pub fn get_unpublished_crossings(conn: &Connection, limit: i64) -> Result<Vec<LapCrossingRecord>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {CROSSING_COLUMNS} FROM lap_crossings WHERE publishedAt IS NULL ORDER BY wallUs ASC LIMIT ?"
+    ))?;
+    let rows = stmt.query_map(params![limit], crossing_from_row)?;
+    rows.collect()
+}
+
+pub fn mark_crossing_published(conn: &Connection, id: &str, at_ms: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE lap_crossings SET publishedAt = ? WHERE id = ?",
+        params![at_ms, id],
+    )?;
+    Ok(())
+}
+
 pub fn get_lap_image_paths_for_session(conn: &Connection, session_id: i64) -> Result<Vec<String>> {
     // Crossing photos include every lap's start and end photo; UNION drops the duplicates.
     let mut stmt = conn.prepare(
@@ -402,4 +419,12 @@ pub fn delete_lap_session(conn: &Connection, id: i64) -> Result<()> {
 pub fn delete_lap(conn: &Connection, id: i64) -> Result<()> {
     conn.execute("DELETE FROM laps WHERE id = ?", params![id])?;
     Ok(())
+}
+
+pub fn count_unpublished_crossings(conn: &Connection) -> Result<i64> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM lap_crossings WHERE publishedAt IS NULL",
+        [],
+        |r| r.get(0),
+    )
 }

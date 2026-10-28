@@ -132,10 +132,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let mut plugin_reg = plugins::PluginRegistry::new();
     // ponytail: modular plugins isolated from core daemon, respects disabled_plugins config
+    // The kart link judges lap crossings against the kart's GPS and publishes them
+    let kart_link = if !config.is_plugin_disabled("kartlink") {
+        Some(plugins::kartlink::KartLink::new())
+    } else {
+        tracing::info!("[plugins] KartLinkPlugin disabled by configuration");
+        None
+    };
     if !config.is_plugin_disabled("laptimer") {
-        plugin_reg.register(Box::new(plugins::laptimer::LapTimerPlugin::new(None)));
+        let gate = kart_link
+            .clone()
+            .map(|l| std::sync::Arc::new(l) as std::sync::Arc<dyn plugins::laptimer::KartGate>);
+        plugin_reg.register(Box::new(plugins::laptimer::LapTimerPlugin::new(gate)));
     } else {
         tracing::info!("[plugins] LapTimerPlugin disabled by configuration");
+    }
+    if let Some(link) = kart_link {
+        plugin_reg.register(Box::new(plugins::kartlink::KartLinkPlugin::new(link)));
     }
 
     if !config.is_plugin_disabled("alignment") {

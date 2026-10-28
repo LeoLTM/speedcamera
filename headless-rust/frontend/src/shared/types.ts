@@ -127,6 +127,17 @@ export interface AppSettings {
   lapMinSpeedKmh: number;   // slower crossings are not a kart (someone walking through)
   lapMinLapMs: number;      // closer crossings are duplicates of the last counted one
   lapMaxLapMs: number;      // a longer gap starts a fresh lap instead of recording one
+  // Kart link
+  kartLinkEnabled: string;  // "true" | "false"
+  kartLinkBrokerUrl: string; // mqtt://host:1883
+  kartLinkUsername: string;
+  kartLinkPassword: string;
+  kartLinkKartId: string;
+  kartLinkDeviceId: string;
+  barrierLat: string;       // empty until set
+  barrierLon: string;
+  gateRadiusM: number;
+  requireKartNearby: string; // "true" | "false"
   // Teable integration
   teableUrl: string;
   teableToken: string;
@@ -262,6 +273,23 @@ export interface LapCrossing {
   lapUs: number | null;     // lap ended here
   imagePath: string | null;
   publishedAt: number | null;
+}
+
+/** Live state of the kart link, polled by the settings tab. */
+export interface KartLinkStatus {
+  enabled: boolean;
+  connected: boolean;
+  lastError: string | null;
+  kartId: string;
+  kartOnline: boolean | null;     // null until the broker delivered the kart's status
+  kartSessionId: string | null;
+  gpsFix: boolean | null;
+  fixAgeMs: number | null;
+  distanceToBarrierM: number | null;
+  barrier: { lat: number; lon: number } | null;
+  clockSynced: boolean;
+  kartClockOffsetMs: number | null;
+  outboxPending: number;
 }
 
 export interface ActiveLapSessionResponse {
@@ -647,6 +675,15 @@ export type SpeedcameraRPC = {
       response: void;
     };
 
+    // Kart link (lap crossings to the asl-gokart telemetry stack)
+    getKartLinkStatus: {
+      params: Record<string, never>;
+      response: KartLinkStatus;
+    };
+    setBarrierFromKart: {
+      params: Record<string, never>;
+      response: { lat: number; lon: number };
+    };
 
     // Version
     getLocalVersion: {

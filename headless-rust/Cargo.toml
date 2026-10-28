@@ -36,9 +36,14 @@ embedded-graphics = "0.8"
 ssd1306 = "0.10"
 linux-embedded-hal = "0.5"
 uuid = { version = "1", features = ["v7"] }
+libc = "0.2"
+prost = "0.14"
+rumqttc = { version = "0.25", default-features = false, features = ["url"] }
 
 [build-dependencies]
 pkg-config = "0.3"
+prost-build = "0.14"
+protox = "0.10"
 
 # Raspberry Pi package, built by packaging/build-deb.sh (see README "Deployment").
 [package.metadata.deb]
@@ -52,7 +57,7 @@ Network modes (setup hotspot, Wi-Fi client, camera LAN) are switched through \
 section = "misc"
 priority = "optional"
 revision = ""
-depends = "$auto, adduser, sudo, network-manager, dnsmasq-base, iw, iptables, rfkill"
+depends = "$auto, adduser, sudo, network-manager, dnsmasq-base, iw, iptables, rfkill, systemd-timesyncd | chrony"
 recommends = "esptool"
 maintainer-scripts = "packaging/debian/"
 systemd-units = { enable = true }

@@ -1,5 +1,6 @@
 pub mod alignment;
 pub mod display;
+pub mod kartlink;
 pub mod laptimer;
 
 use crate::camera::CameraService;

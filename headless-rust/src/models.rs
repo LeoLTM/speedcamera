@@ -169,6 +169,26 @@ pub struct AppSettings {
     pub lap_mode: String,
     pub lap_save_images: String,
     pub lap_dir_filter: String,
+    /// Crossings slower than this are not a kart (e.g. someone walking through).
+    pub lap_min_speed_kmh: f64,
+    /// Crossings closer than this to the last counted one are duplicates.
+    pub lap_min_lap_ms: i64,
+    /// A longer gap starts a fresh lap instead of recording one.
+    pub lap_max_lap_ms: i64,
+    // Kart link: lap crossings to the asl-gokart telemetry stack
+    pub kart_link_enabled: String,
+    pub kart_link_broker_url: String,
+    pub kart_link_username: String,
+    pub kart_link_password: String,
+    pub kart_link_kart_id: String,
+    pub kart_link_device_id: String,
+    /// Barrier position, empty until set; WGS84 degrees.
+    pub barrier_lat: String,
+    pub barrier_lon: String,
+    /// A crossing counts when the kart's GPS was within this distance of the barrier.
+    pub gate_radius_m: f64,
+    /// Off: count crossings without checking the kart's position.
+    pub require_kart_nearby: String,
     // Teable integration
     pub teable_url: String,
     pub teable_token: String,
@@ -203,6 +223,19 @@ impl Default for AppSettings {
             lap_mode: "single".to_string(),
             lap_save_images: "true".to_string(),
             lap_dir_filter: "both".to_string(),
+            lap_min_speed_kmh: 8.0,
+            lap_min_lap_ms: 10_000,
+            lap_max_lap_ms: 300_000,
+            kart_link_enabled: "false".to_string(),
+            kart_link_broker_url: String::new(),
+            kart_link_username: String::new(),
+            kart_link_password: String::new(),
+            kart_link_kart_id: "kart-01".to_string(),
+            kart_link_device_id: "speedcamera".to_string(),
+            barrier_lat: String::new(),
+            barrier_lon: String::new(),
+            gate_radius_m: 20.0,
+            require_kart_nearby: "true".to_string(),
             teable_url: String::new(),
             teable_token: String::new(),
             teable_user_name: String::new(),
@@ -285,6 +318,9 @@ pub struct EspPongConfig {
     #[serde(default)]
     pub lap_auto_flash: Option<bool>,
     pub lap_dir_filter: String,
+    /// Firmware reports `lapCrossing` and leaves lap chaining to the host.
+    #[serde(default)]
+    pub lap_crossing: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -333,6 +369,35 @@ pub enum SerialStatusPayload {
         speed_at_start: f64,
         #[serde(rename = "speedAtEnd")]
         speed_at_end: f64,
+        timestamp: i64,
+    },
+    /// A valid barrier pass in lap mode, straight from the ESP.
+    #[serde(rename = "LAPCROSSING")]
+    LapCrossing {
+        /// First beam break on the ESP's 64-bit µs clock.
+        #[serde(rename = "boundaryUs")]
+        boundary_us: u64,
+        /// First beam break on the host wall clock (µs), backdated by the ESP-reported age.
+        #[serde(rename = "wallUs")]
+        wall_us: i64,
+        #[serde(rename = "espBoot")]
+        esp_boot: u32,
+        speed: f64,
+        direction: String,
+        timestamp: i64,
+    },
+    /// The lap engine's decision on a crossing, sent after any GPS check.
+    #[serde(rename = "LAPVERDICT")]
+    LapVerdict {
+        #[serde(rename = "crossingId")]
+        crossing_id: String,
+        verdict: crate::plugins::laptimer::engine::Verdict,
+        #[serde(rename = "distanceM", default, skip_serializing_if = "Option::is_none")]
+        distance_m: Option<f64>,
+        /// Lap started by this crossing; 0 when it was rejected.
+        #[serde(rename = "lapNumber")]
+        lap_number: i64,
+        speed: f64,
         timestamp: i64,
     },
     #[serde(rename = "LAPWAITING")]

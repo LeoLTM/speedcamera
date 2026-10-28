@@ -79,6 +79,7 @@ void sendJsonCapabilities() {
   JsonArray features = doc["features"].to<JsonArray>();
   features.add("speed");
   features.add("laptimer");
+  features.add("lapCrossing");
   features.add("alignment");
   String out;
   serializeJson(doc, out);

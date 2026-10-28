@@ -1,16 +1,24 @@
 use super::db;
 use super::models::{ActiveLapSessionResponse, Lap, LapSessionWithLaps, SaveLapInput, StartLapSessionInput, SyncLapInput};
-use super::LapTimerState;
+use super::engine::{DirFilter, EngineConfig, LapMode};
+use super::{EngineCmd, LapTimerState};
 use crate::plugins::RpcRegistry;
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
 
 // ponytail: register lap timer methods directly without dynamic reflection or macro bloat
-pub fn register_rpc_methods(registry: &mut RpcRegistry, state: Arc<Mutex<LapTimerState>>) {
+pub(crate) fn register_rpc_methods(
+    registry: &mut RpcRegistry,
+    state: Arc<Mutex<LapTimerState>>,
+    engine_tx: mpsc::UnboundedSender<EngineCmd>,
+) {
     // ─── startLapSession ──────────────────────────────────────────────────────
     let state_start = state.clone();
+    let engine_start = engine_tx.clone();
     registry.register("startLapSession", move |ctx, params| {
         let state = state_start.clone();
+        let engine_tx = engine_start.clone();
         async move {
             let input: StartLapSessionInput = serde_json::from_value(params).unwrap_or(StartLapSessionInput {
                 lap_mode: "single".to_string(),
@@ -20,13 +28,14 @@ pub fn register_rpc_methods(registry: &mut RpcRegistry, state: Arc<Mutex<LapTime
 
             let db = ctx.db.clone();
             let lap_mode_clone = input.lap_mode.clone();
-            let session = tokio::task::spawn_blocking(move || {
+            let (session, settings) = tokio::task::spawn_blocking(move || {
                 let conn = db.lock();
                 // Close any existing active session before starting a new one
                 if let Ok(Some(prev)) = db::get_active_session(&conn) {
                     let _ = db::close_lap_session(&conn, prev.id);
                 }
-                db::create_lap_session(&conn, &lap_mode_clone)
+                let settings = crate::db::settings::get_settings(&conn).unwrap_or_default();
+                db::create_lap_session(&conn, &lap_mode_clone).map(|s| (s, settings))
             })
             .await
             .map_err(|e| e.to_string())?
@@ -38,20 +47,23 @@ pub fn register_rpc_methods(registry: &mut RpcRegistry, state: Arc<Mutex<LapTime
                 s.lap_state = "waiting".to_string();
                 s.lap_number = 0;
                 s.lap_timing_started_at = None;
-                s.start_image_path = None;
                 s.lap_mode = input.lap_mode.clone();
                 s.dir_filter = input.dir_filter.clone();
                 s.save_images = input.save_images;
             }
 
-            // Command serial hardware to enter lap session
-            let cmd = json!({
-                "command": "startLapSession",
-                "mode": input.lap_mode,
-                "autoFlash": true,
-                "dirFilter": input.dir_filter,
+            // The host chains laps; the engine must be ready before the ESP reports crossings
+            let _ = engine_tx.send(EngineCmd::Start {
+                session: session.clone(),
+                cfg: EngineConfig {
+                    mode: LapMode::parse(&input.lap_mode),
+                    dir_filter: DirFilter::parse(&input.dir_filter),
+                    min_speed_kmh: settings.lap_min_speed_kmh,
+                    min_lap_us: settings.lap_min_lap_ms.max(0) as u64 * 1000,
+                    max_lap_us: settings.lap_max_lap_ms.max(0) as u64 * 1000,
+                },
             });
-            ctx.serial.send_command(&cmd.to_string());
+            ctx.serial.send_command(&json!({ "command": "startLapSession" }).to_string());
             tracing::info!("[plugin:laptimer] Started session #{} (mode: {})", session.id, input.lap_mode);
 
             Ok(serde_json::to_value(session).unwrap())
@@ -60,8 +72,10 @@ pub fn register_rpc_methods(registry: &mut RpcRegistry, state: Arc<Mutex<LapTime
 
     // ─── stopLapSession ───────────────────────────────────────────────────────
     let state_stop = state.clone();
+    let engine_stop = engine_tx.clone();
     registry.register("stopLapSession", move |ctx, _params| {
         let state = state_stop.clone();
+        let engine_tx = engine_stop.clone();
         async move {
             let active_id = {
                 let mut s = state.lock().unwrap();
@@ -69,9 +83,9 @@ pub fn register_rpc_methods(registry: &mut RpcRegistry, state: Arc<Mutex<LapTime
                 s.active_session = None;
                 s.lap_state = "idle".to_string();
                 s.lap_timing_started_at = None;
-                s.start_image_path = None;
                 id
             };
+            let _ = engine_tx.send(EngineCmd::Stop);
 
             if let Some(id) = active_id {
                 let db = ctx.db.clone();
@@ -106,15 +120,20 @@ pub fn register_rpc_methods(registry: &mut RpcRegistry, state: Arc<Mutex<LapTime
                 )
             };
 
+            let mut crossings = Vec::new();
             let session_with_laps = if let Some(sess) = active_sess {
                 let db = ctx.db.clone();
                 let sid = sess.id;
-                let laps = tokio::task::spawn_blocking(move || {
+                let (laps, session_crossings) = tokio::task::spawn_blocking(move || {
                     let conn = db.lock();
-                    db::get_laps_for_session(&conn, sid).unwrap_or_default()
+                    (
+                        db::get_laps_for_session(&conn, sid).unwrap_or_default(),
+                        db::get_crossings_for_session(&conn, sid).unwrap_or_default(),
+                    )
                 })
                 .await
                 .unwrap_or_default();
+                crossings = session_crossings;
 
                 Some(LapSessionWithLaps {
                     id: sess.id,
@@ -130,6 +149,7 @@ pub fn register_rpc_methods(registry: &mut RpcRegistry, state: Arc<Mutex<LapTime
 
             let resp = ActiveLapSessionResponse {
                 session: session_with_laps,
+                crossings,
                 lap_state,
                 lap_number: lap_num,
                 lap_timing_started_at: lap_timing_started,

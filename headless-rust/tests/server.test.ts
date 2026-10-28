@@ -125,6 +125,22 @@ describe("Socket.io RPC", () => {
     expect(session.id).toBeNumber();
     await rpc("deleteLapSession", { id: session.id });
   });
+
+  test("host lap engine judges and stores mock crossings", async () => {
+    const session = await rpc("startLapSession", { lapMode: "multi", dirFilter: "both", saveImages: false });
+    try {
+      // The mock reports a crossing every 4 s once lap reporting is on
+      const verdict = await nextEvent<any>("serialStatus", 9000, (p) => p.status === "LAPVERDICT");
+      expect(verdict.verdict).toBeString();
+
+      const active = await rpc("getActiveLapSession");
+      expect(active.session.id).toBe(session.id);
+      expect(active.crossings.map((c: any) => c.id)).toContain(verdict.crossingId);
+    } finally {
+      await rpc("stopLapSession");
+      await rpc("deleteLapSession", { id: session.id });
+    }
+  });
 });
 
 describe("live events", () => {

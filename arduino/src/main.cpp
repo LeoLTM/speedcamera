@@ -39,10 +39,6 @@ void loop() {
     return; // Do not process speed passes while actively aligning light barriers
   }
 
-  if (currentOpMode == OperatingMode::LAPTIMER) {
-    LapTimer::update();
-  }
-
   // ── IDLE: wait for either sensor to trigger ──────────────────────────────
   if (measState == MeasurementState::IDLE) {
     if (millis() - lastMeasurementEndMs < (unsigned long)cooldownMs) {
@@ -152,15 +148,16 @@ void loop() {
 //        ping
 //        getCapabilities
 //
-// MODULE: LAP TIMER (dormant until startLapSession received)
-//   Out: lapWaiting                    — session opened, awaiting first pass
-//        lapStopped                    — session closed by host
-//        lapStart {lapNumber, speedAtStart}              — first beam break
-//        lapEnd   {lapNumber, durationMs, speedAtStart, speedAtEnd}  — lap closed
+// MODULE: LAP TIMER (dormant until startLapSession or setMode laptimer received)
+//   Out: lapWaiting                    — crossing reports switched on
+//        lapStopped                    — crossing reports switched off
+//        lapCrossing {t, age, boot, speed, direction}  — one per valid pass
+//          t:    first beam break, 64-bit µs ESP clock (lap time = difference of t)
+//          age:  µs from the beam break to writing the line (host backdates its receive time)
+//          boot: random per ESP boot; t values are only comparable within one boot
 //        speeding / legal still emitted (UI speed display)
-//   In:  startLapSession {mode, dirFilter?}  — open session
-//        stopLapSession                      — close session
-//
-// startLapSession optional fields:
-//   dirFilter:  "both" | "forward" | "reverse"  (default "both")
+//   In:  startLapSession   — switch crossing reports on (extra fields ignored)
+//        stopLapSession    — switch crossing reports off
+//   The host chains crossings into laps (mode, direction filter, false-trigger rejection).
+//   pong config.lapCrossing = true marks firmware that speaks this protocol.
 

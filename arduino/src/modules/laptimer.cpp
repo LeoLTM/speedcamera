@@ -3,116 +3,63 @@
 
 namespace LapTimer {
 
-// ponytail: 64-bit continuous microsecond tracking for rollover-safe timing (>71.58 mins)
-static uint32_t lastMicros = 0;
-static uint32_t microsHigh = 0;
-
-static uint64_t getNowMicros64() {
-  unsigned long m = micros();
-  if (m < lastMicros) {
-    microsHigh++;
-  }
-  lastMicros = m;
-  return ((uint64_t)microsHigh << 32) | (uint64_t)m;
-}
-
-static uint64_t toMicros64(unsigned long boundaryUs) {
-  unsigned long m = micros();
-  if (m < lastMicros) {
-    microsHigh++;
-    lastMicros = m;
-  }
-  uint32_t high = microsHigh;
-  if (m < boundaryUs) {
-    high--;
-  }
-  return ((uint64_t)high << 32) | (uint64_t)boundaryUs;
-}
-
-// ponytail: private module state isolated from global namespace
-static LapSessionState    sessionState     = LapSessionState::IDLE;
-static LapMode            lapMode          = LapMode::SINGLE;
-static LapDirectionFilter directionFilter  = LapDirectionFilter::BOTH;
-static uint64_t           lapStartUs64     = 0;
-static float              lapStartSpeedKmH = 0.0f;
-static int                lapNumber        = 1;
+// ponytail: random per boot, so the host never subtracts boundaries from two different ESP boots
+static uint32_t bootId = 0;
+static bool     active = false;
 
 // ─── Internal Serial Output ──────────────────────────────────────────────────
-static void sendLapStart(int lapNum, float speedAtStart) {
+// t:   first beam break on the ESP's 64-bit µs clock (lap durations are differences of t)
+// age: µs between the beam break and this line being written; the host subtracts it from its
+//      receive time to place the crossing on the wall clock
+static void sendLapCrossing(const MeasurementEvent &event) {
   JsonDocument doc;
-  doc["status"]       = "lapStart";
-  doc["lapNumber"]    = lapNum;
-  doc["speedAtStart"] = serialized(String(speedAtStart, 1));
-  serializeJson(doc, Serial);
-  Serial.println();
-}
-
-static void sendLapEnd(int lapNum, double durationMs, uint64_t durationUs, float speedAtStart, float speedAtEnd) {
-  JsonDocument doc;
-  doc["status"]       = "lapEnd";
-  doc["lapNumber"]    = lapNum;
-  // 3 decimal places in ms = 1 µs resolution (realistic light barrier ceiling)
-  doc["durationMs"]   = serialized(String(durationMs, 3));
-  doc["durationUs"]   = durationUs;
-  doc["speedAtStart"] = serialized(String(speedAtStart, 1));
-  doc["speedAtEnd"]   = serialized(String(speedAtEnd, 1));
-  serializeJson(doc, Serial);
-  Serial.println();
+  doc["status"]    = "lapCrossing";
+  // micros64() is the core's wrap-safe 64-bit clock; micros() is its low 32 bits, so the
+  // wrapping 32-bit difference is the exact age even across a micros() rollover.
+  const uint64_t nowUs = micros64();
+  const uint32_t ageUs = (uint32_t)nowUs - (uint32_t)event.boundaryUs;
+  doc["t"]         = nowUs - ageUs;
+  doc["age"]       = ageUs;
+  doc["boot"]      = bootId;
+  doc["speed"]     = serialized(String(event.speedKmH, 1));
+  doc["direction"] = event.direction;
+  String out;
+  serializeJson(doc, out);
+  out += '\n';
+  Serial.write(out.c_str(), out.length());
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 void init() {
-  lastMicros = micros();
-  microsHigh = 0;
+  bootId = ESP.random();
   reset();
 }
 
 void reset() {
-  sessionState     = LapSessionState::IDLE;
-  lapMode          = LapMode::SINGLE;
-  directionFilter  = LapDirectionFilter::BOTH;
-  lapStartUs64     = 0;
-  lapStartSpeedKmH = 0.0f;
-  lapNumber        = 1;
+  active = false;
 }
 
 bool isActive() {
-  return sessionState != LapSessionState::IDLE;
-}
-
-void update() {
-  getNowMicros64();
+  return active;
 }
 
 void populatePongConfig(JsonObject &cfg) {
-  cfg["lapMode"]      = (lapMode == LapMode::MULTI) ? "multi" : "single";
-  cfg["lapActive"]    = (sessionState != LapSessionState::IDLE);
-  cfg["lapDirFilter"] = (directionFilter == LapDirectionFilter::FORWARD_ONLY) ? "forward"
-                      : (directionFilter == LapDirectionFilter::REVERSE_ONLY) ? "reverse" : "both";
+  // Host-side lap chaining: lapMode and lapDirFilter live on the host now
+  cfg["lapMode"]      = "host";
+  cfg["lapActive"]    = active;
+  cfg["lapDirFilter"] = "both";
+  cfg["lapCrossing"]  = true;
 }
 
 bool handleCommand(const char *command, const JsonDocument &doc) {
+  (void)doc;
   if (strcmp(command, "startLapSession") == 0) {
-    const char *modeStr = doc["mode"] | "single";
-    lapMode = (strcmp(modeStr, "multi") == 0) ? LapMode::MULTI : LapMode::SINGLE;
-
-    const char *dirStr = doc["dirFilter"] | "both";
-    if      (strcmp(dirStr, "forward") == 0) directionFilter = LapDirectionFilter::FORWARD_ONLY;
-    else if (strcmp(dirStr, "reverse") == 0) directionFilter = LapDirectionFilter::REVERSE_ONLY;
-    else                                     directionFilter = LapDirectionFilter::BOTH;
-
-    sessionState     = LapSessionState::WAITING;
-    lapNumber        = 1;
-    lapStartUs64     = 0;
-    lapStartSpeedKmH = 0.0f;
+    active = true;
     sendJsonStatus("lapWaiting");
     return true;
 
   } else if (strcmp(command, "stopLapSession") == 0) {
-    sessionState     = LapSessionState::IDLE;
-    lapNumber        = 1;
-    lapStartUs64     = 0;
-    lapStartSpeedKmH = 0.0f;
+    active = false;
     sendJsonStatus("lapStopped");
     return true;
   }
@@ -121,49 +68,10 @@ bool handleCommand(const char *command, const JsonDocument &doc) {
 }
 
 void onMeasurement(const MeasurementEvent &event) {
-  if (sessionState == LapSessionState::IDLE) {
+  if (!active) {
     return;
   }
-
-  // Direction filter check
-  bool passValid = (directionFilter == LapDirectionFilter::BOTH)
-                || (directionFilter == LapDirectionFilter::FORWARD_ONLY && strcmp(event.direction, "forward") == 0)
-                || (directionFilter == LapDirectionFilter::REVERSE_ONLY && strcmp(event.direction, "reverse") == 0);
-
-  if (!passValid) {
-    return;
-  }
-
-  uint64_t boundaryUs64 = toMicros64(event.boundaryUs);
-
-  if (sessionState == LapSessionState::WAITING) {
-    // ── WAITING → TIMING: open lap N ──────────────────────────────────────────
-    lapStartUs64     = boundaryUs64; // µs-precise first beam break expanded to 64-bit
-    lapStartSpeedKmH = event.speedKmH;
-    sessionState     = LapSessionState::TIMING;
-    sendLapStart(lapNumber, event.speedKmH);
-
-  } else if (sessionState == LapSessionState::TIMING) {
-    // ── TIMING: close lap N ────────────────────────────────────────────────────
-    uint64_t durationUs = boundaryUs64 - lapStartUs64;
-    double durationMs   = (double)durationUs / 1000.0;
-    sendLapEnd(lapNumber, durationMs, durationUs, lapStartSpeedKmH, event.speedKmH);
-
-    if (lapMode == LapMode::SINGLE) {
-      sessionState     = LapSessionState::WAITING;
-      lapNumber        = 1;
-      lapStartUs64     = 0;
-      lapStartSpeedKmH = 0.0f;
-
-    } else {
-      // MULTI: this crossing closes lap N and opens lap N+1 without time gap
-      lapStartUs64     = boundaryUs64;
-      lapStartSpeedKmH = event.speedKmH;
-      lapNumber++;
-      // sessionState stays TIMING
-      sendLapStart(lapNumber, event.speedKmH);
-    }
-  }
+  sendLapCrossing(event);
 }
 
 } // namespace LapTimer

@@ -1,0 +1,23 @@
+#!/bin/sh
+set -e
+
+# Before the package existed, install-rpi.sh ran the daemon from a git checkout
+# through a hand-written unit in /etc/systemd/system, which would shadow the
+# packaged unit. Stop it and move it aside; postinst reads it to migrate data.
+LEGACY_UNIT=/etc/systemd/system/speedcamera.service
+LEGACY_HANDOFF=/var/backups/speedcamera-legacy.service
+
+case "$1" in
+  install|upgrade)
+    if [ -f "$LEGACY_UNIT" ] && grep -q 'target/release/headless-rust' "$LEGACY_UNIT"; then
+      echo "speedcamera: stopping the legacy git-checkout service"
+      systemctl stop speedcamera.service 2>/dev/null || true
+      systemctl disable speedcamera.service 2>/dev/null || true
+      mkdir -p /var/backups
+      mv "$LEGACY_UNIT" "$LEGACY_HANDOFF"
+      systemctl daemon-reload 2>/dev/null || true
+    fi
+    ;;
+esac
+
+#DEBHELPER#

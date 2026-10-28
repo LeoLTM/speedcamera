@@ -286,13 +286,20 @@ class SocketIoRpcClient {
       case "violation": {
         const violationPayload = payload as Violation;
         store.setLastViolation(violationPayload);
-        toast.error(
-          `⚡ Violation recorded: ${violationPayload.measuredSpeed} km/h (Limit: ${violationPayload.maxSpeed} km/h)`,
-          {
+        if (violationPayload.measuredSpeed < 0) {
+          toast.info("⚡ Test trigger captured", {
             description: `Captured at ${new Date(violationPayload.timestamp).toLocaleTimeString()}`,
             duration: 4000,
-          }
-        );
+          });
+        } else {
+          toast.error(
+            `⚡ Violation recorded: ${violationPayload.measuredSpeed} km/h (Limit: ${violationPayload.maxSpeed} km/h)`,
+            {
+              description: `Captured at ${new Date(violationPayload.timestamp).toLocaleTimeString()}`,
+              duration: 4000,
+            }
+          );
+        }
         break;
       }
       case "flashProgress":
@@ -309,14 +316,6 @@ class SocketIoRpcClient {
         store.handleOperatingModeStatus?.(modePayload);
         break;
       }
-      case "updateAvailable":
-
-        store.setUpdateVersion((payload as any).version);
-        store.setUpdatePhase("ready");
-        break;
-      case "updateProgress":
-        store.handleUpdateProgress(payload as any);
-        break;
       default:
         break;
     }

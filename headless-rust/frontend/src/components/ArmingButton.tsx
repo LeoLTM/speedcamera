@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  FlashIcon,
   Shield01Icon,
   ShieldHalfIcon,
   ShieldKeyIcon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/useAppStore";
+import { getRpc } from "@/lib/rpc";
+import { toast } from "sonner";
 
 // ponytail: native navigator.vibrate for mobile haptic feedback, zero dependencies
 const triggerHaptic = (pattern: number | number[]) => {
@@ -127,6 +130,31 @@ export function ArmingButton() {
   // Derive which conditions are missing for the hint text
   const missingCamera = !cameraConnected;
   const missingSerial = !connectedPort;
+  const canTrigger = Boolean(connectedPort && cameraConnected);
+
+  const [isTriggering, setIsTriggering] = useState(false);
+
+  // ponytail: direct RPC test trigger with haptic feedback and toast notification
+  const handleTestTrigger = useCallback(async () => {
+    if (!canTrigger || isTriggering) return;
+    triggerHaptic(20);
+    setIsTriggering(true);
+    try {
+      const res = await getRpc().request.testTrigger({});
+      if (res.success) {
+        triggerHaptic([30, 40]);
+        toast.success("Manual test trigger fired", {
+          description: "Test frame captured and recorded",
+        });
+      }
+    } catch (err: any) {
+      toast.error("Test trigger failed", {
+        description: err?.message || "Communication failure",
+      });
+    } finally {
+      setIsTriggering(false);
+    }
+  }, [canTrigger, isTriggering]);
 
   return (
     <div
@@ -249,11 +277,45 @@ export function ArmingButton() {
         {isArmed
           ? "Violations are being recorded"
           : isDisarmed
-            ? "Monitoring only — no violations recorded"
+            ? "Monitoring only - no violations recorded"
             : [missingCamera && "camera", missingSerial && "serial connection"]
                 .filter(Boolean)
                 .join(" & ") + " required"}
       </p>
+
+      {/* Manual Test Trigger */}
+      <div className="mt-3 pt-2.5 border-t border-border/40">
+        <button
+          type="button"
+          disabled={!canTrigger || isTriggering}
+          onClick={handleTestTrigger}
+          className={cn(
+            "relative w-full inline-flex items-center justify-center gap-1.5 rounded-lg border font-medium text-xs h-8 px-3 transition-all duration-200 select-none",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-ring",
+            canTrigger && !isTriggering
+              ? "cursor-pointer border-border/70 bg-muted/30 text-foreground hover:bg-muted/70 hover:border-border active:scale-[0.99]"
+              : "cursor-not-allowed border-border/30 bg-muted/10 text-muted-foreground/40",
+          )}
+          title={
+            !canTrigger
+              ? [missingCamera && "Camera", missingSerial && "Serial connection"]
+                  .filter(Boolean)
+                  .join(" & ") + " required for test trigger"
+              : "Trigger camera shutter and record test frame"
+          }
+          aria-label="Execute manual test trigger"
+        >
+          <span>{isTriggering ? "Testing…" : "Test"}</span>
+          <HugeiconsIcon
+            icon={FlashIcon}
+            className={cn(
+              "size-3.5 shrink-0 transition-transform",
+              isTriggering && "animate-pulse scale-110 text-amber-400"
+            )}
+            strokeWidth={2}
+          />
+        </button>
+      </div>
     </div>
   );
 }

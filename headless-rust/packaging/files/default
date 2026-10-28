@@ -1,0 +1,5 @@
+# Overrides for the speedcamera daemon. Apply with: sudo systemctl restart speedcamera
+#PORT=3000
+#HOST=0.0.0.0
+#RUST_LOG=info
+#DISABLED_PLUGINS=laptimer,alignment

@@ -32,7 +32,8 @@ export function ViolationGridTile({
   const { imageData, imageLoading } = useViolationImage(violation, skinEnabled, { width: 400, quality: 80 });
   const [deleting, setDeleting] = useState(false);
 
-  const over = (violation.measuredSpeed - violation.maxSpeed).toFixed(1);
+  const isTest = violation.measuredSpeed < 0;
+  const over = isTest ? "0.0" : (violation.measuredSpeed - violation.maxSpeed).toFixed(1);
   const formattedTime = new Date(violation.timestamp).toLocaleString(undefined, {
     month: "short",
     day: "numeric",
@@ -96,15 +97,23 @@ export function ViolationGridTile({
         {/* Center Details */}
         <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
           <div className="flex items-baseline justify-between gap-1">
-            <div className="flex items-baseline gap-1">
-              <span className="text-lg font-bold font-mono text-destructive tracking-tight">
-                {violation.measuredSpeed}
+            {isTest ? (
+              <span className="text-xs font-semibold text-amber-500 bg-amber-500/15 px-2 py-0.5 rounded font-mono">
+                Test Trigger
               </span>
-              <span className="text-[10px] text-muted-foreground">km/h</span>
-            </div>
-            <span className="text-[11px] font-semibold text-destructive bg-destructive/15 px-1.5 py-0.5 rounded font-mono">
-              +{over}
-            </span>
+            ) : (
+              <>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-lg font-bold font-mono text-destructive tracking-tight">
+                    {violation.measuredSpeed}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">km/h</span>
+                </div>
+                <span className="text-[11px] font-semibold text-destructive bg-destructive/15 px-1.5 py-0.5 rounded font-mono">
+                  +{over}
+                </span>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
@@ -198,9 +207,15 @@ export function ViolationGridTile({
                 strokeWidth={2}
               />
             </span>
-            <span className="text-base font-bold text-destructive tracking-tight">
-              {violation.measuredSpeed} <span className="text-xs font-normal text-muted-foreground">km/h</span>
-            </span>
+            {isTest ? (
+              <span className="text-xs font-bold text-amber-400 tracking-tight font-mono">
+                TEST TRIGGER
+              </span>
+            ) : (
+              <span className="text-base font-bold text-destructive tracking-tight">
+                {violation.measuredSpeed} <span className="text-xs font-normal text-muted-foreground">km/h</span>
+              </span>
+            )}
           </div>
         </div>
 
@@ -208,9 +223,15 @@ export function ViolationGridTile({
         <div className="p-3 flex flex-col gap-2 flex-1 justify-between">
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground font-medium">Limit: {violation.maxSpeed} km/h</span>
-            <span className="font-semibold text-destructive bg-destructive/10 px-2 py-0.5 rounded-md">
-              +{over} km/h
-            </span>
+            {isTest ? (
+              <span className="font-semibold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-md">
+                Test
+              </span>
+            ) : (
+              <span className="font-semibold text-destructive bg-destructive/10 px-2 py-0.5 rounded-md">
+                +{over} km/h
+              </span>
+            )}
           </div>
           <div className="text-xs text-muted-foreground/80 truncate font-mono">
             {formattedTime}

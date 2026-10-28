@@ -1,0 +1,24 @@
+[Unit]
+Description=Speedcamera daemon (trigger pipeline, camera capture, web UI)
+Documentation=https://github.com/LeoLTM/speedcamera/tree/main/headless-rust
+Wants=network-online.target
+After=network-online.target NetworkManager.service
+
+[Service]
+Type=simple
+User=speedcamera
+Group=speedcamera
+StateDirectory=speedcamera
+StateDirectoryMode=0750
+WorkingDirectory=/var/lib/speedcamera
+Environment=DATA_DIR=/var/lib/speedcamera
+EnvironmentFile=-/etc/default/speedcamera
+ExecStart=/usr/bin/speedcamera
+Restart=always
+RestartSec=2
+KillSignal=SIGINT
+LimitNOFILE=65536
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target

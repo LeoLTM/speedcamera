@@ -111,13 +111,24 @@ export function ViolationCard({
       <div className="flex flex-col justify-between flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="text-sm font-semibold text-destructive leading-none">
-              {violation.measuredSpeed} km/h
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Limit {violation.maxSpeed} km/h
-              <span className="ml-1 text-destructive/70">(+{overSpeed})</span>
-            </p>
+            {violation.measuredSpeed < 0 ? (
+              <>
+                <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded bg-amber-500/20 text-amber-500 border border-amber-500/30 leading-none">
+                  Test Trigger
+                </span>
+                <p className="text-xs text-muted-foreground mt-1">Manual verification frame</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-destructive leading-none">
+                  {violation.measuredSpeed} km/h
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Limit {violation.maxSpeed} km/h
+                  <span className="ml-1 text-destructive/70">(+{overSpeed})</span>
+                </p>
+              </>
+            )}
           </div>
 
           <Button

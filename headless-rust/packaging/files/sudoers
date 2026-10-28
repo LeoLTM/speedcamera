@@ -1,0 +1,3 @@
+# Installed by the speedcamera package: the only commands the daemon may run as root.
+# Network mode changes go through the packaged script; nmcli/iw serve status and scans.
+speedcamera ALL=(root) NOPASSWD: /usr/lib/speedcamera/setup-network.sh, /usr/bin/nmcli, /usr/sbin/iw, /usr/sbin/shutdown -h now

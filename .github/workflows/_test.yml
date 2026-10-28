@@ -23,7 +23,7 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Install frontend dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: TypeScript type-check
         run: bun tsc --noEmit
@@ -32,8 +32,15 @@ jobs:
       - name: Build frontend
         run: bun run build
 
+      # cache-workspaces: rust-cache defaults to ./target, which misses headless-rust/target
       - name: Setup Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-workspaces: headless-rust
 
       - name: Run cargo tests
-        run: cargo test
+        run: cargo test --locked
+
+      # boots the daemon in mock mode: HTTP endpoints, Socket.io RPC, live events
+      - name: Run integration tests
+        run: bun run test:integration

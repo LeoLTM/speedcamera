@@ -2,7 +2,6 @@ use super::state::{
     next_state, EthernetMode, NetworkEvent, NetworkStateSnapshot, TransitionEffect, WifiState,
 };
 use crate::models::{ApplyNetworkModeInput, NetworkOperationResult};
-use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
@@ -561,17 +560,7 @@ impl NetworkSupervisor {
             };
         }
 
-        let script_paths = [
-            Path::new("./scripts/setup-network.sh"),
-            Path::new("../scripts/setup-network.sh"),
-            Path::new("/home/pi/speedcamera/headless-rust/scripts/setup-network.sh"),
-        ];
-
-        let script = script_paths
-            .iter()
-            .find(|p| p.exists())
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("./scripts/setup-network.sh"));
+        let script = super::network_script_path();
 
         let args_owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
 

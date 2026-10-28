@@ -168,7 +168,7 @@ export function SpeedCameraTab() {
                 ? lastPongConfig
                   ? "Values synced from device"
                   : "Connect to device to sync values"
-                : <span className="text-amber-500 dark:text-amber-400">Serial not connected — hardware save disabled</span>}
+                : <span className="text-amber-500 dark:text-amber-400">Serial not connected - hardware save disabled</span>}
             </p>
           </div>
           <Button

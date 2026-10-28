@@ -1,7 +1,7 @@
 {
   "name": "speedcamera-rust-ui",
+  "private": true,
   "type": "module",
-  "version": "0.5.0",
   "description": "Speedcamera Web UI for Raspberry Pi and remote browser control",
   "scripts": {
     "dev": "vite",
@@ -10,17 +10,10 @@
     "build": "vite build",
     "build:all": "vite build && cargo build --release",
     "serve": "cargo run --release",
-    "install:pi": "./scripts/install-remote.sh",
-    "deploy:pi": "./scripts/deploy-to-pi.sh",
-    "cleanup:pi": "./scripts/cleanup-remote.sh",
-    "test:server": "bun ./scripts/test-server.ts",
-    "diag": "bun ./diagnostics/cli.ts",
-    "diag:quick": "bun ./diagnostics/cli.ts quick",
-    "diag:monitor": "bun ./diagnostics/cli.ts monitor",
-    "diag:reproduce": "bun ./diagnostics/cli.ts reproduce",
-    "diag:full": "bun ./diagnostics/cli.ts full",
-    "diag:fix": "bun ./diagnostics/cli.ts fix",
-    "setup:esptool": "mkdir -p resources && curl -fsSL https://github.com/espressif/esptool/releases/download/v5.2.0/esptool-v5.2.0-linux-amd64.tar.gz | tar -xz --wildcards '*/esptool' --strip-components=1 && mv esptool resources/esptool && chmod +x resources/esptool"
+    "test:integration": "cargo build && bun test --timeout 30000 tests",
+    "package": "./packaging/build-deb.sh",
+    "deploy": "./scripts/pi.sh deploy",
+    "pi": "./scripts/pi.sh"
   },
   "dependencies": {
     "@fontsource-variable/figtree": "^5.2.10",

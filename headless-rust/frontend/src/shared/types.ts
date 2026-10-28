@@ -491,6 +491,14 @@ export type SpeedcameraRPC = {
       params: Record<string, never>;
       response: string | null; // base64
     };
+    testTrigger: {
+      params: Record<string, never>;
+      response: {
+        success: boolean;
+        violation: Violation;
+        imagePath: string;
+      };
+    };
     setCameraExposure: {
       params: { value: number };
       response: void;
@@ -529,20 +537,6 @@ export type SpeedcameraRPC = {
     };
     setCameraFeatureInt: {
       params: { feature: string; value: number };
-      response: void;
-    };
-
-    // Window (stubs in headless mode)
-    minimizeWindow: {
-      params: Record<string, never>;
-      response: void;
-    };
-    maximizeWindow: {
-      params: Record<string, never>;
-      response: void;
-    };
-    closeWindow: {
-      params: Record<string, never>;
       response: void;
     };
 
@@ -618,28 +612,10 @@ export type SpeedcameraRPC = {
       response: void;
     };
 
-    // Updater
+    // Version
     getLocalVersion: {
       params: Record<string, never>;
       response: { version: string; channel: string; hash: string };
-    };
-    checkForUpdate: {
-      params: Record<string, never>;
-      response: {
-        version: string;
-        hash: string;
-        updateAvailable: boolean;
-        updateReady: boolean;
-        error: string;
-      };
-    };
-    downloadUpdate: {
-      params: Record<string, never>;
-      response: { ok: boolean; error?: string };
-    };
-    applyUpdate: {
-      params: Record<string, never>;
-      response: void;
     };
 
     // Firmware flasher
@@ -677,14 +653,6 @@ export type SpeedcameraRPC = {
     serialStatus: SerialStatusPayload;
     // Camera connection status
     cameraStatus: CameraStatusPayload;
-    // App update notifications
-    updateAvailable: { version: string };
-    // Updater status stream
-    updateProgress: {
-      status: string;
-      message: string;
-      progress?: number;
-    };
     // Esptool progress stream
     flashProgress: FlashProgressPayload;
     // Live stream frame

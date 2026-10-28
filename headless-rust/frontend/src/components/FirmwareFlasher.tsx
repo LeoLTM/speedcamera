@@ -338,7 +338,7 @@ export function FirmwareFlasher() {
       {/* Status badge */}
       {flashDone && !isFlashing && (
         <p className="text-xs text-green-600 dark:text-green-400 font-medium">
-          Flash complete — device is rebooting.
+          Flash complete - device is rebooting.
         </p>
       )}
       {flashError && !isFlashing && (

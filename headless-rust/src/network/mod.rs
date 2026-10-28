@@ -10,8 +10,19 @@ use crate::models::{
     SystemNetworkSummary, WifiClientInfo, WifiScanResult,
 };
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+const PACKAGED_NETWORK_SCRIPT: &str = "/usr/lib/speedcamera/setup-network.sh";
+
+/// Network mode script: the packaged copy, or the checkout copy when running via `cargo run`.
+pub fn network_script_path() -> PathBuf {
+    [Path::new(PACKAGED_NETWORK_SCRIPT), Path::new("./scripts/setup-network.sh")]
+        .into_iter()
+        .find(|p| p.exists())
+        .unwrap_or(Path::new(PACKAGED_NETWORK_SCRIPT))
+        .to_path_buf()
+}
 
 /// Reads hardware MAC address from Linux sysfs (/sys/class/net/<iface>/address)
 fn get_interface_mac(iface: &str) -> String {
@@ -435,18 +446,7 @@ pub fn scan_wifi_networks() -> Vec<WifiScanResult> {
 /// Applies a network mode switch (AP, Wi-Fi Client, Forget Wi-Fi, Ethernet LAN, Ethernet DHCP, or standard DHCP)
 #[allow(dead_code)]
 pub fn apply_network_mode(input: &ApplyNetworkModeInput) -> NetworkOperationResult {
-    let script_paths = [
-        Path::new("./scripts/setup-network.sh"),
-        Path::new("../scripts/setup-network.sh"),
-        Path::new("/home/pi/speedcamera/headless-rust/scripts/setup-network.sh"),
-        Path::new("/root/speedcamera/headless-rust/scripts/setup-network.sh"),
-    ];
-
-    let script = script_paths
-        .iter()
-        .find(|p| p.exists())
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| Path::new("./scripts/setup-network.sh").to_path_buf());
+    let script = network_script_path();
 
     let normalized_mode = input.mode.to_lowercase();
     let mut cmd = Command::new("sudo");

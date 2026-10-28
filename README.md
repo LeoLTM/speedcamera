@@ -10,8 +10,8 @@ An end-to-end vehicle speed measurement, GigE Vision camera capture, and remote 
 | --------- | ----------- |
 | [**`headless-rust`**](./headless-rust) | **(Recommended)** High-performance single-binary headless daemon and responsive Web UI controller for Raspberry Pi 5 built with Rust (Axum 0.8, Socket.io, native Aravis C FFI, SQLite) and embedded React + Vite frontend. Features IoT-style open AP setup hotspot (`192.168.4.1`) with captive portal redirect, Client Wi-Fi operation mode with scannable connect QR codes, and a dedicated GigE Vision Camera LAN (`192.168.1.100`). |
 | [**`arduino`**](./arduino) | Microcontroller firmware (ESP8266 / ESP32) reading dual optical light barriers to calculate vehicle speeds and transmit telemetry over Serial. |
-| [**`electronbun`**](./electronbun) | Desktop companion application rewrite built with Electron and Bun. |
-| [**`electron`**](./electron) | *(Legacy)* Desktop companion app made with classic Electron. |
+
+The earlier desktop apps (`electron/`, `electronbun/`) were retired in favour of `headless-rust`; they remain in the git history.
 
 ---
 

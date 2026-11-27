@@ -38,7 +38,12 @@ linux-embedded-hal = "0.5"
 uuid = { version = "1", features = ["v7"] }
 libc = "0.2"
 prost = "0.14"
-rumqttc = { version = "0.25", default-features = false, features = ["url"] }
+# wss:// with a client certificate through the asl-gokart border Nginx; ring as the crypto
+# provider (installed in kartlink::enroll), not chosen by rumqttc.
+rumqttc = { version = "0.25", default-features = false, features = ["url", "websocket", "use-rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "ring"] }
+webpki-roots = "1"
 
 [build-dependencies]
 pkg-config = "0.3"

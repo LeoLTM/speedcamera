@@ -290,6 +290,21 @@ export interface KartLinkStatus {
   clockSynced: boolean;
   kartClockOffsetMs: number | null;
   outboxPending: number;
+  enrollment: KartLinkEnrollment;
+}
+
+/** Device certificate and broker login for wss:// (asl-gokart ADR-0004). */
+export interface KartLinkEnrollment {
+  state: "none" | "pending" | "enrolled";
+  deviceId: string | null;
+  /** Unix seconds */
+  notAfterS: number | null;
+  /** The ID this speedcamera asks for: speedcamera-<device ID> */
+  requestedId: string;
+  /** While pending: the code an admin approves on the analytics server */
+  code: string | null;
+  expiresAtS: number | null;
+  error: string | null;
 }
 
 export interface ActiveLapSessionResponse {
@@ -683,6 +698,14 @@ export type SpeedcameraRPC = {
     setBarrierFromKart: {
       params: Record<string, never>;
       response: { lat: number; lon: number };
+    };
+    startKartLinkEnrollment: {
+      params: Record<string, never>;
+      response: KartLinkEnrollment;
+    };
+    cancelKartLinkEnrollment: {
+      params: Record<string, never>;
+      response: KartLinkEnrollment;
     };
 
     // Version

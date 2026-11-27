@@ -193,11 +193,19 @@ lap instead of recording one.
 **Kart link** (`src/plugins/kartlink/`) connects the lap timer to the
 [asl-gokart](https://github.com/Aerospace-Lab-e-V/asl-gokart) telemetry stack:
 
-1. Join the driver's phone hotspot in Wi-Fi client mode (internet for the broker and NTP; the
-   package depends on `systemd-timesyncd` or `chrony`).
-2. Settings → Lap Timer → Kart Link: broker URL (`mqtt://host:1883`), credentials, kart ID,
-   device ID, then switch it on. The status line shows broker, kart and GPS state.
-3. Park the kart at the barrier and press *Use kart's current position*.
+1. **Enroll once, on the lab network** (asl-gokart `analytics/docs/adr/0004`): Settings → Lap
+   Timer → Kart Link: broker URL `wss://<server>/mqtt`, device ID, then *Enroll*. The speedcamera
+   generates a key, asks the analytics server for a certificate as `speedcamera-<device ID>` and
+   shows a code; an admin approves it there with `sudo kart-enroll approve <CODE>`. Certificate,
+   key and broker login land in `<data dir>/kartlink-identity/`; certificates last one year
+   (*Enroll again* before they expire).
+2. Join the driver's phone hotspot in Wi-Fi client mode (internet for the broker and NTP; the
+   package depends on `systemd-timesyncd` or `chrony`, and the certificate check needs the clock).
+3. Kart ID, then switch the link on. The status line shows broker, kart and GPS state.
+4. Park the kart at the barrier and press *Use kart's current position*.
+
+`mqtt://host:1883` with a username and password (under *Login without enrollment*) still works in
+the lab or for development.
 
 The link follows `kart/{id}/status` and `kart/{id}/live`, waits up to 3 s after a crossing for the
 kart's GPS fixes around it, and publishes every crossing as `kart.timing.v1.LapCrossing` on

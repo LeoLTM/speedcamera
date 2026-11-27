@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use prost::Message;
-use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, Publish, QoS};
+use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, Publish, QoS, TlsConfiguration, Transport};
 use tokio::sync::mpsc;
 
 use super::proto::{telemetry, timing};
@@ -55,13 +55,32 @@ pub async fn supervise(link: KartLink, db: Database) {
 }
 
 fn options(s: &LinkSettings) -> Result<MqttOptions, String> {
-    let client_id = format!("speedcamera-{}", s.device_id);
-    let mut opts = MqttOptions::parse_url(format!("{}?client_id={client_id}", s.broker_url))
-        .map_err(|e| format!("Invalid broker URL: {e}"))?;
+    let url = s.broker_url.as_str();
+    // Enrolled (asl-gokart ADR-0004): the certificate's login and the pinned client ID.
+    let client_id = s
+        .identity
+        .as_ref()
+        .map_or_else(|| s.enroll_id(), |i| i.mqtt_client_id.clone());
+    let mut opts = if url.starts_with("wss://") || url.starts_with("ws://") {
+        // Websockets take the whole URL as the address; the port argument is unused.
+        let mut o = MqttOptions::new(&client_id, url, 0);
+        if url.starts_with("wss://") {
+            let id = s.identity.as_ref().ok_or("Not enrolled: enroll this speedcamera first")?;
+            o.set_transport(Transport::Wss(TlsConfiguration::Rustls(id.tls()?)));
+        } else {
+            o.set_transport(Transport::Ws);
+        }
+        o
+    } else {
+        MqttOptions::parse_url(format!("{url}?client_id={client_id}"))
+            .map_err(|e| format!("Invalid broker URL: {e}"))?
+    };
     opts.set_keep_alive(Duration::from_secs(5));
     // A fresh session drops anything in flight; unacknowledged crossings are resent from the outbox.
     opts.set_clean_session(true);
-    if !s.username.is_empty() {
+    if let Some(id) = &s.identity {
+        opts.set_credentials(&id.mqtt_username, &id.mqtt_password);
+    } else if !s.username.is_empty() {
         opts.set_credentials(&s.username, &s.password);
     }
     Ok(opts)

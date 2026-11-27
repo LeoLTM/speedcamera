@@ -5,12 +5,17 @@
 //! [`KartGate`]), and publishes each stored crossing as `kart.timing.v1.LapCrossing` on
 //! `kart/{id}/laps`. Crossings wait in the `lap_crossings` outbox until the broker acknowledged
 //! them, so a hotspot dropout loses nothing.
+//!
+//! Through the lab's border Nginx (`wss://`) the link needs a device certificate and its own
+//! broker login, both from enrollment (see [`enroll`]).
 
 pub mod clock;
+pub mod enroll;
 pub mod mqtt;
 pub mod tracker;
 
-use std::sync::{Arc, Mutex, RwLock};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -53,6 +58,8 @@ pub struct LinkSettings {
     pub barrier: Option<(f64, f64)>,
     pub radius_m: f64,
     pub require_nearby: bool,
+    /// Certificate and broker login from enrollment; replaces username and password.
+    pub identity: Option<enroll::Identity>,
 }
 
 impl LinkSettings {
@@ -71,6 +78,16 @@ impl LinkSettings {
             barrier,
             radius_m: s.gate_radius_m,
             require_nearby: s.require_kart_nearby != "false",
+            identity: None,
+        }
+    }
+
+    /// The broker user and client ID this speedcamera enrolls as.
+    pub fn enroll_id(&self) -> String {
+        if self.device_id.starts_with(enroll::TIMING_PREFIX) {
+            self.device_id.clone()
+        } else {
+            format!("{}{}", enroll::TIMING_PREFIX, self.device_id)
         }
     }
 
@@ -78,6 +95,7 @@ impl LinkSettings {
     fn same_connection(&self, other: &Self) -> bool {
         (&self.enabled, &self.broker_url, &self.username, &self.password, &self.kart_id, &self.device_id)
             == (&other.enabled, &other.broker_url, &other.username, &other.password, &other.kart_id, &other.device_id)
+            && self.identity == other.identity
     }
 }
 
@@ -87,11 +105,21 @@ struct LinkState {
     last_error: Option<String>,
 }
 
+/// A running enrollment request, or why the last one failed.
+#[derive(Default)]
+struct EnrollView {
+    pending: Option<enroll::Ticket>,
+    error: Option<String>,
+    task: Option<tokio::task::JoinHandle<()>>,
+}
+
 struct Inner {
     settings: RwLock<Option<LinkSettings>>,
     tracker: Mutex<Tracker>,
     state: Mutex<LinkState>,
     outbox: Notify,
+    identity_dir: OnceLock<PathBuf>,
+    enrollment: Mutex<EnrollView>,
 }
 
 /// Shared handle; the laptimer holds one as its [`KartGate`].
@@ -108,6 +136,8 @@ impl KartLink {
                 tracker: Mutex::new(Tracker::default()),
                 state: Mutex::new(LinkState::default()),
                 outbox: Notify::new(),
+                identity_dir: OnceLock::new(),
+                enrollment: Mutex::new(EnrollView::default()),
             }),
         }
     }
@@ -123,7 +153,8 @@ impl KartLink {
 
     fn reload_settings(&self, db: &Database) -> LinkSettings {
         let app = crate::db::settings::get_settings(&db.lock()).unwrap_or_default();
-        let fresh = LinkSettings::from_app(&app);
+        let mut fresh = LinkSettings::from_app(&app);
+        fresh.identity = self.inner.identity_dir.get().and_then(|d| enroll::Identity::load(d));
         let mut current = self.inner.settings.write().unwrap();
         if current.as_ref().is_some_and(|c| c.kart_id != fresh.kart_id) {
             // Another kart: its status and fixes start from scratch
@@ -181,7 +212,88 @@ impl KartLink {
             "clockSynced": clock::synced(),
             "kartClockOffsetMs": t.clock_offset_us.map(|o| o / 1000),
             "outboxPending": outbox_pending,
+            "enrollment": self.enrollment_json(&s),
         })
+    }
+
+    fn enrollment_json(&self, s: &LinkSettings) -> Value {
+        let view = self.inner.enrollment.lock().unwrap();
+        let state = if view.pending.is_some() {
+            "pending"
+        } else if s.identity.is_some() {
+            "enrolled"
+        } else {
+            "none"
+        };
+        json!({
+            "state": state,
+            "deviceId": s.identity.as_ref().map(|i| i.device_id.clone()),
+            "notAfterS": s.identity.as_ref().map(|i| i.not_after_s),
+            "requestedId": s.enroll_id(),
+            "code": view.pending.as_ref().map(|t| t.code.clone()),
+            "expiresAtS": view.pending.as_ref().map(|t| t.expires_at_s),
+            "error": view.error,
+        })
+    }
+
+    /// Requests a certificate; resolves once the code to show is known.
+    async fn start_enrollment(&self, db: &Database) -> Result<Value, String> {
+        let s = self.reload_settings(db);
+        let origin = enroll::origin_of(&s.broker_url)
+            .ok_or("Set the broker URL to wss://<server>/mqtt first")?;
+        let dir = self.inner.identity_dir.get().cloned().ok_or("kart link not started")?;
+        if let Some(t) = self.inner.enrollment.lock().unwrap().task.take() {
+            t.abort();
+        }
+        let requested = s.enroll_id();
+        let (ticket, key_pem) = match enroll::request(&origin, &requested).await {
+            Ok(r) => r,
+            Err(e) => {
+                let mut view = self.inner.enrollment.lock().unwrap();
+                view.pending = None;
+                view.error = Some(e.clone());
+                return Err(e);
+            }
+        };
+        tracing::info!("[plugin:kartlink] Enrollment requested as {requested}, code {}", ticket.code);
+        let link = self.clone();
+        let db = db.clone();
+        let waiting = ticket.clone();
+        let task = tokio::spawn(async move {
+            let outcome = enroll::wait(&origin, &waiting, &key_pem, &dir).await;
+            {
+                let mut view = link.inner.enrollment.lock().unwrap();
+                view.pending = None;
+                view.task = None;
+                view.error = outcome.as_ref().err().cloned();
+            }
+            match outcome {
+                Ok(id) => {
+                    tracing::info!("[plugin:kartlink] Enrolled as {}", id.device_id);
+                    // The supervisor sees the new identity and reconnects.
+                    link.reload_settings(&db);
+                }
+                Err(e) => tracing::warn!("[plugin:kartlink] Enrollment: {e}"),
+            }
+        });
+        {
+            let mut view = self.inner.enrollment.lock().unwrap();
+            view.pending = Some(ticket);
+            view.error = None;
+            view.task = Some(task);
+        }
+        Ok(self.enrollment_json(&s))
+    }
+
+    fn cancel_enrollment(&self) -> Value {
+        let mut view = self.inner.enrollment.lock().unwrap();
+        if let Some(t) = view.task.take() {
+            t.abort();
+        }
+        view.pending = None;
+        view.error = None;
+        drop(view);
+        self.enrollment_json(&self.settings())
     }
 }
 
@@ -262,6 +374,7 @@ impl Plugin for KartLinkPlugin {
     }
 
     fn init(&mut self, ctx: &PluginContext) -> Result<(), Box<dyn std::error::Error>> {
+        let _ = self.link.inner.identity_dir.set(enroll::identity_dir(&ctx.config.data_dir));
         tokio::spawn(mqtt::supervise(self.link.clone(), ctx.db.clone()));
         tracing::info!("[plugin:kartlink] Started");
         Ok(())
@@ -280,6 +393,18 @@ impl Plugin for KartLinkPlugin {
                 .unwrap_or(0);
                 Ok(link.status(pending))
             }
+        });
+
+        let link = self.link.clone();
+        registry.register("startKartLinkEnrollment", move |ctx, _params| {
+            let link = link.clone();
+            async move { link.start_enrollment(&ctx.db).await }
+        });
+
+        let link = self.link.clone();
+        registry.register("cancelKartLinkEnrollment", move |_ctx, _params| {
+            let link = link.clone();
+            async move { Ok(link.cancel_enrollment()) }
         });
 
         let link = self.link.clone();

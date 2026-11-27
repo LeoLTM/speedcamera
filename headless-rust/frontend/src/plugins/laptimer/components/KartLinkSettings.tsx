@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { getRpc } from "@/lib/rpc";
-import type { AppSettings, KartLinkStatus } from "@/shared/types";
+import type { AppSettings, KartLinkEnrollment, KartLinkStatus } from "@/shared/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToggleSetting } from "./ToggleSetting";
@@ -137,13 +137,23 @@ export function KartLinkSettings() {
 
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            {field("kartLinkBrokerUrl", "Broker URL", { placeholder: "mqtt://telemetry.example.org:1883" })}
+            {field("kartLinkBrokerUrl", "Broker URL", { placeholder: "wss://<server>/mqtt" })}
           </div>
-          {field("kartLinkUsername", "Username")}
-          {field("kartLinkPassword", "Password", { type: "password" })}
           {field("kartLinkKartId", "Kart ID")}
           {field("kartLinkDeviceId", "Device ID")}
         </div>
+
+        {status?.enrollment && <EnrollmentBlock enrollment={status.enrollment} />}
+
+        <details className="text-xs">
+          <summary className="cursor-pointer text-muted-foreground">
+            Login without enrollment (mqtt:// in the lab or for development)
+          </summary>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            {field("kartLinkUsername", "Username")}
+            {field("kartLinkPassword", "Password", { type: "password" })}
+          </div>
+        </details>
 
         <div className="space-y-3">
           <div className="grid grid-cols-3 gap-3">
@@ -189,4 +199,65 @@ function LinkStatusLine({ status: s }: { status: KartLinkStatus }) {
   if (s.outboxPending > 0) facts.push(`${s.outboxPending} crossings waiting to upload`);
 
   return <p className="text-xs rounded-lg border border-border bg-muted/30 px-3 py-2">{facts.join(" · ")}</p>;
+}
+
+const formatDate = (unixS: number) =>
+  new Date(unixS * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+
+/**
+ * Certificate and broker login for wss:// (asl-gokart ADR-0004): this speedcamera asks the
+ * analytics server, shows the code, and an admin approves it there (`kart-enroll approve <CODE>`).
+ */
+function EnrollmentBlock({ enrollment: e }: { enrollment: KartLinkEnrollment }) {
+  const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(() => Date.now() / 1000);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now() / 1000), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const run = async (call: () => Promise<unknown>, failure: string) => {
+    setBusy(true);
+    try {
+      await call();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : failure);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const start = () => run(() => getRpc().request.startKartLinkEnrollment({}), "Enrollment not started");
+  const cancel = () => run(() => getRpc().request.cancelKartLinkEnrollment({}), "Not cancelled");
+
+  if (e.state === "pending" && e.code) {
+    const left = Math.max(0, Math.round((e.expiresAtS ?? now) - now));
+    return (
+      <div className="space-y-2 rounded-lg border border-border px-3 py-3">
+        <p className="text-xs text-muted-foreground">Approval code for {e.requestedId}</p>
+        <p className="font-mono text-3xl font-semibold tracking-widest">{e.code}</p>
+        <p className="text-xs text-muted-foreground">
+          On the analytics server: kart-enroll approve {e.code} · {Math.floor(left / 60)}:
+          {String(left % 60).padStart(2, "0")} left
+        </p>
+        <Button size="sm" variant="outline" disabled={busy} onClick={cancel}>
+          Cancel
+        </Button>
+      </div>
+    );
+  }
+
+  const enrolled = e.state === "enrolled" && e.deviceId;
+  return (
+    <div className="flex items-center gap-3">
+      <Button size="sm" variant="outline" disabled={busy} onClick={start}>
+        {busy ? "Requesting…" : enrolled ? "Enroll again" : "Enroll"}
+      </Button>
+      <p className="text-xs text-muted-foreground">
+        {enrolled
+          ? `Enrolled as ${e.deviceId}${e.notAfterS ? ` until ${formatDate(e.notAfterS)}` : ""}`
+          : `Not enrolled. Needed for wss://; asks as ${e.requestedId}, only from the lab network.`}
+        {e.error && <span className="text-destructive"> · {e.error}</span>}
+      </p>
+    </div>
+  );
 }
